@@ -29,6 +29,7 @@ from playwright.async_api import async_playwright, Frame, Page
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from capability.redaction import seed_data_scrubber
 from perception.tree import (
     count_nodes,
     estimate_tokens,
@@ -40,6 +41,15 @@ from perception.tree import (
 
 EVIDENCE_DIR = Path(__file__).resolve().parent.parent / "evidence" / "a11y_diagnostic"
 
+# Every dump goes through this on the way to disk. The diagnostic captures
+# raw accessibility trees of a member detail screen, which renders a full
+# SSN, date of birth, phone, email and address beside the fields the flow
+# actually reads -- so the sensitive values arrive as page *content*, never
+# as a declared field, and nothing sensitivity-driven would catch them.
+# Scrubbing at the single point where text is written is what makes that
+# structural rather than something each dump site has to remember.
+SCRUBBER = seed_data_scrubber()
+
 
 async def dump_step(page: Page, step: str) -> None:
     frame_snapshots = await snapshot_all_frames(page)
@@ -48,6 +58,11 @@ async def dump_step(page: Page, step: str) -> None:
     lines.append(f"STEP: {step}")
     lines.append(f"page.url: {page.url}")
     lines.append(f"frame count: {len(frame_snapshots)}")
+    lines.append(
+        "NOTE: sensitive values below are masked on write (<redacted:pii>, and "
+        "identifiers as ****NN). Node and token counts are measured BEFORE "
+        "masking, so they reflect what perception actually produces for an LLM."
+    )
     lines.append("=" * 78)
 
     for fs in frame_snapshots:
@@ -79,7 +94,7 @@ async def dump_step(page: Page, step: str) -> None:
 
     EVIDENCE_DIR.mkdir(parents=True, exist_ok=True)
     out_path = EVIDENCE_DIR / f"{step}.txt"
-    out_path.write_text("\n".join(lines), encoding="utf-8")
+    out_path.write_text(SCRUBBER.scrub("\n".join(lines)), encoding="utf-8")
     print(f"[{step}] wrote {out_path}")
 
 

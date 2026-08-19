@@ -228,3 +228,72 @@ redirect chain exceeds the 8000ms checkpoint budget the artifact itself
 declares. Widening the timeout to make the row green would be tuning the
 evidence rather than the system; the honest reading is that the artifact's
 declared budget is being enforced.
+
+## Three findings, not fixes
+
+Recorded as findings because each one says something about the design that
+the fix alone doesn't.
+
+### The policy allowlist was escapable by timing
+
+The allowlist was enforced by checking the URL after each action. That check
+races the app: clicking a link returns before the navigation lands, so the
+frame still reports its *previous* URL and a click landing on a disallowed
+path reported success. My own policy test caught it -- narrowing
+`allowed_paths` to exclude `/member/*` and expecting a block, the run came
+back `success`.
+
+The important part is not the race, it is what the race revealed about the
+invariant. "Check after actions" is a statement about *code paths*, and it
+is only as good as the enumeration of them: every new way to cause
+navigation is a new place to remember the check, and a redirect the app
+performs on its own is a code path we never write at all. Enforcement moved
+into `_capture`, which makes the invariant "no page is observed without
+validating where it is" -- a statement about *states*, which does not have
+an enumeration to get wrong. The pre-navigation check stays as well, since
+refusing before a request is issued is still better than catching it after.
+
+### server_error was misclassified as auth_failure -- a taxonomy bug, not a detection bug
+
+With the `server_error` fault on, the post-authentication assertion failed
+and the engine reported `auth_failure`, sending an operator to check
+credentials that were perfectly fine. Nothing was mis-detected: the
+assertion genuinely did fail. The error was in what that failure was taken
+to *mean*.
+
+Every classification is an inference from a symptom, and a failed assertion
+is compatible with several causes. The auth path had only one name available
+for "the assertion after login did not hold", so it asserted the cause it
+was named after. The step loop already had the right shape -- engine
+universals first, precisely so a session bounce is not read as "no such
+member" -- and the auth path simply had not been given it. Engine universals
+now run there too. The general rule: wherever the engine converts an
+observation into a named outcome, the cheapest correct explanations have to
+be ruled out before the specific one is claimed.
+
+### Redaction was retrofitted onto perception evidence rather than built in
+
+The replay engine got redaction as part of its design. The perception
+diagnostic, written earlier, did not -- so it wrote raw accessibility dumps
+containing a seed member's full SSN, date of birth, phone, email and home
+address, and that sat in a committed evidence file until it was swept for.
+
+The reason it was missed is worth keeping. Redaction in the capability layer
+is *sensitivity-driven*: a field declares itself `pii` and is masked
+accordingly. That mechanism cannot see this leak at all, because the
+diagnostic declares no fields. It captures whole pages, so sensitive values
+arrive as page **content** sitting next to the data a flow actually reads --
+the member detail screen renders an SSN beside the balance, and neither the
+diagnostic nor the artifact ever names it. Declared-field masking only ever
+covers what someone remembered to declare.
+
+The fix routes every dump through the same scrubber the replay evidence
+writer uses (`capability/redaction.py`), applied at the single point where
+text is written rather than at each dump site, so a new dump cannot silently
+skip it. Two mechanisms sit behind it and the distinction is the real
+lesson: **pattern rules** catch shapes (SSN, email, phone) and are the only
+thing that works against data you cannot enumerate -- which is the
+production case -- while **registered literals** are exact but only
+available when the values are already known, as with our own credentials
+and a seed fixture we own. A regression test now asserts that no seed SSN or
+account number appears anywhere under `evidence/`.

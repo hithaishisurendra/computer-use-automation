@@ -1,6 +1,7 @@
 STEP: 07_confirmation
 page.url: http://127.0.0.1:8800/home
 frame count: 3
+NOTE: sensitive values below are masked on write (<redacted:pii>, and identifiers as ****NN). Node and token counts are measured BEFORE masking, so they reflect what perception actually produces for an LLM.
 ==============================================================================
 
 --- FRAME name='' url='http://127.0.0.1:8800/home' ---
@@ -63,7 +64,7 @@ document
         row
           cell "CoreServ 4.2.1"
 
---- FRAME name='content' url='http://127.0.0.1:8800/member/10002/subaccount/confirm?ref=SA-dc2e1360&account_type=Savings&deposit=100.00&nickname=DiagnosticFund&delivery=Electronic' ---
+--- FRAME name='content' url='http://127.0.0.1:8800/member/***02/subaccount/confirm?ref=SA-7a8bc852&account_type=Savings&deposit=100.00&nickname=DiagnosticFund&delivery=Electronic' ---
 raw node count: 33
 raw estimated tokens (full JSON snapshot): 6732
 filtered node count: 32
@@ -84,12 +85,12 @@ document
                   table
                     rowgroup
                       row
-                        cell "Reference Number: SA-dc2e1360 Member: Mary Nguyen (10002) Account Type: Savings Initial Deposit: 100.00 NickName: DiagnosticFund Statement Delivery: Electronic"
+                        cell "Reference Number: SA-7a8bc852 Member: <redacted:pii> (***02) Account Type: Savings Initial Deposit: 100.00 NickName: DiagnosticFund Statement Delivery: Electronic"
                           table
                             rowgroup
                               row
                                 cell "Member"
-                                cell "Mary Nguyen (10002)"
+                                cell "<redacted:pii> (***02)"
                               row
                                 cell "Account Type"
                                 cell "Savings"

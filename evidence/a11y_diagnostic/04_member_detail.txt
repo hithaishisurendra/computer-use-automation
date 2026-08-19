@@ -1,6 +1,7 @@
 STEP: 04_member_detail
 page.url: http://127.0.0.1:8800/home
 frame count: 3
+NOTE: sensitive values below are masked on write (<redacted:pii>, and identifiers as ****NN). Node and token counts are measured BEFORE masking, so they reflect what perception actually produces for an LLM.
 ==============================================================================
 
 --- FRAME name='' url='http://127.0.0.1:8800/home' ---
@@ -63,7 +64,7 @@ document
         row
           cell "CoreServ 4.2.1"
 
---- FRAME name='content' url='http://127.0.0.1:8800/member/10002' ---
+--- FRAME name='content' url='http://127.0.0.1:8800/member/***02' ---
 raw node count: 57
 raw estimated tokens (full JSON snapshot): 9361
 filtered node count: 57
@@ -85,25 +86,25 @@ document
                     rowgroup
                       row
                         cell "Member Id"
-                        cell "10002"
+                        cell "***02"
                       row
                         cell "Name"
-                        cell "Mary Nguyen"
+                        cell "<redacted:pii>"
                       row
                         cell "SSN"
-                        cell "398-14-7723"
+                        cell "<redacted:pii>"
                       row
                         cell "Date of Birth"
-                        cell "1985-11-02"
+                        cell "<redacted:pii>"
                       row
                         cell "Phone"
-                        cell "555-201-8832"
+                        cell "<redacted:pii>"
                       row
                         cell "Email"
-                        cell "mary.nguyen@example.com"
+                        cell "<redacted:pii>"
                       row
                         cell "Address"
-                        cell "44 Poplar Ave, Northridge, CA 91324"
+                        cell "<redacted:pii>"
                       row
                         cell "Branch"
                         cell "Eastside"
@@ -118,7 +119,7 @@ document
                         columnheader "Balance"
                         columnheader "Opened"
                       row
-                        cell "5582910044"
+                        cell "********44"
                         cell "Checking"
                         cell "950.00"
                         cell "2015-02-19"
@@ -126,4 +127,4 @@ document
                     rowgroup
                       row
                         cell
-                          link "Open Sub-Account" [href=/member/10002/subaccount/new]
+                          link "Open Sub-Account" [href=/member/***02/subaccount/new]

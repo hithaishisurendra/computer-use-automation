@@ -52,7 +52,7 @@ Nameless controls, by page (content frame unless noted):
                                   Member ID textbox -- nameless
   05_subaccount_form.txt
   06_subaccount_invalid.txt
-                     /member/10002/subaccount/new
+                     /member/***02/subaccount/new
                                   Account Type combobox -- nameless
                                   Initial Deposit textbox -- nameless
                                   NickName textbox -- nameless
@@ -121,23 +121,29 @@ tested. Confirmed directly against live output, not inferred.
 
 Yes to both, and there are two independent ways to do it (03_results.txt):
 
-  row: cell "10002", cell "Mary Nguyen",    cell "active",     cell "Eastside",  link "View" [href=/member/10002]
-  row: cell "10004", cell "Linda Nguyen",   cell "restricted", cell "Downtown",  link "View" [href=/member/10004]
-  row: cell "10006", cell "Patricia Nguyen",cell "active",     cell "Westgate",  link "View" [href=/member/10006]
+  row: cell "***02", cell "<redacted:pii>", cell "active",     cell "Eastside",  link "View" [href=/member/***02]
+  row: cell "***04", cell "<redacted:pii>", cell "restricted", cell "Downtown",  link "View" [href=/member/***04]
+  row: cell "***06", cell "<redacted:pii>", cell "active",     cell "Westgate",  link "View" [href=/member/***06]
+
+  (Member ids and names are masked on write -- see the redaction note below.
+  The masking is deliberately partial for identifiers precisely so that this
+  finding stays checkable: the three rows remain distinguishable from one
+  another, which is the property under test.)
 
 1. Row-scoped text: each row's leading cell is the member id as plain text
-   ("10002" / "10004" / "10006"), so "the row whose first cell reads 10004"
+   ("***02" / "***04" / "***06" as stored), so "the row whose first cell
+   reads the requested member id"
    unambiguously selects one row and its View link, even though all three
    links have the identical role+name (link, "View").
 2. The link's own href, captured from the /url property line in the raw
-   snapshot and surfaced in the compact rendering as [href=/member/10004],
+   snapshot and surfaced in the compact rendering as [href=/member/***04],
    already uniquely identifies the target without needing row context at
    all -- CoreServ's routes embed the member id directly.
 
 One related finding surfaced while writing the Playwright script that
 drives this diagnostic (not part of perception/tree.py, but relevant to
 "how do you safely scope a row" on this markup): a plain XPath
-//tr[contains(., 'Mary Nguyen')] matched 3 elements, not 1 -- it also
+//tr[contains(., '<a member name>')] matched 3 elements, not 1 -- it also
 matched the page-shell and panel wrapper <tr>s, because CoreServ nests
 tables 3 levels deep and every ancestor <tr> also "contains" the target
 row's text transitively. It had to be rewritten to select the innermost
@@ -342,3 +348,32 @@ filtered grew:
   got a new name -- i.e. the token cost of augmentation is visible and
   attributable, not diffuse. It's a small, legible price for turning 10
   previously-unusable-by-name controls into locatable ones.
+
+
+================================================================================
+ADDENDUM -- REDACTION (added after the fact)
+================================================================================
+
+The dumps in this directory were originally written unmasked, and
+04_member_detail.txt carried a full SSN, date of birth, phone, email and
+home address for a seed member. That was a real gap: this diagnostic
+captures the raw accessibility tree of a member detail screen, so sensitive
+values arrive as page *content*, never as a declared field -- meaning the
+sensitivity-driven masking in the capability layer could never have caught
+them. Nothing was declared, so nothing was masked.
+
+scripts/a11y_diagnostic.py now routes every dump through the same scrubber
+the replay evidence writer uses (capability/redaction.py) before anything
+reaches disk, and these files have been regenerated. Masking is applied on
+write at the single point where text is persisted, rather than at each dump
+site, so a new dump cannot silently skip it.
+
+What is masked, following the same sensitivity taxonomy the artifact schema
+declares:
+  pii (SSN, date of birth, phone, email, address, member name) -> <redacted:pii>
+  identifier (member id, account number)                       -> ****NN
+
+Node counts and token estimates are measured BEFORE masking, so they still
+describe what perception actually hands an LLM. Roles, structure, control
+names, statuses and branches are untouched -- every finding in this report
+remains verifiable against the regenerated dumps.

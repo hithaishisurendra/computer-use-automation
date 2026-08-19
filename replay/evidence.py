@@ -23,6 +23,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
+from capability.redaction import Scrubber
 from capability.schema import Artifact
 from capability.validate import describe_credentials, redact
 
@@ -33,60 +34,31 @@ class EvidenceWriter:
         self.dir.mkdir(parents=True, exist_ok=True)
         self.artifact = artifact
         self.log_path = self.dir / "steps.jsonl"
-        self._patterns = self._build_redaction_patterns()
+        # Shape-based rules only by default: a replay runs against live data
+        # it cannot enumerate. Known literals (this run's credentials) are
+        # registered on top via register_secrets.
+        self.scrubber = Scrubber()
 
     # -- redaction ----------------------------------------------------------
-
-    # Below this length a credential is too short to scrub for without
-    # mangling unrelated text (a one-character username would redact every
-    # occurrence of that letter). Such a credential is not usable in
-    # practice; the floor is a guard against pathological over-redaction,
-    # not a permission to log short secrets.
-    MIN_SCRUBBABLE_SECRET = 3
-
-    def _build_redaction_patterns(self) -> list[tuple[re.Pattern, str]]:
-        """Patterns for values that must never appear verbatim in evidence.
-
-        CoreServ's SSN format is included because the member detail screen
-        renders full SSNs next to the data this flow legitimately reads --
-        they land in a page snapshot without ever being a declared output,
-        so output-level masking alone would miss them.
-        """
-        return [
-            (re.compile(r"\b\d{3}-\d{2}-\d{4}\b"), "<redacted:ssn>"),
-        ]
 
     def register_secrets(self, values) -> None:
         """Teach the scrubber which literal strings are credentials.
 
         This is the one place a credential value is allowed to reach the
-        evidence layer, and it is write-only: the values become regex
-        patterns and are never stored, logged or echoed. It is necessary
-        because CoreServ renders the logged-in username into its nav frame
-        ("User: operator"), so a page snapshot captures a credential
-        component that no output-level or sensitivity-driven masking would
-        ever see. Redaction that only covers declared fields misses exactly
-        the values that leak through the surface itself.
+        evidence layer, and it is write-only. It is necessary because
+        CoreServ renders the logged-in username into its nav frame ("User:
+        operator"), so a page snapshot captures a credential component that
+        no output-level or sensitivity-driven masking would ever see:
+        redaction that only covers declared fields misses exactly the values
+        that leak through the surface itself.
         """
-        for value in values:
-            if value and len(value) >= self.MIN_SCRUBBABLE_SECRET:
-                self._patterns.append(
-                    (re.compile(re.escape(value)), "<redacted:credential>")
-                )
+        self.scrubber.register_secrets(values)
 
     def _scrub_text(self, text: str) -> str:
-        for pattern, replacement in self._patterns:
-            text = pattern.sub(replacement, text)
-        return text
+        return self.scrubber.scrub(text)
 
     def _scrub_obj(self, obj: Any) -> Any:
-        if isinstance(obj, str):
-            return self._scrub_text(obj)
-        if isinstance(obj, dict):
-            return {k: self._scrub_obj(v) for k, v in obj.items()}
-        if isinstance(obj, list):
-            return [self._scrub_obj(v) for v in obj]
-        return obj
+        return self.scrubber.scrub_obj(obj)
 
     def redact_outputs(self, outputs: dict[str, Any]) -> dict[str, Any]:
         """Mask declared outputs by their sensitivity for logging."""

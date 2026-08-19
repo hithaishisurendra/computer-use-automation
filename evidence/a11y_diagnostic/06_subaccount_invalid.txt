@@ -1,6 +1,7 @@
 STEP: 06_subaccount_invalid
 page.url: http://127.0.0.1:8800/home
 frame count: 3
+NOTE: sensitive values below are masked on write (<redacted:pii>, and identifiers as ****NN). Node and token counts are measured BEFORE masking, so they reflect what perception actually produces for an LLM.
 ==============================================================================
 
 --- FRAME name='' url='http://127.0.0.1:8800/home' ---
@@ -63,7 +64,7 @@ document
         row
           cell "CoreServ 4.2.1"
 
---- FRAME name='content' url='http://127.0.0.1:8800/member/10002/subaccount/new' ---
+--- FRAME name='content' url='http://127.0.0.1:8800/member/***02/subaccount/new' ---
 raw node count: 51
 raw estimated tokens (full JSON snapshot): 10237
 filtered node count: 51
@@ -74,7 +75,7 @@ document
   table
     rowgroup
       row
-        cell "Open Sub-Account — Member 10002"
+        cell "Open Sub-Account — Member ***02"
       row
         cell
           table
