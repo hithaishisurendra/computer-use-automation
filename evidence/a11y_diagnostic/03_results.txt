@@ -1,0 +1,111 @@
+STEP: 03_results
+page.url: http://127.0.0.1:8800/home
+frame count: 3
+==============================================================================
+
+--- FRAME name='' url='http://127.0.0.1:8800/home' ---
+raw node count: 4
+raw estimated tokens (full JSON snapshot): 208
+filtered node count: 0
+filtered estimated tokens (compact text): 0
+
+compact rendering:
+(empty after filtering)
+
+--- FRAME name='navFrame' url='http://127.0.0.1:8800/nav' ---
+raw node count: 43
+raw estimated tokens (full JSON snapshot): 5043
+filtered node count: 43
+filtered estimated tokens (compact text): 261
+
+compact rendering:
+document
+  generic
+    table
+      rowgroup
+        row
+          cell "Northridge Credit Union"
+        row
+          cell
+            table
+              rowgroup
+                row
+                  cell
+                    table
+                      rowgroup
+                        row
+                          cell
+                            link "Member Search" [href=/search]
+        row
+          cell
+            table
+              rowgroup
+                row
+                  cell "Quick Lookup"
+                row
+                  cell
+                    table
+                      rowgroup
+                        row
+                          cell "member id:"
+                        row
+                          cell
+                            textbox
+                        row
+                          cell
+                            button "Submit"
+        row
+          cell
+            button "Log Off"
+            text "User: diagnostic"
+    table
+      rowgroup
+        row
+          cell "CoreServ 4.2.1"
+
+--- FRAME name='content' url='http://127.0.0.1:8800/search/results?last_name=Nguyen' ---
+raw node count: 40
+raw estimated tokens (full JSON snapshot): 5747
+filtered node count: 39
+filtered estimated tokens (compact text): 314
+
+compact rendering:
+document
+  table
+    rowgroup
+      row
+        cell "Search Results"
+      row
+        cell
+          table
+            rowgroup
+              row
+                cell
+                  table
+                    rowgroup
+                      row
+                        columnheader "Member ID"
+                        columnheader "Name"
+                        columnheader "Status"
+                        columnheader "Branch"
+                      row
+                        cell "10002"
+                        cell "Mary Nguyen"
+                        cell "active"
+                        cell "Eastside"
+                        cell
+                          link "View" [href=/member/10002]
+                      row
+                        cell "10004"
+                        cell "Linda Nguyen"
+                        cell "restricted"
+                        cell "Downtown"
+                        cell
+                          link "View" [href=/member/10004]
+                      row
+                        cell "10006"
+                        cell "Patricia Nguyen"
+                        cell "active"
+                        cell "Westgate"
+                        cell
+                          link "View" [href=/member/10006]

@@ -1,0 +1,219 @@
+ACCESSIBILITY-TREE PERCEPTION DIAGNOSTIC — REPORT
+CoreServ (northridge), faults reset, live run via scripts/a11y_diagnostic.py
+Source dumps: evidence/a11y_diagnostic/{01_login .. 07_confirmation}.txt
+
+METHOD NOTE (read this before the numbers below)
+Playwright 1.62 (the installed version) has removed page.accessibility.snapshot()
+entirely -- it doesn't exist in this build. The task brief assumed that API; it
+had to be swapped for the supported replacement, Locator.aria_snapshot(mode="ai"),
+called per frame via frame.locator("html"). That returns a YAML-like text tree
+with per-node [ref=...] ids instead of a JSON dict, so perception/tree.py parses
+that text back into the same role/name/children shape a JSON snapshot would have
+given. Three real parsing bugs turned up and were fixed against actual CoreServ
+output before this report was written (not hypothetical): validation-error
+<li> text was being silently dropped by the filter (a non-"text" role using the
+same bare "role: content" line shape); a node whose computed name contained a
+colon got wrapped in an outer YAML single-quote that produced a stray leading
+character; and a naive DOM-driving XPath (used only to drive the browser, not
+part of perception/tree.py) matched wrapper <tr> ancestors it shouldn't have.
+All three are described where relevant below since they're informative about
+the markup, not just implementation trivia.
+
+BOTTOM LINE
+The bet holds for links and buttons, and fails outright for every other
+control type. Every link and button in all 7 steps got a correct,
+non-empty accessible name, because their own visible text IS the accessible
+name by definition -- no association step required. Every text input,
+<select>, radio, and checkbox came back with NO accessible name in every
+single instance tested (zero exceptions), because CoreServ's forms use an
+adjacent table cell for the label rather than <label for="..."> or
+aria-label, and adjacency alone does not establish an accessibility
+relationship in the browser's name-computation algorithm. This is a
+template gap, not evidence against the accessibility-tree strategy itself:
+the identical hostile table markup with a <label for> or aria-label added
+to each input would fix every case below without changing the perception
+approach at all. Whether to close that gap in CoreServ's templates or to
+have the perception/discovery layer compensate for it (e.g. inferring a
+name from the nearest preceding labeled sibling when a control's own name
+is empty) is the decision flagged back to you, per the task instructions --
+nothing in coreserv/templates was touched for this diagnostic.
+
+
+(a) DOES EVERY INTERACTIVE CONTROL HAVE A NON-EMPTY ACCESSIBLE NAME?
+
+No. Buttons and links: yes, always. Every other control type: no, never.
+
+Nameless controls, by page (content frame unless noted):
+
+  01_login.txt      /            username textbox -- nameless
+                                  password textbox -- nameless
+  02_search.txt     navFrame     Quick Lookup textbox -- nameless
+                     /search      Last Name textbox -- nameless
+                                  Member ID textbox -- nameless
+  05_subaccount_form.txt
+  06_subaccount_invalid.txt
+                     /member/10002/subaccount/new
+                                  Account Type combobox -- nameless
+                                  Initial Deposit textbox -- nameless
+                                  NickName textbox -- nameless
+                                  Statement Delivery radio (Paper) -- nameless
+                                  Statement Delivery radio (Electronic) -- nameless
+                                  Terms Acknowledgement checkbox -- nameless
+
+  (navFrame's Quick Lookup textbox recurs on every step 02-07 since the nav
+  frame is persistent; listed once here.)
+
+Correctly named, every time, no exceptions found: "Login", "Submit" (x3
+distinct physical buttons: nav quick-lookup, search form, sub-account form
+-- see (e) on why the shared name matters), "Log Off", "Member Search" /
+"Find Member" nav link, all 3 "View" links (see (c)), "Open Sub-Account"
+link. All of these are links or buttons whose visible text is the entire
+control content, so there's no separate label element for the association
+to fail on.
+
+
+(b) SUB-ACCOUNT FORM: DO RADIOS/SELECT/CHECKBOX/TEXT INPUTS PICK UP ADJACENT
+    LABELS AS ACCESSIBLE NAMES?
+
+No, none of them do, and it's worse than a uniform "empty name" -- the
+fallback behavior differs by control in a way that's actively misleading
+for two of the five:
+
+- Account Type <select> (combobox): the combobox itself is nameless. Its
+  parent <td> cell, because it has exactly one piece of visible content
+  under Chromium's name-computation rules, gets a *computed* name of
+  "Savings" -- but that's the currently *selected option's text*, not the
+  "Account Type:" label sitting in the sibling cell. Read superficially
+  this looks like a working label; it's actually the field's current value
+  leaking into a name slot, which would mislead an agent into treating
+  "Savings" as the field's identity rather than its state.
+
+- Initial Deposit / NickName textboxes: nameless, and no misleading
+  fallback -- their parent cells have no other content once the box is
+  empty, so the cell name is empty too. (Once a value is typed, it shows up
+  correctly as the textbox's `value` state, not its name -- see
+  06_subaccount_invalid.txt, `textbox [value=5]`.)
+
+- Statement Delivery radios: both nameless, and this is the worst case in
+  the form. Both <input type="radio"> elements plus both their adjacent
+  "Paper"/"Electronic" text nodes live inside one shared <td>, so the
+  cell-level fallback name for the *pair* is the concatenation "Paper
+  Electronic" -- present in the raw tree but not attributable to either
+  radio individually. There is no accessible-tree signal that tells you
+  which of the two radio nodes is "Paper" and which is "Electronic"; the
+  only way to know is DOM/tree order (first radio = Paper), which is a
+  positional assumption, exactly the kind of thing role+name perception is
+  supposed to avoid depending on.
+
+- Terms Acknowledgement checkbox: nameless, but the cell fallback happens
+  to be usable here purely by luck -- there's only one checkbox and one
+  text run ("I acknowledge the terms and conditions") in that cell, so the
+  concatenation isn't ambiguous. That's a property of this specific
+  field having exactly one control per cell, not of the labeling approach
+  working.
+
+Net: adjacent-cell text does not bind to any of the five control types
+tested. Confirmed directly against live output, not inferred.
+
+
+(c) RESULTS PAGE: MULTIPLE "VIEW" LINKS -- DISTINGUISHABLE BY ROW? DOES THE
+    ROW EXPOSE THE MEMBER ID?
+
+Yes to both, and there are two independent ways to do it (03_results.txt):
+
+  row: cell "10002", cell "Mary Nguyen",    cell "active",     cell "Eastside",  link "View" [href=/member/10002]
+  row: cell "10004", cell "Linda Nguyen",   cell "restricted", cell "Downtown",  link "View" [href=/member/10004]
+  row: cell "10006", cell "Patricia Nguyen",cell "active",     cell "Westgate",  link "View" [href=/member/10006]
+
+1. Row-scoped text: each row's leading cell is the member id as plain text
+   ("10002" / "10004" / "10006"), so "the row whose first cell reads 10004"
+   unambiguously selects one row and its View link, even though all three
+   links have the identical role+name (link, "View").
+2. The link's own href, captured from the /url property line in the raw
+   snapshot and surfaced in the compact rendering as [href=/member/10004],
+   already uniquely identifies the target without needing row context at
+   all -- CoreServ's routes embed the member id directly.
+
+One related finding surfaced while writing the Playwright script that
+drives this diagnostic (not part of perception/tree.py, but relevant to
+"how do you safely scope a row" on this markup): a plain XPath
+//tr[contains(., 'Mary Nguyen')] matched 3 elements, not 1 -- it also
+matched the page-shell and panel wrapper <tr>s, because CoreServ nests
+tables 3 levels deep and every ancestor <tr> also "contains" the target
+row's text transitively. It had to be rewritten to select the innermost
+matching row (`[not(.//tr[contains(., ...)])]`) to work. The accessibility
+tree's row/cell node boundaries don't have this problem -- a `row` node's
+children are exactly its own cells, not every nested descendant row's cells
+rolled up as substring matches -- which is itself a small, concrete point
+in favor of scoping locators through the accessibility tree rather than
+raw DOM text search on this specific markup.
+
+
+(d) TOKEN COUNTS PER PAGE, RAW VS FILTERED
+
+"Raw" = full parsed tree (pre-filter) serialized as JSON, including our own
+per-node frame_name/frame_url tags -- the naive "just ship the whole thing"
+baseline. "Filtered" = perception.tree.filter_tree() output rendered by
+to_compact_text(). Both are ~4-chars-per-token estimates, not a real
+tokenizer count. Frame-by-frame counts are in each step's .txt file; totals
+per page (summing all frames present on that page) below.
+
+  step                    raw nodes  raw tokens  filtered nodes  filtered tokens  reduction
+  01_login (1 frame)             28        3935              28              206      94.8%
+  02_search (3 frames)           75        9208              71              459      95.0%
+  03_results (3 frames)          87       10998              82              575      94.8%
+  04_member_detail (3 frames)   104       13187             100              728      94.5%
+  05_subaccount_form (3)         95       13331              91              729      94.5%
+  06_subaccount_invalid (3)      98       13874              94              780      94.4%
+  07_confirmation (3)            80       11111              75              561      94.9%
+
+The ratio is strikingly flat across pages (~94.5-95%) rather than varying
+with page complexity, and the per-frame ratios in the raw .txt files are
+similarly flat (~95% on nav frame every time, ~94-95% on every content
+frame). That flatness says the reduction is coming mostly from *format*
+(one line of role+name+state text per node vs. a multi-key JSON object per
+node, and our JSON raw form repeats frame_name/frame_url on every single
+node) rather than from *dropping* a variable amount of content per page --
+node counts (raw vs filtered) barely move at all (e.g. 05: 95 -> 91, a 4%
+node drop) even though token count drops ~94%. In other words: on this app,
+filter_tree() is mostly not doing content-selection work (CoreServ's tables
+don't have much genuinely uninteresting cruft once past the frameset itself
+-- nearly every table/row/cell is on the path to some real label or value),
+it's doing representation work. The honest takeaway is that the win here is
+"send compact text instead of raw JSON," not "aggressively drop nodes";
+a markup with real structural noise (ad chrome, hidden widgets, decorative
+wrapper divs with no descendants of interest) would show filter_tree()
+doing more of the work and format doing less.
+
+
+(e) ANY NODE THAT APPEARS IN ONE FRAME BUT IS NEEDED FROM ANOTHER?
+
+The nav frame and content frame are cleanly independent in content terms --
+nothing in the nav frame (institution name, Member Search/Find Member link,
+Quick Lookup box, Log Off, version footer) is needed to interpret the
+content frame, and vice versa. So no cross-frame *content* dependency was
+found. There is a cross-frame *locator* hazard, though, which is the
+reason snapshot_all_frames() tags every node with its frame rather than
+returning one flattened tree:
+
+- "Submit" is a real, intentional duplicate (per the target-app spec) across
+  the nav frame's Quick Lookup form and whichever content-frame form is
+  currently loaded (search form on /search, sub-account form on
+  .../subaccount/new). role=link/button name="Submit" alone is ambiguous
+  on either of those pages -- (frame, role, name) is the minimum locator
+  that resolves it, not (role, name) alone.
+- The top-level frameset document itself (frame name '', url .../home)
+  contributes 4 raw nodes on every step (document > generic > iframe >
+  iframe -- the two frame-boundary placeholders) and filters to 0 usable
+  content every time, confirmed across all 7 steps. It carries no semantic
+  content of its own, which is expected for a pure frameset shell but is
+  now confirmed rather than assumed.
+- aria_snapshot(mode="ai") auto-recurses into nested frame content when
+  called on a frame that contains further frames (confirmed empirically:
+  calling it on the top document showed the nav and content frames' full
+  markup inlined under `iframe [ref=...]` nodes). snapshot_all_frames()
+  drops those recursed children for any node with role "iframe" before
+  tagging, since that same content is already captured in full, correctly
+  frame-tagged, by the dedicated call for that child frame -- otherwise
+  every content-frame node would be double-counted in the "raw node count"
+  reported here and in evidence/a11y_diagnostic/{step}.txt.

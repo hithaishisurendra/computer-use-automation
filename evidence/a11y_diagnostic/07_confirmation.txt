@@ -1,0 +1,104 @@
+STEP: 07_confirmation
+page.url: http://127.0.0.1:8800/home
+frame count: 3
+==============================================================================
+
+--- FRAME name='' url='http://127.0.0.1:8800/home' ---
+raw node count: 4
+raw estimated tokens (full JSON snapshot): 208
+filtered node count: 0
+filtered estimated tokens (compact text): 0
+
+compact rendering:
+(empty after filtering)
+
+--- FRAME name='navFrame' url='http://127.0.0.1:8800/nav' ---
+raw node count: 43
+raw estimated tokens (full JSON snapshot): 5043
+filtered node count: 43
+filtered estimated tokens (compact text): 261
+
+compact rendering:
+document
+  generic
+    table
+      rowgroup
+        row
+          cell "Northridge Credit Union"
+        row
+          cell
+            table
+              rowgroup
+                row
+                  cell
+                    table
+                      rowgroup
+                        row
+                          cell
+                            link "Member Search" [href=/search]
+        row
+          cell
+            table
+              rowgroup
+                row
+                  cell "Quick Lookup"
+                row
+                  cell
+                    table
+                      rowgroup
+                        row
+                          cell "member id:"
+                        row
+                          cell
+                            textbox
+                        row
+                          cell
+                            button "Submit"
+        row
+          cell
+            button "Log Off"
+            text "User: diagnostic"
+    table
+      rowgroup
+        row
+          cell "CoreServ 4.2.1"
+
+--- FRAME name='content' url='http://127.0.0.1:8800/member/10002/subaccount/confirm?ref=SA-14befdd1&account_type=Savings&deposit=100.00&nickname=DiagnosticFund&delivery=Electronic' ---
+raw node count: 33
+raw estimated tokens (full JSON snapshot): 5860
+filtered node count: 32
+filtered estimated tokens (compact text): 300
+
+compact rendering:
+document
+  table
+    rowgroup
+      row
+        cell "Sub-Account Opened"
+      row
+        cell
+          table
+            rowgroup
+              row
+                cell
+                  table
+                    rowgroup
+                      row
+                        cell "Reference Number: SA-14befdd1 Member: Mary Nguyen (10002) Account Type: Savings Initial Deposit: 100.00 NickName: DiagnosticFund Statement Delivery: Electronic"
+                          table
+                            rowgroup
+                              row
+                                cell "Member:"
+                                cell "Mary Nguyen (10002)"
+                              row
+                                cell "Account Type:"
+                                cell "Savings"
+                              row
+                                cell "Initial Deposit:"
+                                cell "100.00"
+                              row
+                                cell "NickName:"
+                                cell "DiagnosticFund"
+                              row
+                                cell "Statement Delivery:"
+                                cell "Electronic"

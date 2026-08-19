@@ -1,0 +1,40 @@
+STEP: 01_login
+page.url: http://127.0.0.1:8800/
+frame count: 1
+==============================================================================
+
+--- FRAME name='' url='http://127.0.0.1:8800/' ---
+raw node count: 28
+raw estimated tokens (full JSON snapshot): 3935
+filtered node count: 28
+filtered estimated tokens (compact text): 206
+
+compact rendering:
+document
+  table
+    rowgroup
+      row
+        cell
+          table
+            rowgroup
+              row
+                cell "Northridge Credit Union — CoreServ"
+              row
+                cell
+                  table
+                    rowgroup
+                      row
+                        cell
+                          table
+                            rowgroup
+                              row
+                                cell "Username :"
+                                cell
+                                  textbox
+                              row
+                                cell "Password:"
+                                cell
+                                  textbox
+                              row
+                                cell
+                                  button "Login"
