@@ -5,7 +5,7 @@ frame count: 3
 
 --- FRAME name='' url='http://127.0.0.1:8800/home' ---
 raw node count: 4
-raw estimated tokens (full JSON snapshot): 208
+raw estimated tokens (full JSON snapshot): 231
 filtered node count: 0
 filtered estimated tokens (compact text): 0
 
@@ -14,9 +14,9 @@ compact rendering:
 
 --- FRAME name='navFrame' url='http://127.0.0.1:8800/nav' ---
 raw node count: 43
-raw estimated tokens (full JSON snapshot): 5043
+raw estimated tokens (full JSON snapshot): 5741
 filtered node count: 43
-filtered estimated tokens (compact text): 261
+filtered estimated tokens (compact text): 265
 
 compact rendering:
 document
@@ -47,10 +47,10 @@ document
                     table
                       rowgroup
                         row
-                          cell "member id:"
+                          cell "member id"
                         row
                           cell
-                            textbox
+                            textbox [name_source=none]
                         row
                           cell
                             button "Submit"
@@ -65,7 +65,7 @@ document
 
 --- FRAME name='content' url='http://127.0.0.1:8800/search/results?last_name=Nguyen' ---
 raw node count: 40
-raw estimated tokens (full JSON snapshot): 5747
+raw estimated tokens (full JSON snapshot): 6730
 filtered node count: 39
 filtered estimated tokens (compact text): 314
 

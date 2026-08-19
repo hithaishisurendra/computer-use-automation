@@ -5,7 +5,7 @@ frame count: 3
 
 --- FRAME name='' url='http://127.0.0.1:8800/home' ---
 raw node count: 4
-raw estimated tokens (full JSON snapshot): 207
+raw estimated tokens (full JSON snapshot): 230
 filtered node count: 0
 filtered estimated tokens (compact text): 0
 
@@ -14,9 +14,9 @@ compact rendering:
 
 --- FRAME name='navFrame' url='http://127.0.0.1:8800/nav' ---
 raw node count: 43
-raw estimated tokens (full JSON snapshot): 5043
+raw estimated tokens (full JSON snapshot): 5741
 filtered node count: 43
-filtered estimated tokens (compact text): 261
+filtered estimated tokens (compact text): 265
 
 compact rendering:
 document
@@ -47,10 +47,10 @@ document
                     table
                       rowgroup
                         row
-                          cell "member id:"
+                          cell "member id"
                         row
                           cell
-                            textbox
+                            textbox [name_source=none]
                         row
                           cell
                             button "Submit"
@@ -65,9 +65,9 @@ document
 
 --- FRAME name='content' url='http://127.0.0.1:8800/search' ---
 raw node count: 28
-raw estimated tokens (full JSON snapshot): 3958
+raw estimated tokens (full JSON snapshot): 4524
 filtered node count: 28
-filtered estimated tokens (compact text): 198
+filtered estimated tokens (compact text): 216
 
 compact rendering:
 document
@@ -88,13 +88,13 @@ document
                           table
                             rowgroup
                               row
-                                cell "Last Name:"
+                                cell "Last Name"
                                 cell
-                                  textbox
+                                  textbox "Last Name" [name_source=preceding_td]
                               row
-                                cell "Member ID :"
+                                cell "Member ID"
                                 cell
-                                  textbox
+                                  textbox "Member ID" [name_source=preceding_td]
                               row
                                 cell
                                   button "Submit"

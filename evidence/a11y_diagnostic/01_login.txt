@@ -5,9 +5,9 @@ frame count: 1
 
 --- FRAME name='' url='http://127.0.0.1:8800/' ---
 raw node count: 28
-raw estimated tokens (full JSON snapshot): 3935
+raw estimated tokens (full JSON snapshot): 4517
 filtered node count: 28
-filtered estimated tokens (compact text): 206
+filtered estimated tokens (compact text): 224
 
 compact rendering:
 document
@@ -28,13 +28,13 @@ document
                           table
                             rowgroup
                               row
-                                cell "Username :"
+                                cell "Username"
                                 cell
-                                  textbox
+                                  textbox "Username" [name_source=preceding_td]
                               row
-                                cell "Password:"
+                                cell "Password"
                                 cell
-                                  textbox
+                                  textbox "Password" [name_source=preceding_td]
                               row
                                 cell
                                   button "Login"

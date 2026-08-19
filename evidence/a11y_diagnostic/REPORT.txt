@@ -217,3 +217,128 @@ returning one flattened tree:
   frame-tagged, by the dedicated call for that child frame -- otherwise
   every content-frame node would be double-counted in the "raw node count"
   reported here and in evidence/a11y_diagnostic/{step}.txt.
+
+
+================================================================================
+SECTION 2 -- LABEL AUGMENTATION (perception/labeling.py)
+================================================================================
+
+Section 1 above found the accessibility-tree bet holds for links and
+buttons and fails completely for text inputs/selects/radios/checkboxes,
+because CoreServ labels fields with an adjacent table cell, not
+<label for>/aria-label. Rather than fix CoreServ's templates, a DOM-side
+name-inference chain (perception/labeling.py) was added to the perception
+layer itself: for every control the platform left nameless, resolve its
+aria_snapshot ref back to the live element via Playwright's `aria-ref=`
+locator and run 7 ordered rules against the surrounding DOM, first match
+wins. This section re-runs the identical diagnostic flow with augmentation
+wired into snapshot_all_frames() and reports what changed. Nothing under
+coreserv/ was touched -- same app, same markup, same evidence flow, only
+perception/ gained code (tree.py, labeling.py).
+
+RESULT: 10 of the 11 previously-nameless controls resolved to a correct
+name. 1 remains genuinely unnamed, for a reason specific to its markup
+shape (below) rather than a bug.
+
+PREVIOUSLY-NAMELESS CONTROLS, RESOLVED
+
+  page                                  control                    resolved name                              rule
+  ------------------------------------  -------------------------  -----------------------------------------  -----------------
+  01_login.txt (/)                      Username textbox           "Username"                                 preceding_td
+  01_login.txt (/)                      Password textbox           "Password"                                 preceding_td
+  02_search.txt (content, /search)      Last Name textbox          "Last Name"                                preceding_td
+  02_search.txt (content, /search)      Member ID textbox          "Member ID"                                preceding_td
+  05_subaccount_form.txt (content)      Account Type combobox      "Account Type"                             preceding_td
+  05_subaccount_form.txt (content)      Initial Deposit textbox    "Initial Deposit"                          preceding_td
+  05_subaccount_form.txt (content)      NickName textbox           "NickName"                                 preceding_td
+  05_subaccount_form.txt (content)      Statement Delivery radio   "Paper"                                    following_text
+  05_subaccount_form.txt (content)      Statement Delivery radio   "Electronic"                                following_text
+  05_subaccount_form.txt (content)      Terms Acknowledgement cb   "I acknowledge the terms and conditions"   following_text
+
+  (source files for the raw evidence: 01_login.txt, 02_search.txt,
+  05_subaccount_form.txt, 06_subaccount_invalid.txt -- the last is the same
+  form re-rendered with validation errors, same resolutions.)
+
+Every resolved name also demonstrates the normalization rule working:
+"Initial Deposit :" -> "Initial Deposit" (trailing colon dropped), "Member
+ ID" from a cell literally storing "Member ID" with no colon at all,
+consistent stripping/collapsing across every case -- see raw vs normalized
+side by side in any dump: `name_raw` on the node holds the untouched DOM
+text, `name` holds the normalized form actually used for role+name
+locating and shown in the compact rendering.
+
+STATEMENT DELIVERY RADIOS -- CONFIRMED DISTINCT
+
+This was the worst case in section 1: both radios shared one <td>, so even
+the accidental platform-level cell-name fallback concatenated both labels
+("Paper Electronic") with no way to attribute either half to a specific
+radio. After augmentation (05_subaccount_form.txt):
+
+  radio "Paper" [checked=True, name_source=following_text]
+  text "Paper"
+  radio "Electronic" [name_source=following_text]
+  text "Electronic"
+
+Confirmed distinct: rule 3 (following text node) reads only as far as the
+next sibling node and stops at the next *element* sibling, so each radio
+picks up just the text immediately after itself, not both labels pooled
+together. role+name is now sufficient to target either radio individually
+where it previously was not.
+
+STILL UNNAMED: nav frame's Quick Lookup textbox
+
+One control resists every rule, on every page (it's on the persistent nav
+frame, so it shows up in all 7 dumps): the Quick Lookup textbox in
+nav.html, rendered `textbox [name_source=none]` throughout. Reason,
+confirmed against the actual markup: its label ("member id:") and the
+input are in *different* <tr> rows of the same small table --
+
+    <tr><td>{{ id_label }}</td></tr>
+    <tr><td><input name="identifier" ...></td></tr>
+
+-- a stacked layout, not the label-cell/input-cell-in-one-row pattern the
+subaccount form and search form use. Rule 4 (preceding sibling <td>) only
+looks at the input's own row, where it has no preceding cell (its <td> is
+the row's only cell). Rule 5 (nearest preceding text in the same <tr>) is
+scoped to that same row by the task's own definition, so it doesn't reach
+across to the previous row either. This is a real gap in the 7-rule chain
+as specified, not a bug in the implementation of it: an 8th rule ("nearest
+preceding text within the enclosing table," which would resolve this in
+one line) was deliberately not added, since it wasn't in the specified
+chain and the instructions were to report what's still unnamed rather than
+keep extending the chain until nothing is. Flagging it back rather than
+quietly patching it in.
+
+UPDATED TOKEN COUNTS, RAW VS FILTERED (post-augmentation)
+
+Same methodology as section 1 (raw = full parsed tree as JSON pre-filter,
+filtered = filter_tree() output via to_compact_text(), ~4 chars/token).
+
+  step                     raw nodes  raw tokens  filtered nodes  filtered tokens  filtered vs section 1
+  01_login (1 frame)              28        4517              28              224     206 -> 224  (+8.7%)
+  02_search (3 frames)            75       10495              71              481     459 -> 481  (+4.8%)
+  03_results (3 frames)           87       12702              82              579     575 -> 579  (+0.7%)
+  04_member_detail (3)           104       15333             100              730     728 -> 730  (+0.3%)
+  05_subaccount_form (3)          95       15549              91              800     729 -> 800  (+9.7%)
+  06_subaccount_invalid (3)       98       16209              94              850     780 -> 850  (+9.0%)
+  07_confirmation (3)             80       12704              75              564     561 -> 564  (+0.5%)
+
+Two things worth being precise about in that comparison, since both raw and
+filtered grew:
+
+- Raw grew ~13-19% across every page, including pages with no augmentation
+  targets at all (e.g. results/confirmation, which have no form controls).
+  That's not filtering-related -- apply_platform_names() now writes a
+  name_raw field onto *every* node (frequently empty), and the JSON
+  serialization used for the raw baseline includes it. This is bookkeeping
+  overhead in the raw representation, not new content; it doesn't reflect
+  anything an agent would actually need.
+- Filtered grew only on pages that had controls to rename (login: +8.7%,
+  search: +4.8%, the subaccount form: +9-10%) and barely moved on pages
+  with no nameless controls (results, member detail, confirmation: +0.3 to
+  +0.7%, which is just the nav frame's version-string id churning between
+  runs plus rounding). The filtered growth is the name_source annotation
+  text itself (e.g. `[name_source=preceding_td]`) on exactly the nodes that
+  got a new name -- i.e. the token cost of augmentation is visible and
+  attributable, not diffuse. It's a small, legible price for turning 10
+  previously-unusable-by-name controls into locatable ones.

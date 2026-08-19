@@ -26,6 +26,15 @@ wants). This module parses that YAML-ish text back into the same
 role/name/children node shape a JSON accessibility snapshot would have had,
 so the rest of the pipeline (filter_tree, to_compact_text, count_nodes)
 doesn't need to know which underlying API produced it.
+
+The diagnostic above also found that CoreServ's own accessible names are
+incomplete: every link/button is named correctly, but every text
+input/select/radio/checkbox comes back nameless, because CoreServ labels
+fields with an adjacent table cell rather than <label for>/aria-label.
+Rather than treat that as a dead end, snapshot_all_frames() runs a second
+pass (perception/labeling.py) that infers a name from the surrounding DOM
+for any control the platform left nameless, and records which rule did it.
+See evidence/a11y_diagnostic/REPORT.txt, section 2, for the before/after.
 """
 
 from __future__ import annotations
@@ -34,6 +43,8 @@ import json
 import re
 from dataclasses import dataclass
 from typing import Any, Optional
+
+from .labeling import apply_platform_names, augment_tree
 
 # Roles worth acting on: something an agent could click, type into, or select.
 INTERACTIVE_ROLES = {
@@ -103,6 +114,17 @@ async def snapshot_all_frames(page) -> list[FrameSnapshot]:
     call for the child frame, any node with role "iframe" (Playwright's role
     for both <iframe> and frameset <frame> elements) has its children
     dropped here rather than double-counted across two frames' evidence.
+
+    After parsing, every node's name is normalized and tagged
+    name_source="platform" (see perception.labeling.apply_platform_names),
+    then any control the platform left nameless (a role in
+    perception.labeling.AUGMENTABLE_ROLES with an empty name -- on CoreServ,
+    every text input/select/radio/checkbox) is run through the DOM-side
+    label-inference chain in perception/labeling.py. Augmentation happens
+    here, immediately after the snapshot, because it resolves each node's
+    aria_snapshot ref back to a live element via the `aria-ref=` locator --
+    refs are only valid until the page's next navigation, so this can't be
+    deferred to a later, separate pass without risking stale refs.
     """
     results: list[FrameSnapshot] = []
     for frame in page.frames:
@@ -122,6 +144,8 @@ async def snapshot_all_frames(page) -> list[FrameSnapshot]:
         tree = _parse_aria_yaml(raw_text)
         _drop_nested_frame_content(tree)
         _tag_frame(tree, frame.name or "", frame.url or "")
+        apply_platform_names(tree)
+        await augment_tree(tree, frame)
         results.append(FrameSnapshot(frame_name=frame.name or "", frame_url=frame.url or "", tree=tree))
 
     return results
@@ -355,7 +379,10 @@ def to_compact_text(node: Optional[dict], indent: int = 0) -> str:
     an action against the node would mean (checked, disabled, value, ...),
     plus href for links (pulled from the /url property line) since that's
     often the cheapest way to disambiguate two links with the same visible
-    text and role.
+    text and role. A name_source is shown whenever it's anything other than
+    "platform" -- i.e. whenever perception/labeling.py had to infer the name
+    (or couldn't), which is the case worth flagging; a plain link/button
+    with its own text as its name isn't.
     """
     if node is None:
         return ""
@@ -379,6 +406,9 @@ def _render_node(node: dict, indent: int, lines: list[str]) -> None:
     href = (node.get("props") or {}).get("url")
     if href:
         state_bits.append(f"href={href}")
+    name_source = node.get("name_source")
+    if name_source and name_source != "platform":
+        state_bits.append(f"name_source={name_source}")
     if state_bits:
         parts.append(f"[{', '.join(state_bits)}]")
 

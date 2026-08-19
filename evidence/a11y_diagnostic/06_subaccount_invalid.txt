@@ -5,7 +5,7 @@ frame count: 3
 
 --- FRAME name='' url='http://127.0.0.1:8800/home' ---
 raw node count: 4
-raw estimated tokens (full JSON snapshot): 208
+raw estimated tokens (full JSON snapshot): 231
 filtered node count: 0
 filtered estimated tokens (compact text): 0
 
@@ -14,9 +14,9 @@ compact rendering:
 
 --- FRAME name='navFrame' url='http://127.0.0.1:8800/nav' ---
 raw node count: 43
-raw estimated tokens (full JSON snapshot): 5043
+raw estimated tokens (full JSON snapshot): 5741
 filtered node count: 43
-filtered estimated tokens (compact text): 261
+filtered estimated tokens (compact text): 265
 
 compact rendering:
 document
@@ -47,10 +47,10 @@ document
                     table
                       rowgroup
                         row
-                          cell "member id:"
+                          cell "member id"
                         row
                           cell
-                            textbox
+                            textbox [name_source=none]
                         row
                           cell
                             button "Submit"
@@ -65,9 +65,9 @@ document
 
 --- FRAME name='content' url='http://127.0.0.1:8800/member/10002/subaccount/new' ---
 raw node count: 51
-raw estimated tokens (full JSON snapshot): 8623
+raw estimated tokens (full JSON snapshot): 10237
 filtered node count: 51
-filtered estimated tokens (compact text): 519
+filtered estimated tokens (compact text): 585
 
 compact rendering:
 document
@@ -91,32 +91,32 @@ document
                           table
                             rowgroup
                               row
-                                cell "Account Type:"
+                                cell "Account Type"
                                 cell "Savings"
-                                  combobox
+                                  combobox "Account Type" [name_source=preceding_td]
                                     option "Savings" [selected=True]
                                     option "Money Market"
                                     option "Certificate"
                                     option "Holiday Club"
                               row
-                                cell "Initial Deposit :"
+                                cell "Initial Deposit"
                                 cell
-                                  textbox [value=5]
+                                  textbox "Initial Deposit" [value=5, name_source=preceding_td]
                               row
                                 cell "NickName"
                                 cell
-                                  textbox
+                                  textbox "NickName" [name_source=preceding_td]
                               row
-                                cell "Statement Delivery:"
+                                cell "Statement Delivery"
                                 cell "Paper Electronic"
-                                  radio [checked=True]
+                                  radio "Paper" [checked=True, name_source=following_text]
                                   text "Paper"
-                                  radio
+                                  radio "Electronic" [name_source=following_text]
                                   text "Electronic"
                               row
-                                cell "Terms Acknowledgement:"
+                                cell "Terms Acknowledgement"
                                 cell "I acknowledge the terms and conditions"
-                                  checkbox
+                                  checkbox "I acknowledge the terms and conditions" [name_source=following_text]
                                   text "I acknowledge the terms and conditions"
                               row
                                 cell
