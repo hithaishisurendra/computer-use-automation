@@ -185,3 +185,46 @@ each one overrode what the initial plan assumed.
   a distinct result classification from business outcomes, recoverable
   conditions and hard failures: it means our own configuration is wrong,
   which is neither the caller's problem nor retryable.
+
+## Replay engine: four things the live app forced
+
+All four were found by running against CoreServ, not by reasoning about it.
+
+- **Policy must be enforced on every observation, not once per action.**
+  The first implementation checked the URL immediately after each action.
+  That check races the app: clicking a link returns before the navigation
+  lands, so the frame still reports its *previous* URL and an
+  off-allowlist destination sails straight through. A test that narrowed
+  `allowed_paths` to exclude `/member/*` passed the run as `success` --
+  the allowlist was describing intent, not behaviour. Enforcement now also
+  runs inside `_capture`, so a page cannot be observed without validating
+  where it is. The pre-navigation check stays too: refusing before the
+  request is issued is still better than catching it after.
+- **Engine universals must be checked before artifact outcomes, including
+  during auth.** With the `server_error` fault on, the auth assertion fails
+  and the run was reporting `auth_failure` -- pointing an operator at
+  credentials that were perfectly fine when the real answer was that the
+  app was returning 500s. The auth path now runs the same universal
+  detection the step loop does. The same ordering protects the step loop
+  from reporting "no such member" when the session simply expired.
+- **Recovery must wait for the recovery to land.** Dismissing the
+  maintenance interstitial triggers a POST-redirect that is still in flight
+  when the step retries, so the retry's navigation raced it and the browser
+  reported an aborted navigation -- surfacing as a driver error on a run
+  that was recovering correctly. Recovery now polls until the dismissal
+  control is gone, which is the observable signal that the re-render
+  landed. Enumerating browser error strings was the alternative and is
+  fragile; it is kept only as a secondary guard.
+- **Any unexpected driver error still leaves through the result contract.**
+  A raw Playwright exception escaping as a traceback breaks the promise
+  that a caller always gets one typed result. Unknown exceptions become a
+  `hard_failure` with the step id and the message; `PolicyViolation` is
+  deliberately re-raised rather than softened, because it must abort the
+  run rather than become one step's outcome.
+
+Also settled here: `slow_response` is reported as a hard failure rather than
+being made to pass. The fault injects 6s per request, so the search step's
+redirect chain exceeds the 8000ms checkpoint budget the artifact itself
+declares. Widening the timeout to make the row green would be tuning the
+evidence rather than the system; the honest reading is that the artifact's
+declared budget is being enforced.

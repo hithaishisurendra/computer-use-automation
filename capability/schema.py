@@ -57,7 +57,7 @@ Strategy = Literal["role_name", "role_name_scoped", "cell_in_row", "role_ordinal
 # a bare wait doesn't force a schema bump.
 Action = Literal["navigate", "click", "fill", "select", "check", "extract", "wait_for"]
 
-ConditionType = Literal["element_present", "text_present", "any_of"]
+ConditionType = Literal["element_present", "text_present", "url_matches", "any_of", "all_of"]
 
 # What a *flow* may declare about itself. Deliberately narrower than
 # ResultClassification below: auth_failure and caller_error are properties
@@ -296,6 +296,7 @@ class Condition(StrictModel):
     type: ConditionType
     element: Optional[str] = None
     text: Optional[str] = None
+    pattern: Optional[str] = None
     conditions: Optional[list["Condition"]] = None
 
     @model_validator(mode="after")
@@ -306,9 +307,16 @@ class Condition(StrictModel):
         elif self.type == "text_present":
             if not self.text:
                 raise ValueError("condition 'text_present' requires 'text'")
-        elif self.type == "any_of":
+        elif self.type == "url_matches":
+            if not self.pattern:
+                raise ValueError("condition 'url_matches' requires 'pattern'")
+            try:
+                re.compile(self.pattern)
+            except re.error as exc:
+                raise ValueError(f"condition 'url_matches': pattern is not a valid regex: {exc}") from exc
+        elif self.type in ("any_of", "all_of"):
             if not self.conditions:
-                raise ValueError("condition 'any_of' requires a non-empty 'conditions' list")
+                raise ValueError(f"condition {self.type!r} requires a non-empty 'conditions' list")
         return self
 
 
@@ -332,6 +340,15 @@ class Step(StrictModel):
     id: str
     action: Action
     path: Optional[str] = None
+    frame: Optional[str] = Field(
+        default=None,
+        description=(
+            "For 'navigate': which frame the path loads into. A frameset app navigates a "
+            "content region, not the whole document -- loading the path top-level would "
+            "destroy the frameset the flow's elements live in. Omit for single-document "
+            "surfaces. A desktop resolver would map this to a window or pane."
+        ),
+    )
     element: Optional[str] = None
     value: Optional[str] = None
     into: Optional[str] = None

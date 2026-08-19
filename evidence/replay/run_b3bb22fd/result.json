@@ -1,0 +1,25 @@
+{
+  "classification": "hard_failure",
+  "capability": {
+    "id": "member_savings_balance",
+    "version": "1.0.0"
+  },
+  "tenant": "northridge",
+  "run_id": "run_b3bb22fd",
+  "duration_ms": 602.67,
+  "inputs": {
+    "member_ref": "***01"
+  },
+  "message": "The application returned an unexpected server error.",
+  "failure": {
+    "step_id": "auth",
+    "expected": "element 'member_ref_field' present",
+    "observed": "The application returned an unexpected server error."
+  },
+  "escalation_eligible": true,
+  "evidence": {
+    "screenshot": "evidence/replay/run_b3bb22fd/failure.png",
+    "snapshot": "evidence/replay/run_b3bb22fd/failure_snapshot.txt"
+  },
+  "trace": []
+}

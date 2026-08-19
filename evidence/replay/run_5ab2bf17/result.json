@@ -1,0 +1,141 @@
+{
+  "classification": "business_outcome",
+  "capability": {
+    "id": "member_savings_balance",
+    "version": "1.0.0"
+  },
+  "tenant": "northridge",
+  "run_id": "run_5ab2bf17",
+  "duration_ms": 987.5,
+  "inputs": {
+    "member_ref": "***01"
+  },
+  "outcome": "permission_denied",
+  "message": "The member record exists but is restricted.",
+  "evidence": {
+    "screenshot": "evidence/replay/run_5ab2bf17/failure.png",
+    "snapshot": "evidence/replay/run_5ab2bf17/failure_snapshot.txt"
+  },
+  "trace": [
+    {
+      "step_id": "s1",
+      "action": "navigate",
+      "status": "ok",
+      "duration_ms": 66.67,
+      "attempts": 1,
+      "checkpoint": {
+        "satisfied": true,
+        "expected": "element 'member_ref_field' present",
+        "observed": "resolved via rung 0",
+        "duration_ms": 20.5
+      }
+    },
+    {
+      "step_id": "s2",
+      "action": "fill",
+      "status": "ok",
+      "duration_ms": 115.81,
+      "attempts": 1,
+      "resolution": {
+        "element": "member_ref_field",
+        "resolved": true,
+        "frame": "content",
+        "rung_index": 0,
+        "strategy": "role_name",
+        "confidence": "high",
+        "brittle": false,
+        "duration_ms": 0.02,
+        "attempts": [
+          {
+            "rung": 0,
+            "strategy": "role_name",
+            "confidence": "high",
+            "brittle": false,
+            "match_count": 1,
+            "outcome": "resolved"
+          }
+        ]
+      }
+    },
+    {
+      "step_id": "s3",
+      "action": "click",
+      "status": "ok",
+      "duration_ms": 94.43,
+      "attempts": 1,
+      "resolution": {
+        "element": "search_submit",
+        "resolved": true,
+        "frame": "content",
+        "rung_index": 0,
+        "strategy": "role_name",
+        "confidence": "high",
+        "brittle": false,
+        "duration_ms": 0.02,
+        "attempts": [
+          {
+            "rung": 0,
+            "strategy": "role_name",
+            "confidence": "high",
+            "brittle": false,
+            "match_count": 1,
+            "outcome": "resolved"
+          }
+        ]
+      },
+      "checkpoint": {
+        "satisfied": true,
+        "expected": "(element 'results_grid' present OR text 'No records match' present on page)",
+        "observed": "satisfied by: element 'results_grid' present",
+        "duration_ms": 14.31,
+        "children": [
+          {
+            "satisfied": true,
+            "expected": "element 'results_grid' present",
+            "observed": "resolved via rung 0"
+          },
+          {
+            "satisfied": false,
+            "expected": "text 'No records match' present on page",
+            "observed": "text not present on page"
+          }
+        ]
+      }
+    },
+    {
+      "step_id": "s4",
+      "action": "click",
+      "status": "ok",
+      "duration_ms": 69.75,
+      "attempts": 1,
+      "resolution": {
+        "element": "results_view_link",
+        "resolved": true,
+        "frame": "content",
+        "rung_index": 0,
+        "strategy": "role_name_scoped",
+        "confidence": "high",
+        "brittle": false,
+        "duration_ms": 0.08,
+        "attempts": [
+          {
+            "rung": 0,
+            "strategy": "role_name_scoped",
+            "confidence": "high",
+            "brittle": false,
+            "match_count": 1,
+            "outcome": "resolved"
+          }
+        ]
+      },
+      "detections": [
+        {
+          "name": "permission_denied",
+          "layer": "artifact",
+          "classification": "business_outcome",
+          "message": "The member record exists but is restricted."
+        }
+      ]
+    }
+  ]
+}

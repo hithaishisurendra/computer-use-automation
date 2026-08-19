@@ -1,0 +1,39 @@
+REPLAY RESULT MATRIX -- deterministic replay of member_savings_balance@1.0.0
+Generated against a live CoreServ (northridge) via python -m replay.run.
+Faults toggled server-side through /_faults, so the same artifact and the same
+inputs produce a different outcome because the world changed, not the run.
+
+CONDITION                  EXIT         CLASSIFICATION     OUTCOME            NOTES
+-------------------------------------------------------------------------------------------------------
+happy path                 0            success            -                  balance=8320.10
+malformed input            2            caller_error       -                  
+unknown member             0            business_outcome   member_not_found   
+fault: member_not_found    0            business_outcome   member_not_found   
+fault: restricted_member   0            business_outcome   permission_denied  
+fault: interstitial        0            success            -                  balance=8320.10 recovered:maintenance_interstitial
+fault: session_expired     1            hard_failure       -                  escalate
+fault: server_error        1            hard_failure       -                  escalate
+fault: slow_response       1            hard_failure       -                  recovered:checkpoint_timeout
+cascade overlay/drift      0            business_outcome   member_not_found   warn:2(drift+brittle-rung)
+
+Notes
+-----
+* EXIT: 0 for success AND business_outcome -- a business outcome is a legitimate
+  answer, not a failure. 1=hard_failure, 2=caller_error, 3=auth_failure.
+* "malformed input" never opened a browser: input validation runs against the
+  artifact's declared pattern before Chromium starts.
+* "fault: interstitial" recovered: the engine dismissed the overlay via its own
+  Continue control and retried the step, then completed normally.
+* "fault: slow_response" injects 6s per request. The search step's redirect chain
+  therefore exceeds the checkpoint budget the artifact declares (8000ms), so the
+  engine retries twice and then escalates. This is the artifact's declared budget
+  being enforced, not an engine limit -- raising timeout_ms in the artifact would
+  change this row.
+* "cascade overlay/drift" runs the CASCADE artifact against the NORTHRIDGE server
+  on purpose. Two independent drift signals fire and the run still completes:
+    - app_version 4.2.3 recorded vs 4.2.1 observed (warning, not a failure)
+    - member_ref_field's tenant-specific "Account Number" rung misses, so
+      resolution falls through to the brittle role_ordinal rung -- recorded even
+      though that rung succeeded.
+  The business outcome is correct: a 10-digit account number is not a northridge
+  member id, so no record matches.

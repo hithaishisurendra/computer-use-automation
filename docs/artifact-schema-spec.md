@@ -397,6 +397,21 @@ present", which is the debuggable error the brief asks for.
 not-found page. Both are successful *page loads*. Only one is a successful
 *step*. That distinction is exactly the business-outcome-versus-failure line.
 
+**Condition types.** `element_present`, `text_present`, `url_matches` (regex,
+via `pattern`), plus the combinators `any_of` and `all_of`. A checkpoint adds
+`timeout_ms` and is polled until satisfied or expired; every evaluation returns
+what was expected alongside what was actually observed, since that pair is the
+debuggable error.
+
+**`frame` on `navigate`.** A frameset app navigates a *content region*, not the
+whole document. Discovered while building replay: a top-level navigation to
+`/search` loads the page but destroys the frameset, so every element declaring
+`frame: "content"` becomes unresolvable. `steps[].frame` names the frame the
+path loads into. Omit it for single-document surfaces; a desktop resolver would
+map it to a window or pane. It is the one place a step describes *where* rather
+than *what*, and it stays surface-agnostic: a frame name is a document region,
+not a selector.
+
 ---
 
 ## outcomes

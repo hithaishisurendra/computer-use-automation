@@ -190,6 +190,7 @@
       "id": "s1",
       "action": "navigate",
       "path": "/search",
+      "frame": "content",
       "risk": "safe",
       "checkpoint": {
         "type": "element_present",
@@ -272,7 +273,7 @@
 
   "policy": {
     "allowed_origins": ["http://localhost:8800"],
-    "allowed_paths": ["/", "/search", "/search/results", "/member/*"],
+    "allowed_paths": ["/", "/home", "/nav", "/search", "/search/results", "/member/*"],
     "allowed_actions": ["navigate", "click", "fill", "extract"],
     "risky_action_handling": "require_confirmation",
     "max_steps": 25,
