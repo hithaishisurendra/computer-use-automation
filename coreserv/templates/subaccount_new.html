@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Open Sub-Account</title>
+<style>
+body { background-color: #d4d0c8; font-family: Arial, Helvetica, sans-serif; font-size: 12px; margin: 0; }
+table.cls_o1 { width: 100%; }
+td.cls_o2 { background-color: #000080; color: #ffffff; font-weight: bold; padding: 4px; }
+td.cls_o3 { padding: 8px; }
+table.cls_o4 { background-color: #ffffff; border: 1px solid #808080; width: 100%; }
+td.cls_o5 { padding: 6px; }
+table.cls_fields td { padding: 3px 6px; }
+.cls_errbox { border: 1px solid #ff0000; background-color: #ffe0e0; padding: 6px; margin-bottom: 8px; }
+.cls_errbox ul { margin: 0; padding-left: 18px; }
+input, select, button { font-family: Arial, Helvetica, sans-serif; font-size: 12px; }
+</style>
+</head>
+<body>
+{% if interstitial %}
+{% include "_interstitial.html" %}
+{% endif %}
+<table class="cls_o1" cellpadding="0" cellspacing="0" border="0">
+<tr><td class="cls_o2" id="{{ rid('sub_hdr') }}">Open Sub-Account &mdash; Member {{ member.member_id }}</td></tr>
+<tr><td class="cls_o3">
+  <table class="cls_o4" cellpadding="0" cellspacing="0" border="0">
+  <tr><td class="cls_o5">
+    <table cellpadding="2" cellspacing="0" border="0"><tr><td>
+    {% if errors %}
+    <div class="cls_errbox" id="{{ rid('sub_errbox') }}">
+      <ul>
+      {% for e in errors %}
+        <li>{{ e }}</li>
+      {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+    <form method="post" action="/member/{{ member.member_id }}/subaccount/new" id="{{ rid('sub_form') }}">
+      <input type="hidden" name="__VIEWSTATE" value="{{ viewstate() }}">
+      <table class="cls_fields" cellpadding="0" cellspacing="0" border="0">
+        <tr>
+          <td>Account Type:</td>
+          <td>
+            <select name="account_type" id="{{ rid('acct_type') }}">
+            {% for t in account_types %}
+              <option value="{{ t }}" {% if form.account_type == t %}selected{% endif %}>{{ t }}</option>
+            {% endfor %}
+            </select>
+          </td>
+        </tr>
+        <tr>
+          <td>Initial Deposit :</td>
+          <td><input type="text" name="deposit" id="{{ rid('deposit') }}" size="12" value="{{ form.deposit }}"></td>
+        </tr>
+        <tr>
+          <td>NickName</td>
+          <td><input type="text" name="nickname" id="{{ rid('nickname') }}" size="30" value="{{ form.nickname }}"></td>
+        </tr>
+        <tr>
+          <td>Statement  Delivery:</td>
+          <td>
+            <input type="radio" name="delivery" value="Paper" id="{{ rid('delivery_paper') }}" {% if form.delivery == "Paper" %}checked{% endif %}> Paper
+            &nbsp;
+            <input type="radio" name="delivery" value="Electronic" id="{{ rid('delivery_elec') }}" {% if form.delivery == "Electronic" %}checked{% endif %}> Electronic
+          </td>
+        </tr>
+        <tr>
+          <td>Terms Acknowledgement:</td>
+          <td><input type="checkbox" name="terms" value="1" id="{{ rid('terms') }}" {% if form.terms %}checked{% endif %}> I acknowledge the terms and conditions</td>
+        </tr>
+        <tr><td colspan="2" align="right"><button type="submit" id="{{ rid('sub_submit') }}">Submit</button></td></tr>
+      </table>
+    </form>
+    </td></tr></table>
+  </td></tr>
+  </table>
+</td></tr>
+</table>
+</body>
+</html>

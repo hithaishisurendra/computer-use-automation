@@ -1,0 +1,22 @@
+<table width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#000000">
+<tr><td>
+  <table width="320" cellpadding="0" cellspacing="0" border="1" align="center" bgcolor="#d4d0c8">
+  <tr><td bgcolor="#000080">
+    <table width="100%" cellpadding="4" cellspacing="0" border="0">
+    <tr><td style="color:#ffffff; font-weight:bold;" id="{{ rid('mx_hdr') }}">System Maintenance</td></tr>
+    </table>
+  </td></tr>
+  <tr><td>
+    <table width="100%" cellpadding="8" cellspacing="0" border="0">
+    <tr><td id="{{ rid('mx_msg') }}">The system is undergoing scheduled maintenance. Some functions may be temporarily unavailable.</td></tr>
+    <tr><td align="right">
+      <form method="post" action="/_dismiss_interstitial" id="{{ rid('mx_form') }}">
+        <input type="hidden" name="return_to" value="{{ current_path }}">
+        <button type="submit" id="{{ rid('mx_continue') }}">Continue</button>
+      </form>
+    </td></tr>
+    </table>
+  </td></tr>
+  </table>
+</td></tr>
+</table>

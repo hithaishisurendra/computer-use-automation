@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Member Detail</title>
+<style>
+body { background-color: #d4d0c8; font-family: Arial, Helvetica, sans-serif; font-size: 12px; margin: 0; }
+table.cls_m1 { width: 100%; }
+td.cls_m2 { background-color: #000080; color: #ffffff; font-weight: bold; padding: 4px; }
+td.cls_m3 { padding: 8px; }
+table.cls_m4 { background-color: #ffffff; border: 1px solid #808080; width: 100%; }
+td.cls_m5 { padding: 6px; }
+table.cls_fields td { padding: 2px 6px; vertical-align: top; }
+td.cls_lbl { font-weight: bold; width: 140px; }
+table.cls_acct { border-collapse: collapse; margin-top: 6px; }
+table.cls_acct th { background-color: #c0c0c0; border: 1px solid #808080; padding: 3px; text-align: left; }
+table.cls_acct td { border: 1px solid #c0c0c0; padding: 3px; }
+</style>
+</head>
+<body>
+{% if interstitial %}
+{% include "_interstitial.html" %}
+{% endif %}
+<table class="cls_m1" cellpadding="0" cellspacing="0" border="0">
+<tr><td class="cls_m2" id="{{ rid('member_hdr') }}">Member Detail</td></tr>
+<tr><td class="cls_m3">
+  <table class="cls_m4" cellpadding="0" cellspacing="0" border="0">
+  <tr><td class="cls_m5">
+    <table class="cls_fields" cellpadding="0" cellspacing="0" border="0">
+      <tr><td class="cls_lbl">Member  Id</td><td id="{{ rid('f_member_id') }}">{{ member.member_id }}</td></tr>
+      <tr><td class="cls_lbl">Name:</td><td id="{{ rid('f_name') }}">{{ member.first_name }} {{ member.last_name }}</td></tr>
+      <tr><td class="cls_lbl">SSN :</td><td id="{{ rid('f_ssn') }}">{{ member.ssn }}</td></tr>
+      <tr><td class="cls_lbl">Date of Birth:</td><td id="{{ rid('f_dob') }}">{{ member.date_of_birth }}</td></tr>
+      <tr><td class="cls_lbl">Phone:</td><td id="{{ rid('f_phone') }}">{{ member.phone }}</td></tr>
+      <tr><td class="cls_lbl">Email:</td><td id="{{ rid('f_email') }}">{{ member.email }}</td></tr>
+      <tr><td class="cls_lbl">Address:</td><td id="{{ rid('f_addr') }}">{{ member.address }}</td></tr>
+      <tr><td class="cls_lbl">Branch:</td><td id="{{ rid('f_branch') }}">{{ member.branch }}</td></tr>
+      <tr><td class="cls_lbl">Status:</td><td id="{{ rid('f_status') }}">{{ member.status }}</td></tr>
+    </table>
+    <table class="cls_acct" id="{{ rid('acct_grid') }}" cellpadding="0" cellspacing="0" border="1">
+      <tr>
+        <th id="{{ rid('acct_h_num') }}">Account Number</th>
+        <th id="{{ rid('acct_h_type') }}">Type</th>
+        <th id="{{ rid('acct_h_bal') }}">Balance</th>
+        <th id="{{ rid('acct_h_opened') }}">Opened</th>
+      </tr>
+      {% for acc in member.accounts %}
+      <tr id="{{ rid('acct_row_' ~ loop.index) }}">
+        <td id="{{ rid('acct_r' ~ loop.index ~ '_num') }}">{{ acc.account_number }}</td>
+        <td id="{{ rid('acct_r' ~ loop.index ~ '_type') }}">{{ acc.type }}</td>
+        <td id="{{ rid('acct_r' ~ loop.index ~ '_bal') }}">{{ "%.2f"|format(acc.balance) }}</td>
+        <td id="{{ rid('acct_r' ~ loop.index ~ '_opened') }}">{{ acc.opened_date }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+    <table cellpadding="4" cellspacing="0" border="0"><tr><td>
+      <a href="/member/{{ member.member_id }}/subaccount/new" id="{{ rid('open_sub_lnk') }}">Open Sub-Account</a>
+    </td></tr></table>
+  </td></tr>
+  </table>
+</td></tr>
+</table>
+</body>
+</html>

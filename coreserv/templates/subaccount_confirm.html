@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>{{ cfg.confirm_heading }}</title>
+<style>
+body { background-color: #d4d0c8; font-family: Arial, Helvetica, sans-serif; font-size: 12px; margin: 0; }
+table.cls_c1 { width: 100%; }
+td.cls_c2 { background-color: #006400; color: #ffffff; font-weight: bold; padding: 4px; }
+td.cls_c3 { padding: 8px; }
+table.cls_c4 { background-color: #ffffff; border: 1px solid #808080; width: 100%; }
+td.cls_c5 { padding: 6px; }
+table.cls_fields td { padding: 2px 6px; }
+td.cls_lbl { font-weight: bold; width: 140px; }
+.cls_ref { font-weight: bold; font-size: 14px; }
+</style>
+</head>
+<body>
+{% if interstitial %}
+{% include "_interstitial.html" %}
+{% endif %}
+<table class="cls_c1" cellpadding="0" cellspacing="0" border="0">
+<tr><td class="cls_c2" id="{{ rid('confirm_hdr') }}">{{ cfg.confirm_heading }}</td></tr>
+<tr><td class="cls_c3">
+  <table class="cls_c4" cellpadding="0" cellspacing="0" border="0">
+  <tr><td class="cls_c5">
+    <table cellpadding="2" cellspacing="0" border="0"><tr><td>
+      <div class="cls_ref" id="{{ rid('ref_num') }}">Reference Number: {{ ref }}</div>
+      <table class="cls_fields" cellpadding="0" cellspacing="0" border="0">
+        <tr><td class="cls_lbl">Member:</td><td id="{{ rid('c_member') }}">{{ member.first_name }} {{ member.last_name }} ({{ member.member_id }})</td></tr>
+        <tr><td class="cls_lbl">Account Type:</td><td id="{{ rid('c_type') }}">{{ account_type }}</td></tr>
+        <tr><td class="cls_lbl">Initial Deposit:</td><td id="{{ rid('c_deposit') }}">{{ deposit }}</td></tr>
+        <tr><td class="cls_lbl">NickName:</td><td id="{{ rid('c_nick') }}">{{ nickname }}</td></tr>
+        <tr><td class="cls_lbl">Statement  Delivery:</td><td id="{{ rid('c_delivery') }}">{{ delivery }}</td></tr>
+      </table>
+    </td></tr></table>
+  </td></tr>
+  </table>
+</td></tr>
+</table>
+</body>
+</html>

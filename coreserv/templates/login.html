@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>{{ cfg.inst_name }} - CoreServ Login</title>
+<style>
+body { background-color: #c0c0c0; font-family: Arial, Helvetica, sans-serif; font-size: 12px; margin: 0; }
+table.cls_a1 { background-color: #808080; border: 1px solid #000000; }
+table.cls_b3 { background-color: #d4d0c8; }
+td.cls_hdr2 { background-color: #000080; color: #ffffff; font-weight: bold; padding: 4px; }
+td.cls_c9 { padding: 6px; }
+.cls_err { color: #ff0000; font-weight: bold; }
+input, select { font-family: Arial, Helvetica, sans-serif; font-size: 12px; }
+</style>
+</head>
+<body>
+<table class="cls_a1" width="400" cellpadding="0" cellspacing="0" border="0" align="center">
+<tr><td>
+  <table class="cls_b3" width="100%" cellpadding="0" cellspacing="0" border="0">
+  <tr><td class="cls_hdr2" id="{{ rid('login_hdr') }}">{{ cfg.inst_name }} &mdash; CoreServ</td></tr>
+  <tr><td class="cls_c9">
+    <table width="100%" cellpadding="2" cellspacing="0" border="0">
+    <tr><td>
+      {% if message %}
+      <div class="cls_err" id="{{ rid('login_msg') }}">{{ message }}</div>
+      {% endif %}
+      <form method="post" action="/" target="_top" id="{{ rid('login_form') }}">
+        <input type="hidden" name="__VIEWSTATE" value="{{ viewstate() }}">
+        <table cellpadding="2" cellspacing="0" border="0">
+          <tr><td>Username :</td><td><input type="text" name="username" id="{{ rid('username') }}" size="20"></td></tr>
+          <tr><td>Password:</td><td><input type="password" name="password" id="{{ rid('password') }}" size="20"></td></tr>
+          <tr><td colspan="2" align="right"><button type="submit" id="{{ rid('login_btn') }}">Login</button></td></tr>
+        </table>
+      </form>
+    </td></tr>
+    </table>
+  </td></tr>
+  </table>
+</td></tr>
+</table>
+</body>
+</html>

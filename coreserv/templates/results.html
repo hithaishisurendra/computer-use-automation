@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Search Results</title>
+<style>
+body { background-color: #d4d0c8; font-family: Arial, Helvetica, sans-serif; font-size: 12px; margin: 0; }
+table.cls_r1 { width: 100%; }
+td.cls_r2 { background-color: #000080; color: #ffffff; font-weight: bold; padding: 4px; }
+td.cls_r3 { padding: 8px; }
+table.cls_r4 { background-color: #ffffff; border: 1px solid #808080; width: 100%; }
+td.cls_r5 { padding: 6px; }
+table.cls_grid { border-collapse: collapse; width: 100%; }
+table.cls_grid th { background-color: #c0c0c0; border: 1px solid #808080; padding: 3px; text-align: left; }
+table.cls_grid td { border: 1px solid #c0c0c0; padding: 3px; }
+.cls_none { font-style: italic; }
+</style>
+</head>
+<body>
+{% if interstitial %}
+{% include "_interstitial.html" %}
+{% endif %}
+<table class="cls_r1" cellpadding="0" cellspacing="0" border="0">
+<tr><td class="cls_r2" id="{{ rid('results_hdr') }}">Search Results</td></tr>
+<tr><td class="cls_r3">
+  <table class="cls_r4" cellpadding="0" cellspacing="0" border="0">
+  <tr><td class="cls_r5">
+    {% if no_records %}
+    <table cellpadding="4" cellspacing="0" border="0"><tr><td class="cls_none" id="{{ rid('no_records') }}">No records match your criteria.</td></tr></table>
+    {% else %}
+    <table class="cls_grid" id="{{ rid('grid') }}" cellpadding="0" cellspacing="0" border="1">
+      <tr id="{{ rid('grid_hdr_row') }}">
+      {% for col in cfg.results_columns %}
+        <th id="{{ rid('grid_r0_c' ~ loop.index0) }}">
+          {% if col in ("member_id", "account_number") %}{{ cfg.id_label }}
+          {% elif col == "name" %}Name
+          {% elif col == "status" %}Status
+          {% elif col == "branch" %}Branch
+          {% endif %}
+        </th>
+      {% endfor %}
+        <th id="{{ rid('grid_r0_view') }}">&nbsp;</th>
+      </tr>
+      {% for m in members %}
+      {% set row_num = loop.index %}
+      <tr id="{{ rid('grid_row_' ~ row_num) }}">
+        {% for col in cfg.results_columns %}
+        <td id="{{ rid('grid_r' ~ row_num ~ '_c' ~ loop.index0) }}">
+          {% if col == "member_id" %}{{ m.member_id }}
+          {% elif col == "account_number" %}{{ m.accounts[0].account_number }}
+          {% elif col == "name" %}{{ m.first_name }} {{ m.last_name }}
+          {% elif col == "status" %}{{ m.status }}
+          {% elif col == "branch" %}{{ m.branch }}
+          {% endif %}
+        </td>
+        {% endfor %}
+        <td id="{{ rid('grid_r' ~ row_num ~ '_view') }}"><a href="/member/{{ m.member_id }}" id="{{ rid('view_lnk_' ~ row_num) }}">View</a></td>
+      </tr>
+      {% endfor %}
+    </table>
+    {% endif %}
+  </td></tr>
+  </table>
+</td></tr>
+</table>
+</body>
+</html>

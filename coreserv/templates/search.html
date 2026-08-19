@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Member Search</title>
+<style>
+body { background-color: #d4d0c8; font-family: Arial, Helvetica, sans-serif; font-size: 12px; margin: 0; }
+table.cls_s1 { width: 100%; }
+td.cls_s2 { background-color: #000080; color: #ffffff; font-weight: bold; padding: 4px; }
+td.cls_s3 { padding: 8px; }
+table.cls_s4 { background-color: #ffffff; border: 1px solid #808080; }
+td.cls_s5 { padding: 6px; }
+.cls_err { color: #ff0000; font-weight: bold; }
+input, select, button { font-family: Arial, Helvetica, sans-serif; font-size: 12px; }
+</style>
+</head>
+<body>
+{% if interstitial %}
+{% include "_interstitial.html" %}
+{% endif %}
+<table class="cls_s1" cellpadding="0" cellspacing="0" border="0">
+<tr><td class="cls_s2" id="{{ rid('search_hdr') }}">Member Search</td></tr>
+<tr><td class="cls_s3">
+  <table class="cls_s4" cellpadding="0" cellspacing="0" border="0" width="100%">
+  <tr><td class="cls_s5">
+    <table cellpadding="2" cellspacing="0" border="0">
+    <tr><td>
+      {% if error %}
+      <div class="cls_err" id="{{ rid('search_err') }}">{{ error }}</div>
+      {% endif %}
+      <form method="post" action="/search" id="{{ rid('search_form') }}">
+        <input type="hidden" name="__VIEWSTATE" value="{{ viewstate() }}">
+        <table cellpadding="2" cellspacing="0" border="0">
+          <tr><td>Last Name:</td><td><input type="text" name="last_name" id="{{ rid('last_name') }}" size="20"></td></tr>
+          <tr><td>{{ cfg.id_label }} :</td><td><input type="text" name="identifier" id="{{ rid('identifier') }}" size="20"></td></tr>
+          <tr><td colspan="2" align="right"><button type="submit" id="{{ rid('search_submit') }}">Submit</button></td></tr>
+        </table>
+      </form>
+    </td></tr>
+    </table>
+  </td></tr>
+  </table>
+</td></tr>
+</table>
+</body>
+</html>
