@@ -151,3 +151,37 @@ verified in the running app before being logged here.
   present it takes priority over `last_name`. The nav frame's quick-lookup
   box reuses the same `identifier` param directly against
   `/search/results`, skipping the intermediate form page.
+
+## Artifact schema: three decisions that changed the spec
+
+Full reasoning lives in docs/artifact-schema-spec.md; recorded here because
+each one overrode what the initial plan assumed.
+
+- **`member_ref`, not `member_id`.** Cascade searches by a ten-digit
+  account number where northridge searches by a five-digit member ID, and
+  cascade's results grid has no Member ID column at all. Naming the
+  parameter after northridge's concept would have forced either a
+  misleading name or a forked capability on the second tenant. Renaming it
+  also fixed the row-scoping locator for free: `contains: "{{member_ref}}"`
+  resolves in both tenants, because each tenant's grid displays whichever
+  identifier that tenant searches by, so `results_view_link` needs no
+  per-tenant override.
+- **Overlays may override inputs, but only the non-contractual parts.**
+  The initial plan had element-only overlays. That is not sufficient for a
+  tenant whose identifier *means* something different. Overlays may now
+  specialise an input's pattern/description/example, any element chain, and
+  base_url/app_version; they may not touch steps, outputs, an input's
+  name/type/required/sensitivity, or widen the policy allowlist. Reaching
+  past that boundary fails with an error pointing at forking, and
+  `capability.derived_from` exists to record the ancestry when it happens.
+  The rule is: overlays express configuration drift, forks express
+  behavioural divergence.
+- **Auth is a target block, not recorded steps.** CoreServ bounces
+  unauthenticated requests, so the flow could not actually start at
+  `entry_path` as specced. Login lives in `target.auth` and runs before
+  step 1; `credentials_ref` holds environment variable *names* so the
+  artifact stays safe to commit publicly, and the schema rejects anything
+  in that field that doesn't look like a variable name. `auth_failure` is
+  a distinct result classification from business outcomes, recoverable
+  conditions and hard failures: it means our own configuration is wrong,
+  which is neither the caller's problem nor retryable.

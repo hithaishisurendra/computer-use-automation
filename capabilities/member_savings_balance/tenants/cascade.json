@@ -1,0 +1,50 @@
+{
+  "extends": "member_savings_balance@1.0.0",
+  "tenant": "cascade",
+
+  "input_overrides": {
+    "member_ref": {
+      "pattern": "^[0-9]{10}$",
+      "description": "The identifier used to locate the member. On cascade this is the ten-digit account number, not the member ID.",
+      "example": "4471820019"
+    }
+  },
+
+  "element_overrides": {
+    "member_ref_field": {
+      "chain": [
+        {
+          "strategy": "role_name",
+          "role": "textbox",
+          "name": "Account Number",
+          "confidence": "high"
+        },
+        {
+          "strategy": "role_ordinal",
+          "role": "textbox",
+          "index": 1,
+          "confidence": "low",
+          "brittle": true,
+          "notes": "Second textbox on the search form, after Last Name. Position only."
+        }
+      ]
+    },
+
+    "results_grid": {
+      "chain": [
+        {
+          "strategy": "role_name",
+          "role": "columnheader",
+          "name": "Account Number",
+          "confidence": "high"
+        }
+      ]
+    }
+  },
+
+  "target_overrides": {
+    "app_version": "4.2.3"
+  },
+
+  "notes": "Cascade runs the same CoreServ product on a later build with different configuration. Three things differ and each is expressible as an override: the search field's label, the results grid's leading column header, and what the identifier parameter actually means -- cascade searches by account number, so the same capability takes a ten-digit value here. results_view_link deliberately needs NO override: its row scope matches on {{member_ref}}, and each tenant's grid displays whichever identifier that tenant searches by, so the same chain resolves in both. Note that cascade's grid renders the member's FIRST account number, so a reference to some other account of the same member would find the record but fail to match the displayed row; the example value is chosen accordingly."
+}

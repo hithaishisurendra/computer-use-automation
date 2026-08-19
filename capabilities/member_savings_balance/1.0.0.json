@@ -1,0 +1,293 @@
+{
+  "schema_version": "1.0",
+
+  "capability": {
+    "id": "member_savings_balance",
+    "version": "1.0.0",
+    "name": "Look up member savings balance",
+    "description": "Given a member reference, return the member's current savings account balance and display name.",
+    "status": "draft"
+  },
+
+  "target": {
+    "surface": "web",
+    "app": "coreserv",
+    "app_version": "4.2.1",
+    "tenant": "northridge",
+    "base_url": "http://localhost:8800",
+    "entry_path": "/search",
+    "auth": {
+      "mode": "form_login",
+      "path": "/",
+      "credentials_ref": {
+        "username": "CORESERV_USERNAME",
+        "password": "CORESERV_PASSWORD"
+      },
+      "success_check": {
+        "type": "element_present",
+        "element": "member_ref_field"
+      }
+    }
+  },
+
+  "inputs": [
+    {
+      "name": "member_ref",
+      "type": "string",
+      "required": true,
+      "pattern": "^[0-9]{5}$",
+      "description": "The identifier used to locate the member. On northridge this is the five-digit member ID.",
+      "sensitivity": "identifier",
+      "example": "10001"
+    }
+  ],
+
+  "outputs": [
+    {
+      "name": "savings_balance",
+      "type": "money",
+      "required": true,
+      "description": "Current balance of the member's savings account",
+      "sensitivity": "public"
+    },
+    {
+      "name": "member_name",
+      "type": "string",
+      "required": false,
+      "description": "Member display name, returned for caller verification",
+      "sensitivity": "pii"
+    }
+  ],
+
+  "elements": {
+    "member_ref_field": {
+      "description": "Member identifier input on the search form",
+      "frame": "content",
+      "chain": [
+        {
+          "strategy": "role_name",
+          "role": "textbox",
+          "name": "Member ID",
+          "confidence": "high"
+        },
+        {
+          "strategy": "role_ordinal",
+          "role": "textbox",
+          "index": 1,
+          "confidence": "low",
+          "brittle": true,
+          "notes": "Second textbox on the search form, after Last Name. Position only."
+        }
+      ],
+      "notes": "CoreServ provides no label binding; the accessible name is inferred by the perception layer from the preceding table cell (name_source=preceding_td). The label text is tenant-specific, which is why this element is the primary overlay target."
+    },
+
+    "search_submit": {
+      "description": "Submit button on the member search form",
+      "frame": "content",
+      "chain": [
+        {
+          "strategy": "role_name",
+          "role": "button",
+          "name": "Submit",
+          "confidence": "high"
+        }
+      ],
+      "notes": "A button named 'Submit' also exists in the nav frame's Quick Lookup form. The frame qualifier is what disambiguates them, not the name."
+    },
+
+    "results_grid": {
+      "description": "The search results grid, identified by its leading column header",
+      "frame": "content",
+      "chain": [
+        {
+          "strategy": "role_name",
+          "role": "columnheader",
+          "name": "Member ID",
+          "confidence": "high"
+        }
+      ],
+      "notes": "The results table itself carries no accessible name, so its presence is asserted via a column header instead. The header text is tenant-specific."
+    },
+
+    "results_view_link": {
+      "description": "The View link in the results row for the requested member",
+      "frame": "content",
+      "chain": [
+        {
+          "strategy": "role_name_scoped",
+          "role": "link",
+          "name": "View",
+          "scope": {
+            "role": "row",
+            "contains": "{{member_ref}}"
+          },
+          "confidence": "high"
+        },
+        {
+          "strategy": "role_name",
+          "role": "link",
+          "name": "View",
+          "confidence": "low",
+          "brittle": true,
+          "notes": "Ambiguous whenever the result set has more than one row"
+        }
+      ],
+      "notes": "Every row's link is identically named 'View'; the containing row is the only thing that distinguishes them. Scoping on {{member_ref}} works in both tenants because each tenant's results grid displays whichever identifier that tenant searches by."
+    },
+
+    "member_detail_heading": {
+      "description": "Page heading confirming the member detail screen loaded",
+      "frame": "content",
+      "chain": [
+        {
+          "strategy": "role_name",
+          "role": "cell",
+          "name": "Member Detail",
+          "confidence": "high"
+        }
+      ],
+      "notes": "Rendered as a table cell, not a heading element -- CoreServ has no semantic landmarks. Role is 'cell' because that is what perception actually reports."
+    },
+
+    "savings_balance_cell": {
+      "description": "Balance value in the account row whose type is Savings",
+      "frame": "content",
+      "chain": [
+        {
+          "strategy": "cell_in_row",
+          "scope": {
+            "role": "row",
+            "contains": "Savings"
+          },
+          "column_header": "Balance",
+          "confidence": "high"
+        }
+      ],
+      "notes": "The accounts table is tenant-independent, so this element needs no per-tenant override."
+    },
+
+    "member_name_cell": {
+      "description": "Value cell of the Name row in the member detail field table",
+      "frame": "content",
+      "chain": [
+        {
+          "strategy": "cell_in_row",
+          "scope": {
+            "role": "row",
+            "contains": "Name"
+          },
+          "column_index": 1,
+          "confidence": "medium"
+        }
+      ],
+      "notes": "The detail field table is a label/value layout with no column headers at all, so this rung addresses the value cell by position within its row. column_index is scoped to a content-matched row, which is why it is medium rather than brittle."
+    }
+  },
+
+  "steps": [
+    {
+      "id": "s1",
+      "action": "navigate",
+      "path": "/search",
+      "risk": "safe",
+      "checkpoint": {
+        "type": "element_present",
+        "element": "member_ref_field",
+        "timeout_ms": 5000
+      }
+    },
+    {
+      "id": "s2",
+      "action": "fill",
+      "element": "member_ref_field",
+      "value": "{{member_ref}}",
+      "risk": "safe"
+    },
+    {
+      "id": "s3",
+      "action": "click",
+      "element": "search_submit",
+      "risk": "safe",
+      "checkpoint": {
+        "type": "any_of",
+        "conditions": [
+          { "type": "element_present", "element": "results_grid" },
+          { "type": "text_present", "text": "No records match" }
+        ],
+        "timeout_ms": 8000
+      },
+      "outcomes": ["member_not_found"]
+    },
+    {
+      "id": "s4",
+      "action": "click",
+      "element": "results_view_link",
+      "risk": "safe",
+      "checkpoint": {
+        "type": "element_present",
+        "element": "member_detail_heading",
+        "timeout_ms": 5000
+      },
+      "outcomes": ["permission_denied"]
+    },
+    {
+      "id": "s5",
+      "action": "extract",
+      "element": "savings_balance_cell",
+      "into": "savings_balance",
+      "risk": "safe"
+    },
+    {
+      "id": "s6",
+      "action": "extract",
+      "element": "member_name_cell",
+      "into": "member_name",
+      "risk": "safe"
+    }
+  ],
+
+  "outcomes": [
+    {
+      "name": "member_not_found",
+      "classification": "business_outcome",
+      "detect": {
+        "type": "text_present",
+        "text": "No records match"
+      },
+      "terminal": true,
+      "message": "No member exists with the supplied identifier."
+    },
+    {
+      "name": "permission_denied",
+      "classification": "business_outcome",
+      "detect": {
+        "type": "text_present",
+        "text": "You do not have permission"
+      },
+      "terminal": true,
+      "message": "The member record exists but is restricted."
+    }
+  ],
+
+  "policy": {
+    "allowed_origins": ["http://localhost:8800"],
+    "allowed_paths": ["/", "/search", "/search/results", "/member/*"],
+    "allowed_actions": ["navigate", "click", "fill", "extract"],
+    "risky_action_handling": "require_confirmation",
+    "max_steps": 25,
+    "timeout_ms": 120000
+  },
+
+  "provenance": {
+    "source": "hand_written",
+    "discovered_at": "2026-08-18T00:00:00Z",
+    "goal": "Look up member 10001 and read their current savings balance",
+    "model": null,
+    "discovery_run_id": null,
+    "steps_attempted": 6,
+    "steps_recorded": 6,
+    "human_interventions": 0,
+    "notes": "Hand-written to fix the target format before the replay engine is built. Element names were taken from evidence/a11y_diagnostic/ rather than guessed: the search field, results grid and detail heading all report the names recorded here."
+  }
+}
