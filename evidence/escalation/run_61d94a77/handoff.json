@@ -1,0 +1,45 @@
+{
+  "human_activity": {
+    "started_at": "2026-08-21T05:53:19.171945+00:00",
+    "ended_at": "2026-08-21T05:53:19.201960+00:00",
+    "operator": "demo-operator",
+    "decision": "resume",
+    "notes": "dismissed the maintenance overlay and confirmed the search form was usable",
+    "url_before": "http://localhost:8800/search",
+    "url_after": "http://localhost:8800/search",
+    "url_changed": false,
+    "controls_appeared": [],
+    "controls_disappeared": [],
+    "capture_scope": "effect-level: URL and accessibility-state diff across the handoff. Individual actions are not recorded -- see module docstring for the seam."
+  },
+  "control": {
+    "owner": "automation",
+    "context_identity": 4484499168,
+    "transitions": [
+      {
+        "at": "2026-08-21T05:53:18.983581+00:00",
+        "from": "automation",
+        "to": "human",
+        "reason": "step s1: A maintenance interstitial is covering the page. Recovery attempted 0 times without clearing it."
+      },
+      {
+        "at": "2026-08-21T05:53:19.016180+00:00",
+        "from": "human",
+        "to": "automation",
+        "reason": "operator returned control after step s1"
+      },
+      {
+        "at": "2026-08-21T05:53:19.171967+00:00",
+        "from": "automation",
+        "to": "human",
+        "reason": "step s2: A maintenance interstitial is covering the page. Recovery attempted 0 times without clearing it."
+      },
+      {
+        "at": "2026-08-21T05:53:19.180492+00:00",
+        "from": "human",
+        "to": "automation",
+        "reason": "operator returned control after step s2"
+      }
+    ]
+  }
+}

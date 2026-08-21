@@ -183,3 +183,24 @@ def test_scrub_obj_walks_nested_structures():
     assert "123-45-6789" not in str(out)
     assert out["c"] == 5
     assert out["a"][1]["b"] == "ok"
+
+
+def test_capability_references_are_not_mistaken_for_emails():
+    """`member_savings_balance@1.0.0` is a capability reference, not an
+    address. Masking it strips the one thing an intervention request most
+    needs to name -- over-redaction destroys evidence just as surely as
+    under-redaction leaks it."""
+    scrubber = Scrubber()
+    for reference in (
+        "Replay member_savings_balance@1.0.0",
+        "extends member_savings_balance@1.0.0",
+        "capability@2.10.3",
+    ):
+        assert scrubber.scrub(reference) == reference
+
+
+def test_real_emails_are_still_masked_after_the_tld_tightening():
+    scrubber = Scrubber()
+    for address in ("mary.nguyen@example.com", "a@mail.example.co.uk", "x+tag@sub.domain.org"):
+        assert address not in scrubber.scrub(address)
+        assert "<redacted:email>" in scrubber.scrub(address)

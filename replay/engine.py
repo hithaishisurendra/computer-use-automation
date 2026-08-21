@@ -40,6 +40,7 @@ from replay import checkpoints, classify
 from replay.executor import Executor, PolicyViolation, check_destination
 from replay.evidence import EvidenceWriter
 from replay.resolver import ElementUnresolvable
+from escalation.session import ControlledSession
 from replay.result import ReplayResult, StepTrace
 
 # CoreServ prints its build in the nav frame footer, e.g. "CoreServ 4.2.1".
@@ -52,11 +53,21 @@ class ReplayEngine:
         artifact: Artifact,
         evidence_root: str | Path = "evidence/replay",
         headless: bool = True,
+        escalate: bool = False,
+        operator=None,
+        escalation_root: str | Path = "evidence/escalation",
     ):
         self.artifact = artifact
         self.headless = headless
         self.run_id = f"run_{uuid.uuid4().hex[:8]}"
         self.evidence = EvidenceWriter(Path(evidence_root) / self.run_id, artifact)
+        # Off by default: unattended replay must stay unattended. A capability
+        # invoked by an agent in production has nobody at a terminal, and
+        # blocking forever for one is worse than failing cleanly.
+        self.escalate = escalate
+        self.operator = operator
+        self.escalation_root = escalation_root
+        self.control = None
 
     # -- perception ---------------------------------------------------------
 
@@ -411,7 +422,12 @@ class ReplayEngine:
         async with async_playwright() as pw:
             browser = await pw.chromium.launch(headless=self.headless)
             self.page = await browser.new_page()
-            self.executor = Executor(self.page, self.artifact, self._perceive)
+            # One session for the whole run. If a human is called in, they
+            # drive this context -- never a fresh one.
+            self.control = ControlledSession(page=self.page)
+            self.executor = Executor(
+                self.page, self.artifact, self._perceive, control=self.control
+            )
 
             try:
                 await self._run_flow(validated.values, result)
@@ -428,6 +444,9 @@ class ReplayEngine:
                 await self._capture_failure_evidence(result)
             finally:
                 result.duration_ms = (time.perf_counter() - started) * 1000
+                if self.control is not None:
+                    self.control.release(f"run finished: {result.classification}")
+                    result.control = self.control.as_dict()
                 self.evidence.write_result(result)
                 await browser.close()
 
@@ -480,7 +499,10 @@ class ReplayEngine:
 
         extracted: dict[str, str] = {}
 
-        for step in self.artifact.steps:
+        index = 0
+        while index < len(self.artifact.steps):
+            step = self.artifact.steps[index]
+            index += 1
             status, detection, value = await self._run_step(step, params, result)
             self.evidence.log("step", result.trace[-1].as_dict() if result.trace else {})
 
@@ -507,6 +529,18 @@ class ReplayEngine:
                         f"Step {step.id} checkpoint not met: expected "
                         f"{result.expected}, observed {result.observed}."
                     )
+
+                if self._may_escalate(result):
+                    resumed = await self._escalate(step, params, result)
+                    if resumed:
+                        # Resume from where it stopped, not from the top.
+                        # Re-running completed steps would repeat side
+                        # effects and undo whatever the operator just fixed.
+                        result.classification = "success"
+                        result.failed_step = None
+                        result.expected = result.observed = result.message = None
+                        continue
+
                 await self._capture_failure_evidence(result)
                 return
 
@@ -539,6 +573,107 @@ class ReplayEngine:
                 return
 
         result.classification = "success"
+
+    # -- escalation ---------------------------------------------------------
+
+    def _may_escalate(self, result: ReplayResult) -> bool:
+        """Escalate only where a human could actually help.
+
+        Gated on `escalate` so unattended replay stays unattended: a
+        production caller invoking a capability has nobody at a terminal, and
+        a run that blocks forever waiting for one is worse than a run that
+        fails cleanly.
+        """
+        return bool(self.escalate and self.operator and result.escalation_eligible)
+
+    async def _escalate(self, step, params: dict[str, Any], result: ReplayResult) -> bool:
+        """Pause, hand the live session to a human, then resume on the same one.
+
+        Returns True when the operator resumed AND the step's checkpoint now
+        holds. A resume that leaves the checkpoint still failing is not a
+        recovery: the run would carry on from a state it never verified.
+        """
+        from escalation.capture import HumanActionCapture, write_activity
+        from escalation.request import InterventionRequest, capture_state, escalation_dir, write_request
+
+        directory = escalation_dir(self.run_id, self.escalation_root)
+        url, screenshot, snapshot_path, snapshot = await capture_state(
+            self.page, self._perceive, directory
+        )
+
+        request = InterventionRequest(
+            run_id=self.run_id,
+            source="replay",
+            goal=f"Replay {self.artifact.capability.id}@{self.artifact.capability.version}",
+            reason=result.message or "step failed",
+            classification="hard_failure",
+            capability_id=self.artifact.capability.id,
+            capability_version=self.artifact.capability.version,
+            step_id=step.id,
+            expected=result.expected,
+            observed=result.observed,
+            url=url,
+            screenshot_path=screenshot,
+            snapshot_path=snapshot_path,
+            snapshot=snapshot,
+            inputs_redacted=result.inputs_redacted,
+            completed_steps=[t.step_id for t in result.trace if t.status in ("ok", "recovered")],
+        )
+        request_path = write_request(request, self.escalation_root)
+        result.evidence["intervention_request"] = str(request_path)
+        self.evidence.log("intervention_raised", {"step_id": step.id, "request": str(request_path)})
+
+        capture = HumanActionCapture(self.page, self._perceive)
+        await capture.begin()
+
+        # Automation is locked out from here until control comes back. The
+        # executor asserts this on every action, so a stray retry cannot race
+        # the operator.
+        self.control.hand_to_human(f"step {step.id}: {result.message}")
+        try:
+            decision = self.operator.handle(request)
+        finally:
+            self.control.take_back(f"operator returned control after step {step.id}")
+
+        activity = await capture.end(decision)
+        handoff_path = write_activity(
+            self.run_id, activity, self.control.as_dict(), self.escalation_root
+        )
+        result.evidence["handoff"] = str(handoff_path)
+        result.human_interventions.append(
+            {
+                "step_id": step.id,
+                "decision": decision.decision.value,
+                "operator": decision.operator,
+                "notes": decision.notes,
+                "url_changed": activity.url_changed,
+            }
+        )
+        self.evidence.log("intervention_resolved", result.human_interventions[-1])
+
+        if not decision.resumed:
+            result.message = f"Operator aborted at step {step.id}: {decision.notes}".strip()
+            return False
+
+        # The session must be the one that got stuck.
+        self.control.assert_same_session()
+
+        if step.checkpoint is None:
+            return True
+
+        check = await checkpoints.evaluate(
+            step.checkpoint, self.artifact, self._capture, params, step.checkpoint.timeout_ms
+        )
+        if check.satisfied:
+            return True
+
+        result.expected = check.expected
+        result.observed = check.observed
+        result.message = (
+            f"Operator resumed at step {step.id} but its checkpoint still fails: "
+            f"expected {check.expected}, observed {check.observed}."
+        )
+        return False
 
     async def _capture_failure_evidence(self, result: ReplayResult) -> None:
         """On any non-success, capture the page as it stood when it stopped."""

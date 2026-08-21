@@ -25,6 +25,7 @@ from capability.schema import AuthSpec, Condition, Policy, Target
 from discovery.loop import DEFAULT_PROVIDER, DiscoveryLoop
 from discovery.model import DEFAULT_MODELS, PROVIDERS, load_dotenv
 from discovery.recorder import record
+from escalation.operator import ConsoleOperator
 
 # Declared, reviewable, version-controlled. Not assembled from CLI flags:
 # an allowlist a caller can extend at invocation time is not an allowlist,
@@ -107,6 +108,14 @@ def main() -> None:
     parser.add_argument("--evidence-root", default="evidence/discovery")
     parser.add_argument("--out", default=None, help="Where to write the emitted artifact.")
     parser.add_argument("--headed", action="store_true")
+    parser.add_argument(
+        "--escalate",
+        action="store_true",
+        help=(
+            "When the model reports itself stuck, hand the same live session to a "
+            "human operator instead of ending the run. Implies --headed."
+        ),
+    )
     args = parser.parse_args()
     load_dotenv()
 
@@ -122,9 +131,11 @@ def main() -> None:
         policy=policy,
         target=target,
         evidence_dir=Path(args.evidence_root),
-        headless=not args.headed,
+        headless=not (args.headed or args.escalate),
         provider=args.provider,
         model=args.model,
+        escalate=args.escalate,
+        operator=(ConsoleOperator() if args.escalate else None),
     )
     outcome = asyncio.run(loop.run())
 
@@ -135,6 +146,7 @@ def main() -> None:
         "provider": outcome.provider,
         "model": outcome.model,
         "rate_limit_retries": len(outcome.rate_limit_events),
+        "human_interventions": outcome.human_interventions,
         "steps_attempted": outcome.steps_attempted,
         "outputs": outcome.outputs,
         "summary": outcome.summary,

@@ -1,0 +1,27 @@
+{
+  "run_id": "run_61d94a77",
+  "source": "replay",
+  "raised_at": "2026-08-21T05:53:19.145353+00:00",
+  "capability": {
+    "id": "member_savings_balance",
+    "version": "1.0.0"
+  },
+  "goal": "Replay member_savings_balance@1.0.0",
+  "stopped": {
+    "step_id": "s2",
+    "classification": "hard_failure",
+    "reason": "A maintenance interstitial is covering the page. Recovery attempted 0 times without clearing it.",
+    "expected": "step s2 to complete",
+    "observed": "A maintenance interstitial is covering the page. Recovery attempted 0 times without clearing it."
+  },
+  "state": {
+    "url": "http://localhost:8800/search",
+    "screenshot": "evidence/escalation/run_61d94a77/stuck.png",
+    "snapshot_file": "evidence/escalation/run_61d94a77/stuck_snapshot.txt",
+    "accessibility_snapshot": "--- FRAME navFrame ---\ndocument\n  generic\n    table\n      rowgroup\n        row\n          cell \"Northridge Credit Union\"\n        row\n          cell\n            table\n              rowgroup\n                row\n                  cell\n                    table\n                      rowgroup\n                        row\n                          cell\n                            link \"Member Search\" [href=/search]\n        row\n          cell\n            table\n              rowgroup\n                row\n                  cell \"Quick Lookup\"\n                row\n                  cell\n                    table\n                      rowgroup\n                        row\n                          cell \"member id\"\n                        row\n                          cell\n                            textbox [name_source=none]\n                        row\n                          cell\n                            button \"Submit\"\n        row\n          cell\n            button \"Log Off\"\n            text \"User: operator\"\n    table\n      rowgroup\n        row\n          cell \"CoreServ 4.2.1\"\n\n--- FRAME content ---\ndocument\n  generic\n    table\n      rowgroup\n        row\n          cell\n            table\n              rowgroup\n                row\n                  cell\n                    table\n                      rowgroup\n                        row\n                          cell \"System Maintenance\"\n                row\n                  cell\n                    table\n                      rowgroup\n                        row\n                          cell \"The system is undergoing scheduled maintenance. Some functions may be temporarily unavailable.\"\n                        row\n                          cell\n                            button \"Continue\"\n    table\n      rowgroup\n        row\n          cell \"Member Search\"\n        row\n          cell\n            table\n              rowgroup\n                row\n                  cell\n                    table\n                      rowgroup\n                        row\n                          cell\n                            table\n                              rowgroup\n                                row\n                                  cell \"Last Name\"\n                                  cell\n                                    textbox \"Last Name\" [name_source=preceding_td]\n                                row\n                                  cell \"Member ID\"\n                                  cell\n                                    textbox \"Member ID\" [value=***01, name_source=preceding_td]\n                                row\n                                  cell\n                                    button \"Submit\""
+  },
+  "inputs": {
+    "member_ref": "***01"
+  },
+  "completed_steps": []
+}

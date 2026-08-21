@@ -343,3 +343,40 @@ scrubber, which catches an SSN by shape but not a name, address, DOB or
 account number. Discovery logs whole-page observations, so it needs the seed
 scrubber the a11y diagnostic uses. Existing run logs were re-scrubbed with
 it.
+
+## Escalation and handoff
+
+Ownership is explicit state on the session (AUTOMATION | HUMAN | RELEASED),
+not an implicit consequence of which code is running — the two diverge
+exactly when it matters, on a retry that did not notice the pause. The
+executor asserts ownership before every action, in the same place and for
+the same reason policy is checked: a pause the caller is trusted to respect
+is not a pause.
+
+The operator drives the same Playwright context throughout. `ControlledSession`
+captures context identity at construction and re-asserts it on every
+transfer, so a handoff that quietly opened a new browser fails loudly rather
+than handing someone a different session from the one that got stuck.
+
+Resume re-evaluates the failed step's checkpoint and continues from there.
+Restarting would repeat completed steps — repeating their side effects and
+potentially undoing what the operator just fixed — and a resume whose
+checkpoint still fails is not treated as recovery.
+
+`--escalate` is off by default on both CLIs. A capability invoked by an agent
+in production has nobody at a terminal, and a run blocking forever for one is
+worse than a run that fails cleanly. It implies `--headed`, since a headless
+browser cannot be driven by a human.
+
+Capture is effect-level: URL and accessibility-state diff across the handoff,
+not keystrokes. The seam for action-level capture is documented in
+`escalation/capture.py` — CDP input events resolved through `perception`,
+which is what would let a human's manual fix be promoted into the artifact as
+recorded steps. Not built: an action recorder watching a human operate a
+bank's back office needs a retention and consent story first.
+
+Found while reading the generated evidence: the email pattern was masking
+`member_savings_balance@1.0.0` as an address, stripping the capability
+reference out of intervention requests. Over-redaction destroys evidence as
+surely as under-redaction leaks it; the pattern now requires an alphabetic
+TLD.

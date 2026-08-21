@@ -71,6 +71,8 @@ class ReplayResult:
     evidence: dict[str, str] = field(default_factory=dict)
     escalation_eligible: bool = False
     inputs_redacted: dict[str, str] = field(default_factory=dict)
+    human_interventions: list[dict[str, Any]] = field(default_factory=list)
+    control: dict[str, Any] = field(default_factory=dict)
 
     def as_dict(self) -> dict[str, Any]:
         d: dict[str, Any] = {
@@ -101,6 +103,10 @@ class ReplayResult:
             d["warnings"] = self.warnings
         if self.escalation_eligible:
             d["escalation_eligible"] = True
+        if self.human_interventions:
+            d["human_interventions"] = self.human_interventions
+        if self.control:
+            d["control"] = self.control
         if self.evidence:
             d["evidence"] = self.evidence
         d["trace"] = [t.as_dict() for t in self.trace]

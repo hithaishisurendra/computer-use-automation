@@ -1,0 +1,96 @@
+--- FRAME navFrame ---
+document
+  generic
+    table
+      rowgroup
+        row
+          cell "Northridge Credit Union"
+        row
+          cell
+            table
+              rowgroup
+                row
+                  cell
+                    table
+                      rowgroup
+                        row
+                          cell
+                            link "Member Search" [href=/search]
+        row
+          cell
+            table
+              rowgroup
+                row
+                  cell "Quick Lookup"
+                row
+                  cell
+                    table
+                      rowgroup
+                        row
+                          cell "member id"
+                        row
+                          cell
+                            textbox [name_source=none]
+                        row
+                          cell
+                            button "Submit"
+        row
+          cell
+            button "Log Off"
+            text "User: operator"
+    table
+      rowgroup
+        row
+          cell "CoreServ 4.2.1"
+
+--- FRAME content ---
+document
+  generic
+    table
+      rowgroup
+        row
+          cell
+            table
+              rowgroup
+                row
+                  cell
+                    table
+                      rowgroup
+                        row
+                          cell "System Maintenance"
+                row
+                  cell
+                    table
+                      rowgroup
+                        row
+                          cell "The system is undergoing scheduled maintenance. Some functions may be temporarily unavailable."
+                        row
+                          cell
+                            button "Continue"
+    table
+      rowgroup
+        row
+          cell "Member Search"
+        row
+          cell
+            table
+              rowgroup
+                row
+                  cell
+                    table
+                      rowgroup
+                        row
+                          cell
+                            table
+                              rowgroup
+                                row
+                                  cell "Last Name"
+                                  cell
+                                    textbox "Last Name" [name_source=preceding_td]
+                                row
+                                  cell "Member ID"
+                                  cell
+                                    textbox "Member ID" [value=***01, name_source=preceding_td]
+                                row
+                                  cell
+                                    button "Submit"

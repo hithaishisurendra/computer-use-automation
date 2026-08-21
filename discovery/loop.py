@@ -47,6 +47,7 @@ from discovery.model import (
 from discovery.prompts import ACTION_TOOLS, TERMINAL_TOOLS, TOOLS, build_system_prompt
 from perception.tree import filter_tree, snapshot_all_frames, to_compact_text
 from replay import resolver
+from escalation.session import ControlledSession
 from replay.executor import Executor, PolicyViolation, check_destination
 from replay.resolver import ElementUnresolvable
 
@@ -131,6 +132,7 @@ class DiscoveryOutcome:
     provider: str = ""
     model: str = ""
     rate_limit_events: list[dict[str, Any]] = field(default_factory=list)
+    human_interventions: list[dict[str, Any]] = field(default_factory=list)
 
     @property
     def succeeded(self) -> bool:
@@ -199,6 +201,9 @@ class DiscoveryLoop:
         provider: str = DEFAULT_PROVIDER,
         model: Optional[str] = None,
         client: Optional[ModelClient] = None,
+        escalate: bool = False,
+        operator=None,
+        escalation_root: str | Path = "evidence/escalation",
     ):
         self.goal = goal
         self.policy = policy
@@ -209,6 +214,13 @@ class DiscoveryLoop:
         self.provider = self.client.provider
         self.model = self.client.model
         self.rate_limit_events: list[dict[str, Any]] = []
+        # Off by default, same reasoning as replay: a discovery run left
+        # blocking on a human nobody is watching is worse than one that stops.
+        self.escalate = escalate
+        self.operator = operator
+        self.escalation_root = escalation_root
+        self.control = None
+        self.human_interventions: list[dict[str, Any]] = []
         self.run_id = f"disc_{uuid.uuid4().hex[:8]}"
         self.evidence_dir = Path(evidence_dir) / self.run_id
         self.evidence_dir.mkdir(parents=True, exist_ok=True)
@@ -384,7 +396,10 @@ class DiscoveryLoop:
         async with async_playwright() as pw:
             browser = await pw.chromium.launch(headless=self.headless)
             self.page = await browser.new_page()
-            self.executor = Executor(self.page, self.artifact, self._perceive)
+            self.control = ControlledSession(page=self.page)
+            self.executor = Executor(
+                self.page, self.artifact, self._perceive, control=self.control
+            )
 
             try:
                 await self._authenticate()
@@ -449,9 +464,28 @@ class DiscoveryLoop:
                         if block.name == "goal_reached":
                             status = "goal_reached"
                             summary = cycle.tool_input.get("summary")
-                        else:
-                            status = "stuck"
-                            message = cycle.tool_input.get("reason")
+                            break
+
+                        # The model declaring itself stuck is the discovery-side
+                        # trigger for human intervention: it knows it cannot
+                        # proceed, which is exactly when a person is useful.
+                        status = "stuck"
+                        message = cycle.tool_input.get("reason")
+                        if self.escalate and self.operator:
+                            resumed = await self._escalate(cycle, message or "model reported stuck")
+                            if resumed:
+                                messages.append(
+                                    Observation(
+                                        text=(
+                                            "A human operator took control of this same session, "
+                                            "made changes, and handed control back. Re-read the "
+                                            "snapshot below and continue toward the goal."
+                                        )
+                                    )
+                                )
+                                status = "max_steps"
+                                consecutive_failures = 0
+                                continue
                         break
 
                     if block.name not in ACTION_TOOLS:
@@ -523,6 +557,7 @@ class DiscoveryLoop:
             provider=self.provider,
             model=self.model,
             rate_limit_events=self.rate_limit_events,
+            human_interventions=self.human_interventions,
         )
         self.log(
             "run_finished",
@@ -537,6 +572,67 @@ class DiscoveryLoop:
             },
         )
         return outcome
+
+    async def _escalate(self, cycle: "Cycle", reason: str) -> bool:
+        """Hand the live session to a human when the model gives up.
+
+        Same control-transfer model replay uses, and the same session: the
+        operator continues on the page the model got stuck on, so whatever
+        context the run built up is still there.
+        """
+        from escalation.capture import HumanActionCapture, write_activity
+        from escalation.request import (
+            InterventionRequest,
+            capture_state,
+            escalation_dir,
+            write_request,
+        )
+
+        directory = escalation_dir(self.run_id, self.escalation_root)
+        url, screenshot, snapshot_path, snapshot = await capture_state(
+            self.page, self._perceive, directory
+        )
+        request = InterventionRequest(
+            run_id=self.run_id,
+            source="discovery",
+            goal=self.goal,
+            reason=reason,
+            classification="stuck",
+            step_id=f"cycle_{cycle.index}",
+            observed=reason,
+            expected="the model to be able to continue toward the goal",
+            url=url,
+            screenshot_path=screenshot,
+            snapshot_path=snapshot_path,
+            snapshot=snapshot,
+            completed_steps=[f"cycle_{c.index}" for c in self.cycles if c.status == "ok"],
+        )
+        request_path = write_request(request, self.escalation_root)
+        self.log("intervention_raised", {"cycle": cycle.index, "request": str(request_path)})
+
+        capture = HumanActionCapture(self.page, self._perceive)
+        await capture.begin()
+        self.control.hand_to_human(f"model reported stuck at cycle {cycle.index}: {reason}")
+        try:
+            decision = self.operator.handle(request)
+        finally:
+            self.control.take_back("operator returned control")
+
+        activity = await capture.end(decision)
+        write_activity(self.run_id, activity, self.control.as_dict(), self.escalation_root)
+        self.human_interventions.append(
+            {
+                "cycle": cycle.index,
+                "decision": decision.decision.value,
+                "operator": decision.operator,
+                "notes": decision.notes,
+                "url_changed": activity.url_changed,
+            }
+        )
+        self.log("intervention_resolved", self.human_interventions[-1])
+        if decision.resumed:
+            self.control.assert_same_session()
+        return decision.resumed
 
     async def _screenshot(self, index: int) -> None:
         try:

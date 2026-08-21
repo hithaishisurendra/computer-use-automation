@@ -1,0 +1,280 @@
+{
+  "classification": "success",
+  "capability": {
+    "id": "member_savings_balance",
+    "version": "1.0.0"
+  },
+  "tenant": "northridge",
+  "run_id": "run_21371567",
+  "duration_ms": 1985.16,
+  "inputs": {
+    "member_ref": "***01"
+  },
+  "outputs": {
+    "savings_balance": "8320.10",
+    "member_name": "<redacted>"
+  },
+  "recoverable_conditions": [
+    {
+      "step_id": "s1",
+      "attempt": 1,
+      "name": "maintenance_interstitial",
+      "layer": "engine",
+      "classification": "recoverable",
+      "message": "A maintenance interstitial is covering the page.",
+      "recovery": "dismiss via 'Continue' and retry the step"
+    },
+    {
+      "step_id": "s2",
+      "attempt": 1,
+      "name": "maintenance_interstitial",
+      "layer": "engine",
+      "classification": "recoverable",
+      "message": "A maintenance interstitial is covering the page.",
+      "recovery": "dismiss via 'Continue' and retry the step"
+    }
+  ],
+  "escalation_eligible": true,
+  "human_interventions": [
+    {
+      "step_id": "s1",
+      "decision": "resume",
+      "operator": "demo-<redacted:credential>",
+      "notes": "dismissed the maintenance overlay",
+      "url_changed": false
+    },
+    {
+      "step_id": "s2",
+      "decision": "resume",
+      "operator": "demo-<redacted:credential>",
+      "notes": "dismissed the maintenance overlay",
+      "url_changed": false
+    }
+  ],
+  "control": {
+    "owner": "released",
+    "context_identity": 4518070320,
+    "transitions": [
+      {
+        "at": "2026-08-21T05:51:50.074722+00:00",
+        "from": "automation",
+        "to": "human",
+        "reason": "step s1: A maintenance interstitial is covering the page. Recovery attempted 0 times without clearing it."
+      },
+      {
+        "at": "2026-08-21T05:51:50.085288+00:00",
+        "from": "human",
+        "to": "automation",
+        "reason": "<redacted:credential> returned control after step s1"
+      },
+      {
+        "at": "2026-08-21T05:51:50.226154+00:00",
+        "from": "automation",
+        "to": "human",
+        "reason": "step s2: A maintenance interstitial is covering the page. Recovery attempted 0 times without clearing it."
+      },
+      {
+        "at": "2026-08-21T05:51:50.234048+00:00",
+        "from": "human",
+        "to": "automation",
+        "reason": "<redacted:credential> returned control after step s2"
+      },
+      {
+        "at": "2026-08-21T05:51:50.462486+00:00",
+        "from": "automation",
+        "to": "released",
+        "reason": "run finished: success"
+      }
+    ]
+  },
+  "evidence": {
+    "intervention_request": "evidence/escalation/run_21371567/request.json",
+    "handoff": "evidence/escalation/run_21371567/handoff.json"
+  },
+  "trace": [
+    {
+      "step_id": "s1",
+      "action": "navigate",
+      "status": "failed",
+      "duration_ms": 34.37,
+      "attempts": 1,
+      "detections": [
+        {
+          "name": "maintenance_interstitial",
+          "layer": "engine",
+          "classification": "recoverable",
+          "message": "A maintenance interstitial is covering the page.",
+          "recovery": "dismiss via 'Continue' and retry the step"
+        }
+      ]
+    },
+    {
+      "step_id": "s2",
+      "action": "fill",
+      "status": "failed",
+      "duration_ms": 39.61,
+      "attempts": 1,
+      "resolution": {
+        "element": "member_ref_field",
+        "resolved": true,
+        "frame": "content",
+        "rung_index": 0,
+        "strategy": "role_name",
+        "confidence": "high",
+        "brittle": false,
+        "duration_ms": 0.03,
+        "attempts": [
+          {
+            "rung": 0,
+            "strategy": "role_name",
+            "confidence": "high",
+            "brittle": false,
+            "match_count": 1,
+            "outcome": "resolved"
+          }
+        ]
+      },
+      "detections": [
+        {
+          "name": "maintenance_interstitial",
+          "layer": "engine",
+          "classification": "recoverable",
+          "message": "A maintenance interstitial is covering the page.",
+          "recovery": "dismiss via 'Continue' and retry the step"
+        }
+      ]
+    },
+    {
+      "step_id": "s3",
+      "action": "click",
+      "status": "ok",
+      "duration_ms": 86.68,
+      "attempts": 1,
+      "resolution": {
+        "element": "search_submit",
+        "resolved": true,
+        "frame": "content",
+        "rung_index": 0,
+        "strategy": "role_name",
+        "confidence": "high",
+        "brittle": false,
+        "duration_ms": 0.03,
+        "attempts": [
+          {
+            "rung": 0,
+            "strategy": "role_name",
+            "confidence": "high",
+            "brittle": false,
+            "match_count": 1,
+            "outcome": "resolved"
+          }
+        ]
+      },
+      "checkpoint": {
+        "satisfied": true,
+        "expected": "(element 'results_grid' present OR text 'No records match' present on page)",
+        "observed": "satisfied by: element 'results_grid' present",
+        "duration_ms": 12.06,
+        "children": [
+          {
+            "satisfied": true,
+            "expected": "element 'results_grid' present",
+            "observed": "resolved via rung 0"
+          },
+          {
+            "satisfied": false,
+            "expected": "text 'No records match' present on page",
+            "observed": "text not present on page"
+          }
+        ]
+      }
+    },
+    {
+      "step_id": "s4",
+      "action": "click",
+      "status": "ok",
+      "duration_ms": 58.42,
+      "attempts": 1,
+      "resolution": {
+        "element": "results_view_link",
+        "resolved": true,
+        "frame": "content",
+        "rung_index": 0,
+        "strategy": "role_name_scoped",
+        "confidence": "high",
+        "brittle": false,
+        "duration_ms": 0.07,
+        "attempts": [
+          {
+            "rung": 0,
+            "strategy": "role_name_scoped",
+            "confidence": "high",
+            "brittle": false,
+            "match_count": 1,
+            "outcome": "resolved"
+          }
+        ]
+      },
+      "checkpoint": {
+        "satisfied": true,
+        "expected": "element 'member_detail_heading' present",
+        "observed": "resolved via rung 0",
+        "duration_ms": 15.26
+      }
+    },
+    {
+      "step_id": "s5",
+      "action": "extract",
+      "status": "ok",
+      "duration_ms": 26.63,
+      "attempts": 1,
+      "resolution": {
+        "element": "savings_balance_cell",
+        "resolved": true,
+        "frame": "content",
+        "rung_index": 0,
+        "strategy": "cell_in_row",
+        "confidence": "high",
+        "brittle": false,
+        "duration_ms": 0.16,
+        "attempts": [
+          {
+            "rung": 0,
+            "strategy": "cell_in_row",
+            "confidence": "high",
+            "brittle": false,
+            "match_count": 1,
+            "outcome": "resolved"
+          }
+        ]
+      }
+    },
+    {
+      "step_id": "s6",
+      "action": "extract",
+      "status": "ok",
+      "duration_ms": 29.65,
+      "attempts": 1,
+      "resolution": {
+        "element": "member_name_cell",
+        "resolved": true,
+        "frame": "content",
+        "rung_index": 0,
+        "strategy": "cell_in_row",
+        "confidence": "medium",
+        "brittle": false,
+        "duration_ms": 0.12,
+        "attempts": [
+          {
+            "rung": 0,
+            "strategy": "cell_in_row",
+            "confidence": "medium",
+            "brittle": false,
+            "match_count": 1,
+            "outcome": "resolved"
+          }
+        ]
+      }
+    }
+  ]
+}

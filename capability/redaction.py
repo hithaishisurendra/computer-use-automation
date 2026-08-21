@@ -33,7 +33,12 @@ from typing import Iterable, Optional
 # over-masking destroys the evidence these files exist to provide.
 DEFAULT_PATTERNS: list[tuple[str, str]] = [
     (r"\b\d{3}-\d{2}-\d{4}\b", "<redacted:ssn>"),
-    (r"\b[\w.+-]+@[\w-]+\.[\w.]+\b", "<redacted:email>"),
+    # The final label must be alphabetic. Without that, a capability
+    # reference like "member_savings_balance@1.0.0" reads as an email and
+    # gets masked out of an intervention request -- destroying exactly the
+    # context an operator needs. Over-redaction is a real failure mode, not
+    # a safe default.
+    (r"\b[\w.+-]+@[\w-]+(?:\.[\w-]+)*\.[A-Za-z]{2,}\b", "<redacted:email>"),
     (r"\b\d{3}-\d{3}-\d{4}\b", "<redacted:phone>"),
 ]
 

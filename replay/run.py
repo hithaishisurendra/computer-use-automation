@@ -47,6 +47,15 @@ def main() -> None:
     parser.add_argument("--capabilities-root", default="capabilities")
     parser.add_argument("--evidence-root", default="evidence/replay")
     parser.add_argument("--headed", action="store_true")
+    parser.add_argument(
+        "--escalate",
+        action="store_true",
+        help=(
+            "Hand a stuck run to a human operator on the same live session instead of "
+            "failing. Implies --headed, since a person has to be able to drive it. "
+            "Off by default so unattended replay stays unattended."
+        ),
+    )
     args = parser.parse_args()
 
     try:
@@ -57,7 +66,21 @@ def main() -> None:
         print(json.dumps({"classification": "hard_failure", "message": str(exc)}, indent=2))
         raise SystemExit(1)
 
-    engine = ReplayEngine(artifact, evidence_root=args.evidence_root, headless=not args.headed)
+    operator = None
+    if args.escalate:
+        from escalation.operator import ConsoleOperator
+
+        operator = ConsoleOperator()
+
+    engine = ReplayEngine(
+        artifact,
+        evidence_root=args.evidence_root,
+        # A headless browser cannot be driven by a human, so escalation forces
+        # a visible one rather than silently offering an unusable handoff.
+        headless=not (args.headed or args.escalate),
+        escalate=args.escalate,
+        operator=operator,
+    )
     result = asyncio.run(engine.run(parse_inputs(args.input)))
 
     print(json.dumps(result.as_dict(), indent=2, default=str))

@@ -116,12 +116,18 @@ class Executor:
     checkpoints and classifier stay unit-testable without Chromium.
     """
 
-    def __init__(self, page, artifact: Artifact, perceive):
+    def __init__(self, page, artifact: Artifact, perceive, control=None):
         self.page = page
         self.artifact = artifact
         # perceive() -> dict[frame_name, augmented tree]; injected so the
         # executor never reaches into perception directly.
         self.perceive = perceive
+        # Optional ControlledSession. When set, automation must hold control
+        # before it may act -- checked here rather than by callers, for the
+        # same reason policy is: a pause the caller is trusted to respect is
+        # not a pause. None means no escalation is configured and automation
+        # is the only actor.
+        self.control = control
 
     # -- locating -----------------------------------------------------------
 
@@ -147,7 +153,10 @@ class Executor:
     # -- actions ------------------------------------------------------------
 
     async def execute(self, step: Step, params: dict[str, Any]) -> ActionOutcome:
-        """Run one step. Policy is checked before anything touches the page."""
+        """Run one step. Ownership and policy are checked before anything
+        touches the page."""
+        if self.control is not None:
+            self.control.assert_automation_may_act(f"run step {step.id}")
         check_action(self.artifact, step.action, step.id)
         risk_note = check_risk(self.artifact, step)
 
