@@ -1,6 +1,20 @@
+# Target app (CoreServ)
 fastapi>=0.110
 uvicorn>=0.29
 jinja2>=3.1
 python-multipart>=0.0.9
+pydantic>=2.0
+
+# Browser automation, used by perception, discovery and replay
 playwright>=1.62
+
+# Model clients. Both are declared because discovery/model.py implements
+# both providers behind one interface; only the configured one is used.
+google-genai>=2.19          # default provider (gemini-3.5-flash)
+anthropic>=0.122            # --provider anthropic
+
+# HTTP client, used by the fault-injection control plane and by tests
 httpx>=0.27
+
+# Tests
+pytest>=8.0

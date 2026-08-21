@@ -91,14 +91,12 @@ is validated by loading it back before the run reports success.
 
 ### 2. Replay — the same artifact, no model
 
-Copy the emitted artifact where the loader can address it by id, then run it
-**for a different member than it was discovered on**:
+An artifact emitted by a real discovery run is already committed at
+`capabilities/member_savings_balance_discovered/`, so this needs no API key
+and no prior step. Run it **for a different member than it was discovered
+on** — discovery saw 10001; this asks for 10003:
 
 ```bash
-mkdir -p capabilities/member_savings_balance_discovered
-cp evidence/discovery/<run_id>/artifact.json \
-   capabilities/member_savings_balance_discovered/1.0.0.json
-
 python -m replay.run \
   --capability member_savings_balance_discovered --version 1.0.0 \
   --input member_ref=10003
@@ -108,16 +106,21 @@ Prints a structured result. Exit codes: `0` success **and** business outcome,
 `1` hard failure, `2` caller error, `3` auth failure — "no such member" is an
 answer, not a crash.
 
-A pre-recorded copy is already committed, so this works without running
-discovery first:
-
-```bash
-python -m replay.run --capability member_savings_balance_discovered \
-  --version 1.0.0 --input member_ref=10003
-```
-
 Members with a savings account: `10001` (8320.10), `10003` (15230.44),
 `10006` (3305.90), `10010` (640.75).
+
+**If you ran discovery yourself in step 1**, replay your own artifact by
+copying it where the loader can address it by capability id:
+
+```bash
+mkdir -p capabilities/my_discovered_capability
+cp evidence/discovery/<run_id>/artifact.json \
+   capabilities/my_discovered_capability/1.0.0.json
+```
+
+The capability id inside the artifact must match the directory name — set it
+with `--capability-id my_discovered_capability` when you run discovery, or
+use the committed copy above.
 
 ### 3. Error and outcome handling
 
@@ -179,7 +182,15 @@ python -m replay.run --capability member_savings_balance --version 1.0.0 \
 Same artifact resolved through `capabilities/member_savings_balance/tenants/cascade.json`.
 Cascade searches by ten-digit account number, relabels the field and reorders
 the results grid; the overlay is two element chains, one input pattern and one
-version string. See `REPORT.md` §4 for a real limitation this exposed.
+version string.
+
+Cascade runs on **8800**, in place of northridge, rather than alongside it on
+a second port — and that is a limitation, not a preference. An overlay may
+override `base_url` but **not** `policy.allowed_origins`, so an artifact
+pointed at a second host would fail its own origin check, and the replay CLI
+has no host override. Pointing this run at 8801 silently drives northridge
+instead and returns a clean-looking `member_not_found`. `REPORT.md` §4 covers
+the finding and the fix; `evidence/README.md` records both runs.
 
 ---
 

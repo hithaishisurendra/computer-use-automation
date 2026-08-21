@@ -6,8 +6,6 @@ against **CoreServ**, a purpose-written proxy target: real `<frameset>`,
 tables nested three deep, server-generated element ids that rotate on every
 render, no test ids, and seven server-side fault flags.
 
-199 tests; 178 run with no live services.
-
 ---
 
 ## 1. Architecture
@@ -48,10 +46,16 @@ accessible name; **every text input, select, radio and checkbox came back
 nameless**, because CoreServ labels fields with an adjacent table cell rather
 than `<label for>`. Worse than uniformly empty — the Account Type `<select>`
 inherited its *selected option* as a name, which reads like a working label
-and is actually the field's value. `perception/labeling.py` compensates with a
-seven-rule DOM chain, recording which rule fired (`name_source`). Ten of
-eleven nameless controls resolved; one did not, and stays reported rather than
-patched.
+and is actually the field's value.
+
+**CoreServ was left unpatched and the perception layer compensates** —
+adding a `<label for>` to each input would have fixed every case in one
+commit, but that is fitting the world to the strategy, and the whole premise
+is that we do not control these applications. `perception/labeling.py`
+instead infers names from the surrounding DOM through a seven-rule chain,
+recording which rule fired (`name_source`) so an inferred name is never
+mistaken for one the platform supplied. Ten of eleven nameless controls
+resolved; one did not, and stays reported rather than patched.
 
 **Provider choice is configuration.** `discovery/model.py` exposes one
 abstract method (`complete`); `AnthropicClient` and `GeminiClient` sit behind
