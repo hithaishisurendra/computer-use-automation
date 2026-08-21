@@ -1,47 +1,60 @@
 {
   "classification": "success",
   "capability": {
-    "id": "member_savings_balance_discovered",
+    "id": "member_savings_balance",
     "version": "1.0.0"
   },
-  "tenant": "northridge",
-  "run_id": "run_1ee22fab",
-  "duration_ms": 2938.63,
+  "tenant": "cascade",
+  "run_id": "run_8dee5028",
+  "duration_ms": 2228.88,
   "inputs": {
-    "member_ref": "***06"
+    "member_ref": "********19"
   },
   "outputs": {
-    "savings_balance": "3305.90"
+    "savings_balance": "8320.10",
+    "member_name": "<redacted>"
+  },
+  "control": {
+    "owner": "released",
+    "context_identity": 4484015712,
+    "transitions": [
+      {
+        "at": "2026-08-21T06:04:58.486188+00:00",
+        "from": "automation",
+        "to": "released",
+        "reason": "run finished: success"
+      }
+    ]
   },
   "trace": [
     {
       "step_id": "s1",
       "action": "navigate",
       "status": "ok",
-      "duration_ms": 261.97,
+      "duration_ms": 67.07,
       "attempts": 1,
       "checkpoint": {
         "satisfied": true,
-        "expected": "element 'member_id_field' present",
+        "expected": "element 'member_ref_field' present",
         "observed": "resolved via rung 0",
-        "duration_ms": 97.19
+        "duration_ms": 20.83
       }
     },
     {
       "step_id": "s2",
       "action": "fill",
       "status": "ok",
-      "duration_ms": 87.36,
+      "duration_ms": 40.04,
       "attempts": 1,
       "resolution": {
-        "element": "member_id_field",
+        "element": "member_ref_field",
         "resolved": true,
         "frame": "content",
         "rung_index": 0,
         "strategy": "role_name",
         "confidence": "high",
         "brittle": false,
-        "duration_ms": 0.03,
+        "duration_ms": 0.02,
         "attempts": [
           {
             "rung": 0,
@@ -58,10 +71,10 @@
       "step_id": "s3",
       "action": "click",
       "status": "ok",
-      "duration_ms": 1181.72,
+      "duration_ms": 103.59,
       "attempts": 1,
       "resolution": {
-        "element": "submit_button",
+        "element": "search_submit",
         "resolved": true,
         "frame": "content",
         "rung_index": 0,
@@ -82,30 +95,42 @@
       },
       "checkpoint": {
         "satisfied": true,
-        "expected": "element 'view_link' present",
-        "observed": "resolved via rung 0",
-        "duration_ms": 33.08
+        "expected": "(element 'results_grid' present OR text 'No records match' present on page)",
+        "observed": "satisfied by: element 'results_grid' present",
+        "duration_ms": 13.27,
+        "children": [
+          {
+            "satisfied": true,
+            "expected": "element 'results_grid' present",
+            "observed": "resolved via rung 0"
+          },
+          {
+            "satisfied": false,
+            "expected": "text 'No records match' present on page",
+            "observed": "text not present on page"
+          }
+        ]
       }
     },
     {
       "step_id": "s4",
       "action": "click",
       "status": "ok",
-      "duration_ms": 155.48,
+      "duration_ms": 74.45,
       "attempts": 1,
       "resolution": {
-        "element": "view_link",
+        "element": "results_view_link",
         "resolved": true,
         "frame": "content",
         "rung_index": 0,
-        "strategy": "role_name",
+        "strategy": "role_name_scoped",
         "confidence": "high",
         "brittle": false,
-        "duration_ms": 0.02,
+        "duration_ms": 0.07,
         "attempts": [
           {
             "rung": 0,
-            "strategy": "role_name",
+            "strategy": "role_name_scoped",
             "confidence": "high",
             "brittle": false,
             "match_count": 1,
@@ -115,31 +140,58 @@
       },
       "checkpoint": {
         "satisfied": true,
-        "expected": "element 'savings_balance_source' present",
+        "expected": "element 'member_detail_heading' present",
         "observed": "resolved via rung 0",
-        "duration_ms": 37.36
+        "duration_ms": 15.0
       }
     },
     {
       "step_id": "s5",
       "action": "extract",
       "status": "ok",
-      "duration_ms": 72.27,
+      "duration_ms": 27.09,
       "attempts": 1,
       "resolution": {
-        "element": "savings_balance_source",
+        "element": "savings_balance_cell",
         "resolved": true,
         "frame": "content",
         "rung_index": 0,
         "strategy": "cell_in_row",
         "confidence": "high",
         "brittle": false,
-        "duration_ms": 0.18,
+        "duration_ms": 0.16,
         "attempts": [
           {
             "rung": 0,
             "strategy": "cell_in_row",
             "confidence": "high",
+            "brittle": false,
+            "match_count": 1,
+            "outcome": "resolved"
+          }
+        ]
+      }
+    },
+    {
+      "step_id": "s6",
+      "action": "extract",
+      "status": "ok",
+      "duration_ms": 29.01,
+      "attempts": 1,
+      "resolution": {
+        "element": "member_name_cell",
+        "resolved": true,
+        "frame": "content",
+        "rung_index": 0,
+        "strategy": "cell_in_row",
+        "confidence": "medium",
+        "brittle": false,
+        "duration_ms": 0.17,
+        "attempts": [
+          {
+            "rung": 0,
+            "strategy": "cell_in_row",
+            "confidence": "medium",
             "brittle": false,
             "match_count": 1,
             "outcome": "resolved"

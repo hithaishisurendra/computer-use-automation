@@ -37,3 +37,15 @@ Notes
       though that rung succeeded.
   The business outcome is correct: a 10-digit account number is not a northridge
   member id, so no record matches.
+
+
+Added for the evidence deliverable
+----------------------------------
+member_not_found (fault)   0            business_outcome   member_not_found   run_4666bfd5
+cascade tenant + overlay   0            success            -                  run_8dee5028 balance=8320.10
+
+* "cascade tenant + overlay" is the hand-written artifact resolved through
+  capabilities/member_savings_balance/tenants/cascade.json against a live
+  TENANT=cascade instance. No drift warnings and every element resolved at
+  rung 0, including results_view_link, which needs no per-tenant override.
+  See evidence/README.md for the two findings this exercise produced.

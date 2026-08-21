@@ -1,0 +1,62 @@
+--- FRAME '' ---
+(empty)
+--- FRAME 'navFrame' ---
+document
+  generic
+    table
+      rowgroup
+        row
+          cell "Northridge Credit Union"
+        row
+          cell
+            table
+              rowgroup
+                row
+                  cell
+                    table
+                      rowgroup
+                        row
+                          cell
+                            link "Member Search" [href=/search]
+        row
+          cell
+            table
+              rowgroup
+                row
+                  cell "Quick Lookup"
+                row
+                  cell
+                    table
+                      rowgroup
+                        row
+                          cell "member id"
+                        row
+                          cell
+                            textbox [name_source=none]
+                        row
+                          cell
+                            button "Submit"
+        row
+          cell
+            button "Log Off"
+            text "User: <redacted:credential>"
+    table
+      rowgroup
+        row
+          cell "CoreServ 4.2.1"
+--- FRAME 'content' ---
+document
+  table
+    rowgroup
+      row
+        cell "Search Results"
+      row
+        cell
+          table
+            rowgroup
+              row
+                cell
+                  table
+                    rowgroup
+                      row
+                        cell "No records match your criteria."
