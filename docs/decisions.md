@@ -297,3 +297,28 @@ production case -- while **registered literals** are exact but only
 available when the values are already known, as with our own credentials
 and a seed fixture we own. A regression test now asserts that no seed SSN or
 account number appears anywhere under `evidence/`.
+
+## Provider seam
+
+Discovery runs on Gemini (`gemini-3.5-flash`) behind `discovery/model.py`.
+The Anthropic client stays as a working alternate: a single-implementation
+interface is a guess about where the boundary is, and only a second one
+shows the neutral form survives a different wire format.
+
+Tool definitions are plain JSON Schema (`ToolSpec`), passed to Gemini via
+`parameters_json_schema` with no per-provider translation, so the vocabulary
+cannot drift between providers. The transcript is neutral too. Tests assert
+`recorder.py`, `prompts.py`, `loop.py` and all of `capability/`, `replay/`,
+`perception/` import no provider SDK, and that `ModelClient` has exactly one
+abstract method.
+
+`gemini-2.5-flash` was unusable: it lists but returns 404 "no longer
+available to new users". The replacement was verified against the live key,
+not inferred from the error's suggestion.
+
+Two rough edges from the real run, neither breaking:
+- The capability id is derived from goal text, so it carries the discovered
+  member (`member_10001_...`) even though the parameter generalised to
+  `{{member_ref}}`. Should drop numeric tokens.
+- No `navigate` step was recorded — the frameset already loads `/search`, so
+  replay works by coincidence of that default matching `entry_path`.

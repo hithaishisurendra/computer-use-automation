@@ -153,19 +153,28 @@ def load_overlay(path: str | Path) -> TenantOverlay:
         raise OverlayError(_format_validation_error(path, exc)) from exc
 
 
-def _narrowing_paths(base_paths: list[str], overlay_paths: list[str]) -> list[str]:
-    """Every overlay path must be covered by some base path.
+def widening_paths(base_paths: list[str], requested_paths: list[str]) -> list[str]:
+    """Requested paths NOT covered by the base allowlist.
 
     "Covered" means literally present in the base list, or matching one of
     its globs -- so a base of `/member/*` may be narrowed to `/member/10001`
     but never widened to `/admin`. fnmatch is the right matcher here because
     allowed_paths are already glob-shaped in the schema.
+
+    Public because the narrowing rule has more than one caller: tenant
+    overlays enforce it here, and discovery enforces it on its own CLI
+    flags. One predicate, so the two cannot drift into disagreeing about
+    what "narrower" means.
     """
-    widened = [
+    return [
         p
-        for p in overlay_paths
+        for p in requested_paths
         if p not in base_paths and not any(fnmatch.fnmatch(p, b) for b in base_paths)
     ]
+
+
+def _narrowing_paths(base_paths: list[str], overlay_paths: list[str]) -> list[str]:
+    widened = widening_paths(base_paths, overlay_paths)
     if widened:
         raise OverlayError(
             "overlay policy_overrides.allowed_paths may only narrow the base allowlist; "

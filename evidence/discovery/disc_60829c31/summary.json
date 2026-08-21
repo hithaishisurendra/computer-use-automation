@@ -1,0 +1,18 @@
+{
+  "run_id": "disc_60829c31",
+  "status": "goal_reached",
+  "goal": "Look up member 10001 and read their current savings balance",
+  "provider": "gemini",
+  "model": "gemini-3.5-flash",
+  "rate_limit_retries": 0,
+  "steps_attempted": 7,
+  "outputs": {
+    "savings_balance": "8320.10"
+  },
+  "summary": "Looked up member 10001 and extracted their current savings balance of 8320.10.",
+  "message": null,
+  "duration_ms": 36940.89,
+  "artifact_valid": true,
+  "artifact": "evidence/discovery/disc_60829c31/artifact.json",
+  "steps_recorded": 4
+}

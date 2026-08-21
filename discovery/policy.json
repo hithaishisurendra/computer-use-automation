@@ -1,0 +1,38 @@
+{
+  "_comment": [
+    "The policy discovery runs under. Declared here as reviewable data, not",
+    "assembled from CLI flags at invocation time: an allowlist a caller can",
+    "extend is not an allowlist. --allow-path may only NARROW this set, and",
+    "the narrowing is validated with the same predicate tenant overlays use.",
+    "",
+    "allowed_paths covers the login page, the frameset shell, the nav frame,",
+    "and the member servicing flow. /_faults is deliberately absent: the agent",
+    "must not be able to change the application's own fault state, which is the",
+    "smallest honest demonstration that this list constrains something real.",
+    "",
+    "allowed_actions is the full artifact vocabulary because discovery does not",
+    "know in advance which actions a goal will need. The recorder narrows the",
+    "emitted artifact to the actions actually used."
+  ],
+  "allowed_origins": ["http://localhost:8800"],
+  "allowed_paths": [
+    "/",
+    "/home",
+    "/nav",
+    "/search",
+    "/search/results",
+    "/member/*"
+  ],
+  "allowed_actions": [
+    "navigate",
+    "click",
+    "fill",
+    "select",
+    "check",
+    "extract",
+    "wait_for"
+  ],
+  "risky_action_handling": "require_confirmation",
+  "max_steps": 25,
+  "timeout_ms": 300000
+}

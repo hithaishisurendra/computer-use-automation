@@ -1,0 +1,229 @@
+{
+  "schema_version": "1.0",
+  "capability": {
+    "id": "member_10001_current_savings_balance",
+    "version": "1.0.0",
+    "name": "Look up member 10001 and read their current savings balance",
+    "description": "Look up member 10001 and read their current savings balance",
+    "status": "draft"
+  },
+  "target": {
+    "surface": "web",
+    "app": "coreserv",
+    "app_version": "4.2.1",
+    "tenant": "northridge",
+    "base_url": "http://localhost:8800",
+    "entry_path": "/search",
+    "auth": {
+      "mode": "form_login",
+      "path": "/",
+      "credentials_ref": {
+        "username": "CORESERV_USERNAME",
+        "password": "CORESERV_PASSWORD"
+      },
+      "success_check": {
+        "type": "url_matches",
+        "pattern": "/home|/search"
+      }
+    }
+  },
+  "inputs": [
+    {
+      "name": "member_ref",
+      "type": "string",
+      "required": true,
+      "description": "The identifier used to locate the record, entered into 'Member ID'.",
+      "example": "10001",
+      "pattern": "^[0-9]{5}$",
+      "sensitivity": "identifier"
+    }
+  ],
+  "outputs": [
+    {
+      "name": "savings_balance",
+      "type": "money",
+      "required": true,
+      "description": "Value read from 8320.10.",
+      "sensitivity": "public"
+    }
+  ],
+  "elements": {
+    "member_id_field": {
+      "description": "textbox Member ID",
+      "frame": "content",
+      "chain": [
+        {
+          "strategy": "role_name",
+          "role": "textbox",
+          "name": "Member ID",
+          "confidence": "high"
+        },
+        {
+          "strategy": "role_ordinal",
+          "role": "textbox",
+          "index": 1,
+          "confidence": "low",
+          "brittle": true,
+          "notes": "Positional fallback; recorded only because it resolved uniquely."
+        }
+      ],
+      "notes": "Chain built by probing which strategies uniquely resolved this element during discovery."
+    },
+    "submit_button": {
+      "description": "button Submit",
+      "frame": "content",
+      "chain": [
+        {
+          "strategy": "role_name",
+          "role": "button",
+          "name": "Submit",
+          "confidence": "high"
+        },
+        {
+          "strategy": "role_ordinal",
+          "role": "button",
+          "index": 0,
+          "confidence": "low",
+          "brittle": true,
+          "notes": "Positional fallback; recorded only because it resolved uniquely."
+        }
+      ],
+      "notes": "Chain built by probing which strategies uniquely resolved this element during discovery."
+    },
+    "view_link": {
+      "description": "link View",
+      "frame": "content",
+      "chain": [
+        {
+          "strategy": "role_name",
+          "role": "link",
+          "name": "View",
+          "confidence": "high"
+        },
+        {
+          "strategy": "role_name_scoped",
+          "role": "link",
+          "name": "View",
+          "scope": {
+            "role": "row",
+            "contains": "{{member_ref}}"
+          },
+          "confidence": "high"
+        },
+        {
+          "strategy": "role_ordinal",
+          "role": "link",
+          "index": 0,
+          "confidence": "low",
+          "brittle": true,
+          "notes": "Positional fallback; recorded only because it resolved uniquely."
+        }
+      ],
+      "notes": "Chain built by probing which strategies uniquely resolved this element during discovery."
+    },
+    "savings_balance_source": {
+      "description": "cell 8320.10",
+      "frame": "content",
+      "chain": [
+        {
+          "strategy": "cell_in_row",
+          "scope": {
+            "role": "row",
+            "contains": "Savings"
+          },
+          "column_header": "Balance",
+          "confidence": "high"
+        },
+        {
+          "strategy": "cell_in_row",
+          "scope": {
+            "role": "row",
+            "contains": "Savings"
+          },
+          "column_index": 2,
+          "confidence": "medium"
+        },
+        {
+          "strategy": "role_ordinal",
+          "role": "cell",
+          "index": 27,
+          "confidence": "low",
+          "brittle": true,
+          "notes": "Positional fallback; recorded only because it resolved uniquely."
+        }
+      ],
+      "notes": "Chain built by probing which strategies uniquely resolved this element during discovery."
+    }
+  },
+  "steps": [
+    {
+      "id": "s1",
+      "action": "fill",
+      "element": "member_id_field",
+      "risk": "safe",
+      "value": "{{member_ref}}"
+    },
+    {
+      "id": "s2",
+      "action": "click",
+      "element": "submit_button",
+      "risk": "safe",
+      "checkpoint": {
+        "type": "element_present",
+        "element": "view_link",
+        "timeout_ms": 8000
+      }
+    },
+    {
+      "id": "s3",
+      "action": "click",
+      "element": "view_link",
+      "risk": "safe",
+      "checkpoint": {
+        "type": "element_present",
+        "element": "savings_balance_source",
+        "timeout_ms": 8000
+      }
+    },
+    {
+      "id": "s4",
+      "action": "extract",
+      "element": "savings_balance_source",
+      "risk": "safe",
+      "into": "savings_balance"
+    }
+  ],
+  "outcomes": [],
+  "policy": {
+    "allowed_origins": [
+      "http://localhost:8800"
+    ],
+    "allowed_paths": [
+      "/",
+      "/home",
+      "/nav",
+      "/search",
+      "/search/results",
+      "/member/*"
+    ],
+    "allowed_actions": [
+      "click",
+      "extract",
+      "fill"
+    ],
+    "risky_action_handling": "require_confirmation",
+    "max_steps": 25,
+    "timeout_ms": 300000
+  },
+  "provenance": {
+    "source": "discovery",
+    "discovered_at": "2026-08-21T02:46:02.767704Z",
+    "goal": "Look up member 10001 and read their current savings balance",
+    "model": "gemini:gemini-3.5-flash",
+    "discovery_run_id": "disc_60829c31",
+    "steps_attempted": 7,
+    "steps_recorded": 4,
+    "human_interventions": 0,
+    "notes": "Emitted by discovery/recorder.py. Locator chains were built by probing which strategies uniquely resolved each element at the moment it was acted on; ambiguous strategies were discarded rather than recorded. outcomes[] is empty because a happy-path run observes no business outcomes."
+  }
+}
