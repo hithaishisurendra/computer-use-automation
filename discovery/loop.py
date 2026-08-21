@@ -33,7 +33,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Optional
 
-from capability.redaction import Scrubber
+from capability.redaction import Scrubber, seed_data_scrubber
 from capability.schema import Element, LocatorRung, Policy, Scope, Step, Target
 from capability.validate import AuthConfigError, resolve_credentials
 from discovery.model import (
@@ -215,9 +215,13 @@ class DiscoveryLoop:
         self.headless = headless
 
         self.artifact = ProvisionalArtifact(policy, target)
-        # Disk evidence gets the full seed scrubber; model-facing observations
-        # get a narrower one (see _scrub_for_model).
-        self.disk_scrubber = Scrubber()
+        # Discovery logs whole-page observations, so sensitive values arrive
+        # as page *content* and pattern rules alone are not enough: they
+        # catch an SSN by shape but not a name, address or account number.
+        # Disk evidence therefore gets the seed scrubber, exactly as the a11y
+        # diagnostic does. Model-facing text keeps the narrower pattern-only
+        # scrubber -- see _scrub_for_model for why the two differ.
+        self.disk_scrubber = seed_data_scrubber()
         self.model_scrubber = Scrubber()
         self.log_path = self.evidence_dir / "cycles.jsonl"
         self.cycles: list[Cycle] = []

@@ -651,3 +651,160 @@ def test_backoff_gives_up_rather_than_hanging():
         model_module.BASE_BACKOFF_S = original
 
     assert len(logged) == MAX_RETRIES
+
+
+# ---------------------------------------------------------------------------
+# Capability id derivation
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "goal,expected",
+    [
+        ("Look up member 10001 and read their current savings balance", "member_savings_balance"),
+        ("Look up member 99999 and read their current savings balance", "member_savings_balance"),
+        ("Find account 4471820019 balance", "account_balance"),
+        # Word order follows the goal; reordering would be arbitrary.
+        ("Retrieve the current balance for member 12345", "balance_member"),
+    ],
+)
+def test_capability_id_drops_the_record_it_was_discovered_on(goal, expected):
+    """The flow is not about the member the goal happened to name -- the
+    parameter carries that. Two runs differing only in member id must derive
+    the same capability, or every invocation looks like a different one."""
+    from discovery.run import _derive_capability_id
+
+    assert _derive_capability_id(goal) == expected
+
+
+def test_capability_id_is_stable_across_different_members():
+    from discovery.run import _derive_capability_id
+
+    a = _derive_capability_id("Look up member 10001 and read their current savings balance")
+    b = _derive_capability_id("Look up member 10003 and read their current savings balance")
+    assert a == b
+
+
+def test_capability_id_never_contains_a_digit():
+    from discovery.run import _derive_capability_id
+
+    derived = _derive_capability_id("Open sub-account 55 for member 10001 at branch 7")
+    assert not any(c.isdigit() for c in derived)
+
+
+# ---------------------------------------------------------------------------
+# Opening navigate step
+# ---------------------------------------------------------------------------
+
+
+def _record_without_navigate(results_tree, accounts_tree, entry="/search"):
+    """A session already sitting on the entry page: the model never navigates."""
+    search = node(
+        "document",
+        "",
+        [
+            node(
+                "table",
+                "",
+                [
+                    node("row", "", [node("cell", "Member ID"), node("cell", "", [node("textbox", "Member ID", ref="t_id")])]),
+                    node("row", "", [node("cell", "", [node("button", "Submit", ref="b_go")])]),
+                ],
+            )
+        ],
+    )
+    cycles = [
+        make_cycle(1, "fill", {"frame": "content", "role": "textbox", "name": "Member ID", "value": "10001"}, {"content": search}, "t_id"),
+        make_cycle(2, "click", {"frame": "content", "role": "button", "name": "Submit"}, {"content": search}, "b_go"),
+        make_cycle(3, "click", {"frame": "content", "role": "link", "name": "View", "row_contains": "10001"}, {"content": results_tree}, "v_10001"),
+        make_cycle(
+            4,
+            "extract",
+            {"frame": "content", "role": "cell", "row_contains": "Savings", "column_header": "Balance", "output_name": "savings_balance", "output_type": "money"},
+            {"content": accounts_tree},
+            "sav",
+            extracted="8320.10",
+        ),
+    ]
+    # The session is already on the entry page -- the coincidence that made
+    # the original artifact replay by luck.
+    for cycle in cycles:
+        cycle.url = f"http://localhost:8800{entry}"
+
+    outcome = DiscoveryOutcome(
+        status="goal_reached",
+        run_id="disc_nonav",
+        goal="Look up member 10001 and read their current savings balance",
+        cycles=cycles,
+        steps_attempted=4,
+    )
+    return record(
+        outcome,
+        "member_savings_balance",
+        "1.0.0",
+        build_target("http://localhost:8800", entry, "northridge", "4.2.1"),
+        load_policy(DEFAULT_POLICY_PATH, "http://localhost:8800", None),
+        outcome.goal,
+        "gemini:gemini-3.5-flash",
+    )
+
+
+def test_artifact_from_a_session_already_on_the_entry_page_still_opens_with_navigate(
+    results_tree, accounts_tree
+):
+    """The model correctly never navigated -- it was already there. The
+    artifact must still declare where it starts, rather than inheriting that
+    from wherever the surface happened to open."""
+    artifact = _record_without_navigate(results_tree, accounts_tree)
+
+    first = artifact["steps"][0]
+    assert first["action"] == "navigate"
+    assert first["path"] == "/search"
+    assert first["frame"] == "content"
+    assert first["notes"]
+
+
+def test_opening_navigate_is_added_even_though_no_navigation_was_observed(
+    results_tree, accounts_tree
+):
+    """steps_recorded counts the added precondition, and provenance stays
+    honest about the run having produced four actions."""
+    artifact = _record_without_navigate(results_tree, accounts_tree)
+
+    assert artifact["provenance"]["steps_attempted"] == 4
+    assert artifact["provenance"]["steps_recorded"] == 5
+    assert [s["action"] for s in artifact["steps"]] == ["navigate", "fill", "click", "click", "extract"]
+
+
+def test_step_ids_are_renumbered_after_the_insertion(results_tree, accounts_tree):
+    artifact = _record_without_navigate(results_tree, accounts_tree)
+    assert [s["id"] for s in artifact["steps"]] == ["s1", "s2", "s3", "s4", "s5"]
+
+
+def test_opening_navigate_targets_entry_path_not_wherever_the_session_sat(
+    results_tree, accounts_tree
+):
+    """If the frameset default and entry_path diverge, the artifact must
+    follow entry_path -- that divergence is the bug this guards."""
+    artifact = _record_without_navigate(results_tree, accounts_tree, entry="/search")
+    assert artifact["steps"][0]["path"] == "/search"
+
+    artifact = _record_without_navigate(results_tree, accounts_tree, entry="/member/lookup")
+    assert artifact["steps"][0]["path"] == "/member/lookup"
+
+
+def test_no_duplicate_navigate_when_the_model_already_navigated(recorded):
+    """The earlier fixture's model did navigate to /search itself; the
+    recorder must not prepend a second one."""
+    navigates = [s for s in recorded["steps"] if s["action"] == "navigate"]
+    assert len(navigates) == 1
+    assert recorded["steps"][0]["action"] == "navigate"
+
+
+def test_artifact_with_added_navigate_still_loads(results_tree, accounts_tree, tmp_path):
+    artifact = _record_without_navigate(results_tree, accounts_tree)
+    path = tmp_path / "artifact.json"
+    path.write_text(json.dumps(artifact), encoding="utf-8")
+    loaded = load_artifact(path)
+    assert loaded.steps[0].action == "navigate"
+    assert "navigate" in loaded.policy.allowed_actions

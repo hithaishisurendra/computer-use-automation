@@ -322,3 +322,24 @@ Two rough edges from the real run, neither breaking:
   `{{member_ref}}`. Should drop numeric tokens.
 - No `navigate` step was recorded — the frameset already loads `/search`, so
   replay works by coincidence of that default matching `entry_path`.
+
+## Recorder states its own precondition
+
+Discovery sessions start somewhere. The model was already on `/search`
+because CoreServ's frameset loads it by default, so it correctly never
+navigated and no navigate step was recorded — replay then worked only
+because that default coincided with `entry_path`. The recorder now emits an
+opening navigate to `entry_path` when the recorded path does not already
+start there, so the artifact declares its starting state instead of
+inheriting it. Fixed in the recorder rather than by pressuring the model:
+the model behaved correctly, the missing property belonged to the artifact.
+
+Capability ids now drop numeric tokens — `member_savings_balance`, not
+`member_10001_current_savings_balance`. Two runs differing only in member id
+derive the same capability.
+
+Also fixed: the discovery loop wrote evidence through a pattern-only
+scrubber, which catches an SSN by shape but not a name, address, DOB or
+account number. Discovery logs whole-page observations, so it needs the seed
+scrubber the a11y diagnostic uses. Existing run logs were re-scrubbed with
+it.

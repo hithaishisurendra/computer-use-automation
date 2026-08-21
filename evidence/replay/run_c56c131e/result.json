@@ -1,0 +1,151 @@
+{
+  "classification": "success",
+  "capability": {
+    "id": "member_savings_balance_discovered",
+    "version": "1.0.0"
+  },
+  "tenant": "northridge",
+  "run_id": "run_c56c131e",
+  "duration_ms": 3323.05,
+  "inputs": {
+    "member_ref": "***03"
+  },
+  "outputs": {
+    "savings_balance": "15230.44"
+  },
+  "trace": [
+    {
+      "step_id": "s1",
+      "action": "navigate",
+      "status": "ok",
+      "duration_ms": 152.48,
+      "attempts": 1,
+      "checkpoint": {
+        "satisfied": true,
+        "expected": "element 'member_id_field' present",
+        "observed": "resolved via rung 0",
+        "duration_ms": 66.5
+      }
+    },
+    {
+      "step_id": "s2",
+      "action": "fill",
+      "status": "ok",
+      "duration_ms": 88.83,
+      "attempts": 1,
+      "resolution": {
+        "element": "member_id_field",
+        "resolved": true,
+        "frame": "content",
+        "rung_index": 0,
+        "strategy": "role_name",
+        "confidence": "high",
+        "brittle": false,
+        "duration_ms": 0.03,
+        "attempts": [
+          {
+            "rung": 0,
+            "strategy": "role_name",
+            "confidence": "high",
+            "brittle": false,
+            "match_count": 1,
+            "outcome": "resolved"
+          }
+        ]
+      }
+    },
+    {
+      "step_id": "s3",
+      "action": "click",
+      "status": "ok",
+      "duration_ms": 151.96,
+      "attempts": 1,
+      "resolution": {
+        "element": "submit_button",
+        "resolved": true,
+        "frame": "content",
+        "rung_index": 0,
+        "strategy": "role_name",
+        "confidence": "high",
+        "brittle": false,
+        "duration_ms": 0.02,
+        "attempts": [
+          {
+            "rung": 0,
+            "strategy": "role_name",
+            "confidence": "high",
+            "brittle": false,
+            "match_count": 1,
+            "outcome": "resolved"
+          }
+        ]
+      },
+      "checkpoint": {
+        "satisfied": true,
+        "expected": "element 'view_link' present",
+        "observed": "resolved via rung 0",
+        "duration_ms": 22.68
+      }
+    },
+    {
+      "step_id": "s4",
+      "action": "click",
+      "status": "ok",
+      "duration_ms": 113.29,
+      "attempts": 1,
+      "resolution": {
+        "element": "view_link",
+        "resolved": true,
+        "frame": "content",
+        "rung_index": 0,
+        "strategy": "role_name",
+        "confidence": "high",
+        "brittle": false,
+        "duration_ms": 0.02,
+        "attempts": [
+          {
+            "rung": 0,
+            "strategy": "role_name",
+            "confidence": "high",
+            "brittle": false,
+            "match_count": 1,
+            "outcome": "resolved"
+          }
+        ]
+      },
+      "checkpoint": {
+        "satisfied": true,
+        "expected": "element 'savings_balance_source' present",
+        "observed": "resolved via rung 0",
+        "duration_ms": 22.82
+      }
+    },
+    {
+      "step_id": "s5",
+      "action": "extract",
+      "status": "ok",
+      "duration_ms": 66.23,
+      "attempts": 1,
+      "resolution": {
+        "element": "savings_balance_source",
+        "resolved": true,
+        "frame": "content",
+        "rung_index": 0,
+        "strategy": "cell_in_row",
+        "confidence": "high",
+        "brittle": false,
+        "duration_ms": 0.16,
+        "attempts": [
+          {
+            "rung": 0,
+            "strategy": "cell_in_row",
+            "confidence": "high",
+            "brittle": false,
+            "match_count": 1,
+            "outcome": "resolved"
+          }
+        ]
+      }
+    }
+  ]
+}

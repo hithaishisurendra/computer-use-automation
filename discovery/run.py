@@ -181,12 +181,34 @@ def main() -> None:
     raise SystemExit(0 if summary.get("artifact_valid") else 1)
 
 
+# Filler that names no part of the capability. "current"/"latest" and the
+# like describe when, not what.
+_GOAL_STOPWORDS = {
+    "a", "an", "and", "the", "their", "its", "his", "her",
+    "for", "of", "to", "in", "on", "up", "at", "from", "with",
+    "read", "look", "get", "find", "fetch", "retrieve", "show", "check",
+    "current", "currently", "latest", "please", "then",
+}
+
+
 def _derive_capability_id(goal: str) -> str:
+    """Name the capability after what it does, not the record it was found on.
+
+    Numeric tokens are dropped: the goal that discovered this flow named one
+    member, but the flow is not about that member -- the parameter carries
+    the identity. `member_10001_current_savings_balance` would make every
+    invocation for a different member look like it was calling the wrong
+    capability.
+    """
     import re
 
-    words = re.sub(r"[^a-z0-9\s]", "", goal.lower()).split()
-    stop = {"the", "a", "an", "and", "their", "for", "of", "to", "in", "on", "up", "read", "look"}
-    keep = [w for w in words if w not in stop][:5]
+    words = re.sub(r"[^a-z0-9\s]", " ", goal.lower()).split()
+    keep = [
+        w
+        for w in words
+        # Any token containing a digit is a value from this run, not a name.
+        if w not in _GOAL_STOPWORDS and not any(c.isdigit() for c in w)
+    ][:5]
     return "_".join(keep) or "discovered_capability"
 
 

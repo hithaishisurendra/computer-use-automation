@@ -1,10 +1,10 @@
 {
   "schema_version": "1.0",
   "capability": {
-    "id": "member_10001_current_savings_balance",
+    "id": "member_savings_balance_discovered",
     "version": "1.0.0",
-    "name": "Look up member 10001 and read their current savings balance",
-    "description": "Look up member 10001 and read their current savings balance",
+    "name": "Look up member ***01 and read their current savings balance",
+    "description": "Look up member ***01 and read their current savings balance",
     "status": "draft"
   },
   "target": {
@@ -33,7 +33,7 @@
       "type": "string",
       "required": true,
       "description": "The identifier used to locate the record, entered into 'Member ID'.",
-      "example": "10001",
+      "example": "***01",
       "pattern": "^[0-9]{5}$",
       "sensitivity": "identifier"
     }
@@ -158,13 +158,26 @@
   "steps": [
     {
       "id": "s1",
+      "action": "navigate",
+      "path": "/search",
+      "frame": "content",
+      "risk": "safe",
+      "notes": "Added at record time: the session was already at /search when the first action ran, so no navigation was observed. Recorded explicitly so the flow declares where it starts instead of inheriting it from wherever the surface happened to open.",
+      "checkpoint": {
+        "type": "element_present",
+        "element": "member_id_field",
+        "timeout_ms": 8000
+      }
+    },
+    {
+      "id": "s2",
       "action": "fill",
       "element": "member_id_field",
       "risk": "safe",
       "value": "{{member_ref}}"
     },
     {
-      "id": "s2",
+      "id": "s3",
       "action": "click",
       "element": "submit_button",
       "risk": "safe",
@@ -175,7 +188,7 @@
       }
     },
     {
-      "id": "s3",
+      "id": "s4",
       "action": "click",
       "element": "view_link",
       "risk": "safe",
@@ -186,7 +199,7 @@
       }
     },
     {
-      "id": "s4",
+      "id": "s5",
       "action": "extract",
       "element": "savings_balance_source",
       "risk": "safe",
@@ -209,7 +222,8 @@
     "allowed_actions": [
       "click",
       "extract",
-      "fill"
+      "fill",
+      "navigate"
     ],
     "risky_action_handling": "require_confirmation",
     "max_steps": 25,
@@ -217,12 +231,12 @@
   },
   "provenance": {
     "source": "discovery",
-    "discovered_at": "2026-08-21T02:46:02.767704Z",
-    "goal": "Look up member 10001 and read their current savings balance",
+    "discovered_at": "2026-08-21T05:26:49.456733Z",
+    "goal": "Look up member ***01 and read their current savings balance",
     "model": "gemini:gemini-3.5-flash",
-    "discovery_run_id": "disc_60829c31",
-    "steps_attempted": 7,
-    "steps_recorded": 4,
+    "discovery_run_id": "disc_ba9d736d",
+    "steps_attempted": 5,
+    "steps_recorded": 5,
     "human_interventions": 0,
     "notes": "Emitted by discovery/recorder.py. Locator chains were built by probing which strategies uniquely resolved each element at the moment it was acted on; ambiguous strategies were discarded rather than recorded. outcomes[] is empty because a happy-path run observes no business outcomes."
   }

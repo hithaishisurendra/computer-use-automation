@@ -355,6 +355,14 @@ class Step(StrictModel):
     risk: Risk = "safe"
     checkpoint: Optional[Checkpoint] = None
     outcomes: list[str] = Field(default_factory=list)
+    notes: Optional[str] = Field(
+        default=None,
+        description=(
+            "Why this step is here, when that is not obvious from the step itself -- "
+            "e.g. a precondition the recorder added that no observed action produced. "
+            "For a human reviewer; replay ignores it."
+        ),
+    )
 
     @model_validator(mode="after")
     def _shape_matches_action(self) -> "Step":

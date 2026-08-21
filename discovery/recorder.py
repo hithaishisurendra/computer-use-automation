@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import re
 from datetime import datetime, timezone
+from urllib.parse import urlparse
 from typing import Any, Optional
 
 from capability.schema import SCHEMA_VERSION
@@ -402,6 +403,8 @@ def record(
             )
         steps.append(step)
 
+    steps = _ensure_opening_navigate(steps, acted, target)
+    steps = _renumber(steps)
     steps = _add_checkpoints(steps, elements)
 
     used_actions = sorted({s["action"] for s in steps})
@@ -473,6 +476,70 @@ def _find_acted_node(cycle: Cycle, tree: Optional[dict]) -> Optional[dict]:
         if (n.get("role") or "").lower() == role and (n.get("name") or "").strip() == name
     ]
     return matches[0] if len(matches) == 1 else None
+
+
+def _ensure_opening_navigate(
+    steps: list[dict[str, Any]], acted: list[Cycle], target: Any
+) -> list[dict[str, Any]]:
+    """Make the artifact state its own starting precondition.
+
+    A discovery session is already somewhere when the model takes its first
+    action -- here, CoreServ's frameset had already loaded `/search` into the
+    content frame, so the model never navigated and no navigate step was
+    recorded. Replay then worked only because that frameset default happened
+    to coincide with `entry_path`. That is the environment supplying a
+    precondition the artifact never declared: it would break the moment a
+    flow's entry differed from wherever the surface happens to open, and it
+    would break silently, resolving against the wrong page.
+
+    Fixing it here rather than by pressuring the model to navigate is
+    deliberate. The model behaved correctly -- it was already on the right
+    page and navigating would have been a wasted action. What was missing is
+    a property of the *artifact*, not of the run, so the recorder is what
+    owes it.
+    """
+    entry_path = getattr(target, "entry_path", None)
+    if not entry_path:
+        return steps
+
+    opens_at_entry = (
+        steps
+        and steps[0]["action"] == "navigate"
+        and steps[0].get("path") == entry_path
+    )
+    if opens_at_entry:
+        return steps
+
+    # Frame the flow actually works in, so the opening navigate loads the
+    # content region rather than replacing a frameset.
+    frame = next(
+        (c.tool_input.get("frame") for c in acted if c.tool_input.get("frame")), "content"
+    )
+    first_url = next((c.url for c in acted), None)
+    observed = urlparse(first_url).path if first_url else None
+
+    opening = {
+        "id": "s0",
+        "action": "navigate",
+        "path": entry_path,
+        "frame": frame,
+        "risk": "safe",
+        "notes": (
+            "Added at record time: the session was already at "
+            f"{observed or 'the entry page'} when the first action ran, so no navigation "
+            "was observed. Recorded explicitly so the flow declares where it starts "
+            "instead of inheriting it from wherever the surface happened to open."
+        ),
+    }
+    return [opening, *steps]
+
+
+def _renumber(steps: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Sequential ids after any insertion. Checkpoints reference element keys
+    rather than step ids, so renumbering cannot break a reference."""
+    for position, step in enumerate(steps, start=1):
+        step["id"] = f"s{position}"
+    return steps
 
 
 def _add_checkpoints(
