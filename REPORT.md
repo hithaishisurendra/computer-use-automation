@@ -1,392 +1,379 @@
 # Design write-up
 
-A system that lets an LLM discover how to operate a legacy back-office UI
-once, then replays that flow deterministically without the model. Built
-against **CoreServ**, a purpose-written proxy target: real `<frameset>`,
-tables nested three deep, server-generated element ids that rotate on every
-render, no test ids, and seven server-side fault flags.
+An LLM works out how to operate a legacy back-office UI once. That run gets
+recorded as a typed capability artifact, and the artifact replays afterwards
+with no model involved.
+
+I built it against CoreServ, a proxy target in this repo written to be
+unfriendly on purpose: a real `<frameset>`, tables nested three deep, element
+ids that change on every render, no test ids and seven faults I can inject on
+demand.
 
 ---
 
 ## 1. Architecture
 
 ```
-coreserv/     the target app (proxy surface)
+coreserv/     the target app
 perception/   accessibility-tree snapshot, filtering, label augmentation
 capability/   artifact schema, loading, validation, redaction
 discovery/    LLM loop + recorder          ─┐ both import perception
-replay/       deterministic engine          ─┘ neither imports the other
+replay/       deterministic engine         ─┘ neither imports the other
 escalation/   control transfer, operator surface
-evidence/     runtime output
 ```
 
-The load-bearing choice is that **`perception/` is a peer of `discovery/` and
-`replay/`**, not owned by either. The same layer that hands the model a
-filtered snapshot during discovery resolves a saved locator during replay. A
-second surface (desktop) is a new module behind that interface; neither
-consumer changes. Making the seam visible in the directory tree is doing real
-work — it is what stops replay quietly growing its own perception.
+The structural decision I'd defend hardest is that `perception/` sits
+alongside `discovery/` and `replay/` rather than inside either one. The same
+layer that hands the model a filtered snapshot during discovery is what
+resolves a saved locator during replay. Adding a desktop surface means adding
+a module behind that interface. Neither consumer changes.
 
-**Discovery imports `replay/executor.py` rather than duplicating it**, so the
-policy allowlist, risky-action rule and ownership gate are literally the same
-code on both paths. Discovery cannot be more permissive than replay because
-there is no second implementation for it to be permissive in. Tests assert
-`discovery/loop.py` defines no `check_destination`/`check_action`/`check_risk`
-of its own.
+Discovery imports `replay/executor.py` instead of having its own copy. That
+means the allowlist, the risky-action rule and the ownership gate are
+literally the same code on both paths, so discovery can't drift into being
+more permissive than replay. There's a test asserting `discovery/loop.py`
+defines no policy check of its own.
 
-**Perception is the accessibility tree, not the DOM.** Screenshot+coordinates
-was the strongest competitor and is genuinely more surface-agnostic, but
-coordinates are the least stable locator available and CoreServ's hostility is
-aimed precisely at DOM-position strategies. The bet was that role and
-accessible name survive terrible nesting.
+For perception I went with the accessibility tree over the DOM. Screenshots
+plus coordinates was the real competitor and it generalises further, but
+coordinates are about the least stable way to identify a control, and
+CoreServ's hostility is aimed squarely at position-based strategies. The bet
+was that role and accessible name would survive bad nesting.
 
-That bet was checked, not assumed, and **half of it failed**
-(`evidence/a11y_diagnostic/REPORT.txt`): every link and button got a correct
-accessible name; **every text input, select, radio and checkbox came back
-nameless**, because CoreServ labels fields with an adjacent table cell rather
-than `<label for>`. Worse than uniformly empty — the Account Type `<select>`
-inherited its *selected option* as a name, which reads like a working label
-and is actually the field's value.
+I checked that bet rather than assuming it, and half of it failed. Every link
+and button came back with a correct name. Every text input, select, radio and
+checkbox came back nameless, because CoreServ puts label text in an adjacent
+table cell and never binds it. The select was worse than empty: it inherited
+its selected option as a name, which looks like a working label and is
+actually the field's value. Full findings in
+`evidence/a11y_diagnostic/REPORT.txt`.
 
-**CoreServ was left unpatched and the perception layer compensates** —
-adding a `<label for>` to each input would have fixed every case in one
-commit, but that is fitting the world to the strategy, and the whole premise
-is that we do not control these applications. `perception/labeling.py`
-instead infers names from the surrounding DOM through a seven-rule chain,
-recording which rule fired (`name_source`) so an inferred name is never
-mistaken for one the platform supplied. Ten of eleven nameless controls
-resolved; one did not, and stays reported rather than patched.
+I left CoreServ alone. Adding `<label for>` would have fixed every case in one
+commit, but that's shaping the app to suit my strategy, and the whole premise
+here is that we don't control these applications. So `perception/labeling.py`
+infers the missing names from surrounding DOM through a seven-rule chain and
+records which rule fired, so an inferred name is never mistaken for one the
+browser supplied. Ten of eleven controls resolved. The eleventh didn't, and
+I've left it reported rather than patched.
 
-**Provider choice is configuration.** `discovery/model.py` exposes one
-abstract method (`complete`); `AnthropicClient` and `GeminiClient` sit behind
-it. Keeping both is the point — a single-implementation interface is an
-untested guess about where the boundary is. Tool definitions are plain JSON
-Schema with no per-provider translation. Runs used `gemini-3.5-flash`.
+Model provider is configuration. `discovery/model.py` exposes one method with
+`AnthropicClient` and `GeminiClient` behind it. I kept both, because a
+one-implementation interface is really just a guess about where the boundary
+goes. The runs in evidence used `gemini-3.5-flash`.
 
 ---
 
 ## 2. Artifact schema
 
-Full spec: `docs/artifact-schema-spec.md`. Shape: `capability`, `target`,
-`inputs`, `outputs`, `elements`, `steps`, `outcomes`, `policy`, `provenance`.
+Full spec is in `docs/artifact-schema-spec.md`. The blocks are `capability`,
+`target`, `inputs`, `outputs`, `elements`, `steps`, `outcomes`, `policy` and
+`provenance`.
 
-**Elements are a registry; steps are thin.** Steps reference element keys, so
-a tenant override is a small diff against the registry rather than a patch to
-steps by index. This is what makes §4 cheap.
+Elements live in a registry and steps just reference them by key. That's what
+makes a tenant override a small diff against the registry instead of a patch
+to steps by index, and it's why section 4 is cheap.
 
-**Each element carries a chain of locator rungs**, ordered most to least
-robust, each with a confidence and a `brittle` flag. Replay records which rung
-actually fired — falling through to a brittle rung is a drift signal worth
-surfacing *on a run that succeeded*.
+Each element carries a chain of locator rungs ordered most to least robust,
+each with a confidence and a brittle flag. Replay records which rung actually
+fired, so falling through to a brittle one is a signal worth surfacing even
+when the run succeeded.
 
-**Three versions, deliberately separate.** `schema_version` (the format),
-`capability.version` (this flow), `target.app_version` (what it was recorded
-against — a drift signal, never changed on its own).
+There are three version fields and they're deliberately separate.
+`schema_version` is the format, `capability.version` is this flow and
+`target.app_version` is what the flow was recorded against. The last one is
+never edited by hand. It exists to be compared against what replay observes.
 
-**Outcomes are declared, not inferred.** `member_not_found` is a legitimate
-answer; the artifact says so, so replay never has to guess whether something
-is a result or a crash.
+Outcomes are declared rather than inferred. "No such member" is a legitimate
+answer, and because the artifact says so, replay never has to guess whether
+something is a result or a crash.
 
-Two additions the live system forced. `steps[].frame`, because a frameset app
-navigates a content region — a top-level `goto` destroys the frameset every
-element lives in. And `cell_in_row` accepts `column_index` as well as
-`column_header`, because the member-detail screen is a label/value table with
-no column headers at all.
+Two fields got added because the live app forced them. `steps[].frame`,
+because navigating at the top level destroys the frameset every element lives
+in. And `column_index` alongside `column_header` on `cell_in_row`, because the
+member detail screen is a label/value table with no headers at all.
 
-### The system refuses to assert what it did not observe
+### Not asserting what wasn't observed
 
-This appears in three independent places, and they are the same decision:
+This shows up in three places and it's really one decision.
 
-- **`outcomes: []`** on a discovered artifact. A happy-path run never saw "no
-  records match", and inventing that outcome would be the artifact claiming
-  something the run did not establish.
-- **`status: "draft"`, always.** Discovery does not approve its own output.
-- **No tenant overlay for a discovered capability.** An overlay asserts a flow
-  *generalises across tenants*; a single-tenant discovery run establishes no
-  such thing. It observed one app, one configuration, one tenant.
+A discovered artifact comes out with `outcomes: []`. A happy-path run never
+saw "no records match", so declaring that outcome would be the artifact
+claiming something the run didn't establish.
 
-The lifecycle this implies — discover on one tenant → human review promotes
-draft to approved → overlays authored as other tenants adopt it, each a
-deliberate assertion with its own evidence — is designed for and **not built**.
-What exists is the refusal to shortcut it.
+`status` is always `"draft"`. Discovery doesn't get to approve its own output.
+
+And a discovered capability has no tenant overlay. An overlay is a claim that
+a flow generalises across tenants, and one run against one tenant isn't
+evidence of that.
+
+The lifecycle this points at is discover on one tenant, human review promotes
+draft to approved, overlays get authored as other tenants adopt it. I designed
+for that and didn't build it. What's there is the refusal to skip past it.
 
 ---
 
 ## 3. Determinism & error handling
 
-Replay imports no model client, asserted structurally by a test that parses
-the imports of every file in `replay/`.
+Replay imports no model client. There's a test that parses every import in
+`replay/` to prove it.
 
-**Ambiguity is a miss, not a pick-the-first.** A rung matching three nodes has
-identified nothing; taking `[0]` is how replay clicks the wrong row and
-reports success. An ambiguous rung falls through to the next and the ambiguity
-is recorded. On the results grid this is not theoretical: three identically
-named "View" links mean `role_name` is genuinely ambiguous, so the recorder
-skipped it and recorded `role_name_scoped` on `{{member_ref}}` first.
+An ambiguous rung is treated as a miss, not as "take the first match". A rung
+that matches three nodes has identified nothing, and grabbing `[0]` is exactly
+how replay clicks the wrong row and then reports success. So ambiguity falls
+through to the next rung and gets recorded. This isn't hypothetical on the
+results grid: three rows means three identical "View" links, so `role_name` is
+genuinely ambiguous there and the recorder skipped it in favour of a
+row-scoped rung.
 
-**Circular locators are suppressed — and uniqueness alone cannot catch them.**
-In the real Gemini run the model targeted the balance cell as
-`{"role":"cell","name":"8320.10",...}`
-(`evidence/discovery/disc_60829c31/cycles.jsonl`). Recording `role_name(cell,
-"8320.10")` would have been *unique on that page* and completely wrong: it
-finds the balance only while the balance is 8320.10, which is never true for
-the next member. The recorder discards name-based rungs for extraction targets
-and records column-based ones instead. That distinction — unique is not the
-same as correct — is why `discovery/recorder.py` probes strategies against the
-captured tree rather than trusting what the model said.
+The circular locator problem is more interesting, because a uniqueness check
+can't catch it. In the actual Gemini run the model tried to target the balance
+cell as `{"role":"cell","name":"8320.10"}`
+(`evidence/discovery/disc_60829c31/cycles.jsonl`). That rung is perfectly
+unique on the page it was recorded from. It's also useless: it finds the
+balance only while the balance is still 8320.10, which is never true for the
+next member the capability gets called with. So the recorder throws away
+name-based rungs for extraction targets and uses column-based ones instead.
+Being unique and being correct are different things, which is why the recorder
+probes strategies against the captured tree rather than trusting whatever the
+model said.
 
-**Chains are measured, not assumed.** Every candidate strategy is tried
-against the page as it was at the moment of the action, and only strategies
-resolving to exactly one element are recorded.
+Error detection happens in two layers, engine first. Session expiry, 500
+pages, the maintenance interstitial and timeouts belong to the product, so
+they live in the engine. `member_not_found` and `permission_denied` belong to
+this flow, so they live in the artifact.
 
-**Error taxonomy is two-layer, engine universals first.** Session expiry, 500
-pages, the maintenance interstitial and timeouts are properties of the product
-and live in the engine; `member_not_found` and `permission_denied` are
-flow-specific and live in the artifact. Order is load-bearing: when the
-session expires CoreServ bounces to a login page containing none of the
-member's data, and a flow-first classifier would confidently report "no such
-member" — a wrong answer a caller would act on.
+The order carries weight. When the session expires, CoreServ bounces you to a
+login page that contains none of the member's data. A classifier that checked
+flow outcomes first would see no results grid and confidently report "no such
+member", which is a wrong answer that a caller then acts on.
 
-Verified against all seven faults (`evidence/replay/MATRIX.txt`): business
-outcomes exit **0**, the interstitial is dismissed and the step retried,
-session expiry and 500s are escalation-eligible hard failures, malformed input
-is a `caller_error` **with no browser ever opened**.
+All seven faults are exercised in `evidence/replay/MATRIX.txt`. Business
+outcomes exit 0. The interstitial gets dismissed and the step retried. Session
+expiry and 500s are hard failures flagged as escalation-eligible. Malformed
+input comes back as `caller_error` without a browser ever opening.
 
-`slow_response` is reported as a hard failure rather than made to pass. The
-fault injects 6s per request, pushing the search redirect past the artifact's
-own 8000ms checkpoint. Widening the timeout would be tuning the evidence.
+`slow_response` still reports a hard failure and I left it that way. The fault
+injects six seconds per request, which pushes the search redirect past the
+artifact's own 8000ms budget. Widening the timeout would be tuning the
+evidence rather than fixing anything.
 
-### Drift says whether we were looking at the right thing
+### Drift signals catch what the result contract can't
 
-Running the cascade overlay while a cascade instance sat on 8801 produced a
-**misleading pass**: `business_outcome / member_not_found`, exit 0, `tenant:
-"cascade"` — while actually driving *northridge* on 8800. The result contract
-reported it as a clean, legitimate business outcome, because that is exactly
-what it was.
+Running the cascade overlay against a cascade instance on 8801 gave me a pass
+that was wrong. The result said `business_outcome / member_not_found`, exit 0,
+`tenant: "cascade"`, while the run was actually driving northridge on 8800.
+Every field in that result was true.
 
-What exposed it were the drift signals: `app_version 4.2.3 expected vs 4.2.1
-observed`, and `member_ref_field` falling through to a brittle positional rung
-because cascade's "Account Number" label was not on that page.
+What gave it away were the drift signals: app version 4.2.3 expected against
+4.2.1 observed, and `member_ref_field` falling through to a brittle positional
+rung because cascade's "Account Number" label wasn't on the page it was
+looking at.
 
-**The principle: the result contract says what happened; drift says whether we
-were looking at the right thing.** They answer different questions, and a
-system with only the first will confidently report correct-looking answers
-about the wrong system.
+The result contract tells you what happened. Drift tells you whether you were
+looking at the right system. Something with only the first will report
+correct-looking answers about the wrong thing.
 
 ---
 
 ## 4. Heterogeneity & multi-tenant
 
-Two tenants of the same vendor product: `northridge` and `cascade` — same
-routes, same flow, different labels, different results-column order, different
-version string. Cascade also differs *semantically*: it searches by a ten-digit
-account number where northridge searches by a five-digit member ID.
+`northridge` and `cascade` are two tenants running the same vendor product.
+Same routes, same flow, different labels, different column order, different
+version string. Cascade also differs semantically: it searches by a ten-digit
+account number where northridge uses a five-digit member ID.
 
-**Overlay size is a diagnostic.** The first parameter name was `member_id`,
-taken from northridge's field label. That forced an override of the
-results-row locator, because a scope keyed on "the member id column" means
-nothing on a grid that has no such column. Renaming it to **`member_ref`
-eliminated that override entirely** — `results_view_link` scopes on
-`{{member_ref}}`, and each tenant's grid displays whichever identifier that
-tenant searches by, so one chain resolves in both. The cascade overlay is now
-two element chains, one input pattern and one version string.
+Something I didn't expect: overlay size turns out to be a diagnostic. I first
+named the parameter `member_id`, after northridge's field label. That forced
+an override of the results-row locator, because scoping on "the member id
+column" is meaningless on a grid that doesn't have one. Renaming it to
+`member_ref` made that override disappear entirely, since each tenant's grid
+shows whichever identifier that tenant searches by and one chain resolves in
+both.
 
-The general rule: **a large overlay usually means the base encoded one
-tenant's assumptions.** Overlay size is a signal about the base artifact, not
-about the tenant. The recorder now applies this automatically — an identifier
-field derives `{entity}_ref` rather than the tenant-specific label, so
-"Member ID" and "Account Number" both yield a stable parameter name.
+The general lesson is that a big overlay usually means the base artifact
+encoded one tenant's assumptions. Overlay size tells you about the base, not
+the tenant. The recorder now derives `{entity}_ref` rather than the
+tenant-specific label, so "Member ID" and "Account Number" produce the same
+parameter name.
 
-**Three tiers of divergence:**
+| Tier          | Example                           | Mechanism                          |
+| ------------- | --------------------------------- | ---------------------------------- |
+| Cosmetic      | Label text, column order          | Element chain override             |
+| Configuration | Identifier semantics, host, build | Input pattern + `target` override  |
+| Structural    | Different steps or outputs        | Fork via `capability.derived_from` |
 
-| Tier | Example | Mechanism |
-|---|---|---|
-| Cosmetic | Label text, column order | Element chain override |
-| Configuration | Identifier means an account number; different host/build | Input pattern + `target` override |
-| Structural | Different steps, different outputs | **Fork** — `capability.derived_from` |
+The loader enforces where that line sits. Overlays can override element
+chains, an input's pattern and description and `base_url`/`app_version`. They
+can't touch steps, outputs, an input's name or type, or widen the policy
+allowlist. Narrowing is allowed, checked with the same predicate discovery's
+`--allow-path` uses. Anything past that fails with an error naming the field
+and pointing at forking instead.
 
-The loader enforces the boundary. Overlays may override element chains, an
-input's pattern/description/example, and `base_url`/`app_version`; they may
-**not** touch steps, outputs, an input's name/type/required/sensitivity, or
-widen the policy allowlist (narrowing only, checked with the same predicate
-discovery's `--allow-path` uses). Reaching past it fails with an error naming
-the field and pointing at forking. Overlays express configuration drift; forks
-express behavioural divergence.
+There's a real limitation here. An overlay can't redirect replay to another
+tenant's host. It can override `base_url` but not `policy.allowed_origins`, so
+the overridden host fails its own origin check, and the replay CLI has no host
+override flag. The fix is small and I didn't build it: derive
+`allowed_origins` from `base_url` at resolution time.
+`evidence/replay/run_8dee5028` shows the same untouched artifact and overlay
+reaching a genuine cascade instance, with success, no drift warnings and every
+element resolving at rung 0.
 
-**A real limitation.** An overlay cannot redirect replay to another tenant's
-host. It may override `base_url` but **not** `policy.allowed_origins`, so an
-overridden host fails its own origin check — and the replay CLI has no
-`--base-url` flag. The fix is small and not built: derive `allowed_origins`
-from `base_url` at resolution time rather than storing it independently, plus
-a replay-time host override. Demonstrated at
-`evidence/replay/run_8dee5028`, which is the same untouched artifact and
-overlay reaching a genuine cascade instance: **success, no drift warnings,
-every element at rung 0.**
+On portability, the artifact mentions no Playwright, CSS, XPath or pixels.
+Targets are role plus accessible name plus containing scope, which a UIA or AX
+resolver could execute as-is, with `target.surface` picking the resolver.
 
-**What is portable, precisely.** The artifact names no Playwright, CSS, XPath
-or pixels — targets are role + accessible name + containing scope, which a
-UIA/AX resolver could execute unchanged; `target.surface` selects the
-resolver. The schema, loader, resolver semantics and result contract are
-surface-agnostic.
-
-What is **CoreServ-specific and would need per-app configuration**: the
-engine-universal error detection is *string matching* — `"Your session has
-ended."`, `"An unexpected error occurred."`, `"System Maintenance"` in
-`replay/classify.py`. Those are one product's phrasings hardcoded in the
-engine. The layering (universals before flow outcomes) generalises; the
-strings do not, and belong in a per-app profile. `form_login` is likewise the
-only implemented auth mode, and the login form is targeted by field name in
-engine code rather than through the element registry. The frameset handling in
-`_settle` and `_goto` is web-specific by construction.
+What's genuinely CoreServ-specific is the engine's universal detection, which
+is string matching on things like `"Your session has ended."` in
+`replay/classify.py`. Those are one product's phrasings hardcoded into the
+engine. The layering generalises fine; the strings need to move into a per-app
+profile. `form_login` is the only auth mode I implemented, and its login form
+is targeted in engine code rather than through the element registry. Frameset
+handling is web-specific by construction.
 
 ---
 
 ## 5. Escalation & handoff
 
-**Ownership is explicit state** on the session — `AUTOMATION | HUMAN |
-RELEASED` — not an implicit consequence of which code is running. The two
-diverge exactly when it matters: a retry that did not notice the pause.
+Ownership is explicit state on the session: `AUTOMATION`, `HUMAN` or
+`RELEASED`. I made it explicit rather than implied by which code is running,
+because those two come apart exactly when it matters, in a retry loop that
+didn't notice the pause.
 
-**The check lives in the executor, alongside the policy check**, and for the
-same reason: a pause the caller is trusted to respect is not a pause. Every
-action asserts ownership before touching the page, so a stray retry cannot
-race the operator regardless of which caller triggered it.
+The ownership check sits in the executor next to the policy check, for the
+same reason. A pause the caller is trusted to respect isn't really a pause.
+Every action asserts ownership before it touches the page.
 
-**The operator drives the same Playwright context.** `ControlledSession`
-captures context identity at construction and re-asserts it on every transfer;
-a handoff that quietly opened a new browser fails loudly rather than handing
-someone a different session from the one that got stuck. Tested both
-directions — identity preserved across a handoff, and a swapped context
-rejected.
+The operator drives the same Playwright context throughout.
+`ControlledSession` captures the context identity when it's created and
+re-asserts it on every transfer, so a handoff that quietly opened a new
+browser fails loudly instead of handing someone a different session from the
+one that got stuck. I tested it both ways: identity preserved across a
+handoff, and a swapped context rejected.
 
-Detection routes an `InterventionRequest` carrying capability, step, expected
-vs observed, URL, screenshot and accessibility snapshot — enough for an
-operator who did not watch the run.
+When something stops, an `InterventionRequest` goes out carrying the
+capability, the step, expected against observed, the URL, a screenshot and the
+accessibility snapshot. Enough for an operator who wasn't watching the run.
 
-**Resume re-evaluates the failed step's checkpoint and continues from there.**
-Restarting would repeat completed steps, repeating side effects and
-potentially undoing what the operator just fixed. A resume whose checkpoint
-still fails is not treated as recovery.
+On resume, the failed step's checkpoint gets re-evaluated and the run
+continues from there. Restarting would repeat completed steps and their side
+effects, and could undo whatever the operator just fixed.
 
-`evidence/escalation/run_61d94a77` is a live handoff — and it exercised the
-harder case by accident. The operator's fix was **partial**: clearing the
-fault flag did not repaint an already-rendered page, so the condition
-persisted and a **second** intervention fired. The control trail is
-`automation → human → automation → human → automation → released`, and the run
-finished `success` with every step executed **exactly once**. Two
-interventions, no step repeated — which is the property the resume design
-exists to guarantee, tested under a partial fix rather than an idealised one.
+`evidence/escalation/run_61d94a77` ended up exercising the harder case by
+accident. The operator's fix was partial: clearing the fault flag didn't
+repaint a page that had already rendered, so the condition persisted and a
+second intervention fired. The control trail reads automation, human,
+automation, human, automation, released, and the run finished with every step
+executed exactly once. Two interventions, nothing repeated. That's the
+property the resume design exists to guarantee, and it got tested under a
+partial fix rather than an idealised one.
 
-**Mocked, deliberately:** the operator surface is a terminal prompt, and it
-assumes the human is sitting at the machine running the agent. A real console
-replaces `ConsoleOperator` and nothing else — same session, same request, same
-decision, delivered over CDP screencast. Capture is **effect-level**: URL and
-accessibility-state diff across the handoff, not keystrokes.
+What I mocked: the operator surface is a terminal prompt that assumes the
+human is sitting at the same machine. A real console would replace
+`ConsoleOperator` and nothing else, delivering the same session and the same
+request over CDP screencast. Capture is effect-level, meaning URL and
+accessibility-state diff rather than keystrokes.
 
 ---
 
 ## 6. Safety
 
-**Policy is enforced at the executor boundary**, immediately before an action
-runs — never in the prompt. A prompt-level guardrail is a suggestion. The
-allowlist covers origins, path globs and action types; `/_faults` is excluded,
-so the agent cannot manipulate the app's own fault state.
+Policy is enforced at the executor boundary, immediately before an action
+runs, never in the prompt. A guardrail in a prompt is a suggestion. The
+allowlist covers origins, path globs and action types, and it excludes
+`/_faults` so the agent can't manipulate the app's own fault state.
 
-**The allowlist was escapable by timing, and my own policy test caught it.**
-Enforcement checked the URL after each action — but that check races the app:
-clicking a link returns *before* the navigation lands, so the frame still
-reports its previous URL. A test narrowing `allowed_paths` to exclude
-`/member/*` and expecting a block returned **`success`**. Enforcement moved
-into `_capture`, changing the invariant from "check after actions" — a
-statement about code paths, only as good as the enumeration of them — to **"no
-page is observed without validating where it is"**, a statement about states.
-The pre-navigation check stays as well.
+The allowlist was escapable by timing, and my own policy test is what caught
+it. Enforcement was checking the URL after each action, but that check races
+the app: clicking a link returns before the navigation lands, so the frame
+still reports its previous URL. I wrote a test narrowing `allowed_paths` to
+exclude `/member/*`, expected a block, and got `success`. Enforcement moved
+into `_capture`. The invariant went from "check after actions", which is only
+as good as your enumeration of the code paths, to "no page is observed without
+validating where it is", which is a statement about states.
 
-Risky steps are blocked under `require_confirmation` rather than proceeding,
-since unattended replay has no confirmation channel — that is what the
-escalation path is for.
+Risky steps get blocked under `require_confirmation` rather than proceeding,
+since unattended replay has no channel to confirm through. That's what
+escalation is for.
 
-**Redaction failed in both directions, four times, and every fix was a
-retrofit.** This is the weakest part of the system and the pattern matters
-more than the individual bugs:
+Redaction is the weakest part of this system. It failed in both directions,
+four times, and every fix was a retrofit. The pattern matters more than the
+individual bugs.
 
-- **Under-redaction ×3.** The a11y diagnostic wrote a seed member's full SSN,
-  DOB, phone, email and address into committed evidence. Discovery's evidence
-  writer used a pattern-only scrubber that caught SSNs by shape but not names,
-  addresses or account numbers. Both capture *whole pages*, so sensitive
-  values arrive as page **content** — never as declared fields, so
-  sensitivity-driven masking had nothing to act on.
-- **Over-redaction ×1.** The email pattern matched
-  `member_savings_balance@1.0.0` and masked it, stripping the capability
-  reference out of an intervention request — the single field an operator most
-  needs. Over-redaction destroys evidence as surely as under-redaction leaks
-  it.
+Three of them were under-redaction. The a11y diagnostic wrote a seed member's
+full SSN, DOB, phone, email and address into committed evidence. Discovery's
+evidence writer used a pattern-only scrubber that caught SSNs by shape but
+missed names and addresses. Both of those capture whole pages, so sensitive
+values show up as page content and never as declared fields, which leaves
+sensitivity-driven masking with nothing to act on.
 
-Current state is clean: a sweep of all seven classes across 102 committed
-files finds zero unmasked values under `evidence/`, and
-`tests/test_evidence_redaction.py` enforces it. But every one of those fixes
-was applied *after* the leak reached disk.
+The fourth was the opposite. My email pattern matched
+`member_savings_balance@1.0.0` and masked it, which stripped the capability
+reference out of an intervention request. That's the single field an operator
+most needs. Over-redaction destroys evidence just as effectively as
+under-redaction leaks it.
 
-**The structural fix, not built:** make writing evidence impossible except
-through the scrubbing path — a single writer that no module can bypass — and
-drive it from the schema's `sensitivity` taxonomy rather than a pattern list.
-Today `pii`/`secret`/`identifier` govern *declared fields* while page captures
-fall back to regexes; those should be the same mechanism. Credentials are
-handled correctly by construction (`credentials_ref` stores env var names, and
-a pasted secret fails schema validation), which is what the rest should look
-like.
+Where it stands now: a sweep of all seven classes across the repo finds zero
+unmasked values under `evidence/`, and `tests/test_evidence_redaction.py`
+keeps it that way. But every one of those fixes landed after the leak had
+already reached disk.
+
+The structural fix, which I didn't build: make writing evidence impossible
+except through the scrubbing path, and drive it off the schema's
+`sensitivity` taxonomy instead of a pattern list. Right now `pii`, `secret`
+and `identifier` govern declared fields while page captures fall back to
+regexes, and those should be one mechanism. Credentials are already handled
+properly by construction, since `credentials_ref` stores env var names and a
+pasted secret fails validation. That's the shape the rest should have.
 
 ---
 
 ## 7. Cuts
 
-**Stubbed deliberately, at real seams:**
+Stubbed at seams I think are real:
 
-- **Operator console** — terminal prompt, assumes the human is at the same
-  machine. The control-transfer model and handoff are real; the presentation
-  is not.
-- **Desktop surface** — `target.surface` selects a resolver; only `web`
-  exists. The artifact names no web-specific concept, so the seam is real, but
-  it is untested against a second surface.
-- **Multi-tenant infrastructure** — files, not a database. The brief
-  explicitly does not reward premature scaling infrastructure.
+The operator console is a terminal prompt that assumes the human is at the
+same machine. The control-transfer model underneath is real; the presentation
+isn't.
 
-**Known-weak, stated plainly:**
+The desktop surface doesn't exist. `target.surface` selects a resolver and
+only `web` is implemented. The artifact mentions no web-specific concept, so I
+believe the seam holds, but it's untested against a second surface.
 
-- Discovery's emitted artifact declares `outcomes: []`. Error handling on a
-  discovered capability is currently review work.
-- The emitted artifact replays partly by luck of configuration: the recorder
-  now emits an explicit opening `navigate` so it declares its own precondition,
-  but before that fix it worked only because CoreServ's frameset default
-  happened to match `entry_path`.
-- One control (the nav frame's Quick Lookup box) is still nameless; its label
-  sits in a different table row than the 7-rule chain reaches.
+Multi-tenant infrastructure is files rather than a database.
 
-**Next, in priority order:**
+Known weaknesses, stated plainly:
 
-1. **Evidence writing that cannot bypass redaction**, driven by the
-   sensitivity taxonomy — the §6 structural fix. Four retrofits is a pattern.
-2. **Per-app error-detection profiles.** The universals layer is right; the
-   strings in `replay/classify.py` are one product's phrasings hardcoded in
-   the engine and must move to per-app configuration before a second app.
-3. **`allowed_origins` derived from `base_url`**, plus a replay-time host
-   override — the §4 limitation.
-4. **Re-auth on session expiry.** Currently a hard failure with the
-   out-of-scope stated in the message. With the auth block already declared in
-   `target`, the engine could re-run it and resume the step, turning a common
-   condition from an escalation into a recoverable one.
-5. **Latency budgets as policy, not per-checkpoint.** `slow_response` fails
-   because a per-step 8000ms timeout is a local decision with no global view
-   of the run's budget.
-6. **Coordinate-to-semantic resolver** for model-native computer use. Its job
-   would be to take coordinates a vision model clicked and, *before anything is
-   recorded*, translate them back to the accessibility node at that location —
-   so what persists is a semantic locator, never a raw coordinate. If nothing
-   resolves (canvas, custom-rendered control), that is the signal to escalate
-   rather than record a step that cannot survive a resize.
-7. **Action-level human capture.** CDP input events resolved through
-   `perception` to role+name — the same translation the recorder already does —
-   which would let a human's manual fix be *promoted into the artifact* as
-   recorded steps rather than merely logged. Not built partly on scope and
-   partly because recording a human operating a bank's back office needs a
-   retention and consent story before it needs an implementation.
+Discovered artifacts come out with `outcomes: []`, so error handling on a
+discovered capability is currently review work.
+
+One control, the nav frame's Quick Lookup box, is still nameless. Its label
+sits in a different table row than my seven-rule chain reaches.
+
+And before the recorder started emitting an explicit opening `navigate`,
+replay only worked because CoreServ's frameset default happened to match
+`entry_path`. That's fixed now, but it was luck for a while.
+
+What I'd build next, in order:
+
+1. Evidence writing that can't bypass redaction, driven by the sensitivity
+   taxonomy. Four retrofits is a pattern, not four bugs.
+2. Per-app error-detection profiles. The layering is right, but the strings in
+   `replay/classify.py` need to move into configuration before a second app
+   exists.
+3. `allowed_origins` derived from `base_url`, plus a replay-time host
+   override.
+4. Re-auth on session expiry. It's a hard failure today. The auth block is
+   already declared in `target`, so the engine could re-run it and resume,
+   which would turn a common condition from an escalation into a recoverable
+   one.
+5. Coordinate-to-semantic resolution, if model-native computer use were added.
+   Translate a clicked coordinate back to the accessibility node at that
+   location before anything gets recorded, so what persists is semantic. If
+   nothing resolves, that's the signal to escalate rather than record a step
+   that won't survive a window resize.
+6. Action-level capture of what a human did during a handoff. CDP input events
+   resolved through `perception` into role and name, which would let a manual
+   fix be promoted into the artifact as steps instead of just logged. I left
+   it out partly on scope, and partly because recording a human operating a
+   bank's back office needs a retention and consent story before it needs an
+   implementation.
