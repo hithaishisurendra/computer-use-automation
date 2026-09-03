@@ -1062,3 +1062,91 @@ def test_an_ambiguous_target_is_reported_as_ambiguous_not_missing():
     missing = Resolution(element_key="x", resolved=False, attempts=[
         RungAttempt(0, "role_name", "high", False, 0, "no_match")])
     assert "AMBIGUOUS" not in _unresolvable_advice(ElementUnresolvable(missing))
+
+
+# ---------------------------------------------------------------------------
+# The discovery risk gate
+#
+# Shared code was not shared enforcement: the executor's risk gate reads
+# Step.risk, and discovery built every Step without one, so check_risk never
+# fired. Observed live -- a run clicked "Post Transfer" and moved money.
+# ---------------------------------------------------------------------------
+
+
+def test_discovery_classifies_risk_with_the_same_rules_as_the_recorder():
+    from capability.profile import load_profile
+    from discovery.recorder import risk_rules_from_profile
+
+    rules = risk_rules_from_profile(load_profile("meridian"))
+    assert rules.match("Post Transfer") == "Post"
+    assert rules.match("Search") is None
+    # A fill or select is not the commit; the click that sends it is.
+    assert rules.match("Amount") is None
+
+
+def test_a_step_discovery_performs_is_a_step_the_artifact_calls_safe():
+    """The invariant the gate exists to hold: what discovery was willing to
+    do and what the artifact says is risky must be the same judgement."""
+    from capability.profile import load_profile
+    from discovery.loop import DiscoveryLoop
+    from discovery.recorder import risk_rules_from_profile
+
+    profile = load_profile("meridian")
+    rules = risk_rules_from_profile(profile)
+    loop = DiscoveryLoop.__new__(DiscoveryLoop)
+    loop.risk_rules = rules
+    loop.log = lambda *a, **k: None
+
+    for name, expected in [("Post Transfer", "risky"), ("Search", "safe"),
+                           ("Select", "safe"), ("Save Changes", "risky")]:
+        assert loop._classify_risk("click", {"name": name}, None) == expected
+        assert loop._classify_risk("fill", {"name": name}, None) == "safe"
+
+
+def test_a_risk_blocked_run_is_recordable_but_not_successful():
+    """The gate must not make irreversible capabilities unrecordable -- the
+    safe thing would then be the thing that makes the system useless."""
+    outcome = DiscoveryOutcome(status="risk_blocked", run_id="d", goal="g",
+                               cycles=[], steps_attempted=3)
+    assert outcome.recordable and not outcome.succeeded
+    assert DiscoveryOutcome(status="stuck", run_id="d", goal="g", cycles=[]).recordable is False
+
+
+def test_the_blocked_step_is_recorded_but_marked_never_executed(results_tree):
+    page = node("document", "", [node("table", "", [node("row", "", [
+        node("cell", "", [node("textbox", "Amount", ref="amt")]),
+        node("cell", "", [node("button", "Post Transfer", ref="post")])])])])
+    filled = make_cycle(1, "fill", {"role": "textbox", "name": "Amount", "value": "5.00"},
+                        {"": page}, None)
+    filled.acted_node = find(page, "amt")
+    filled.element_key = "amount_field"
+
+    blocked = make_cycle(2, "click", {"role": "button", "name": "Post Transfer"},
+                         {"": page}, None, status="blocked")
+    blocked.acted_node = find(page, "post")
+    blocked.element_key = "post_transfer_button"
+
+    outcome = DiscoveryOutcome(
+        status="risk_blocked", run_id="d",
+        goal="Transfer 5.00 and reach the confirmation screen",
+        cycles=[filled, blocked], steps_attempted=2, blocked_cycle=blocked)
+
+    artifact = record(
+        outcome, "cap", "1.0.0",
+        build_target("https://x.test", "/menu", "demo", "1.0.0", load_profile("meridian")),
+        load_policy(default_policy_path("meridian"), "https://x.test", None),
+        outcome.goal, "m", default_frame=None,
+        risk_rules=__import__("discovery.recorder", fromlist=["x"]).risk_rules_from_profile(
+            load_profile("meridian")),
+    )
+
+    clicks = [s for s in artifact["steps"] if s["action"] == "click"]
+    assert clicks and clicks[-1]["risk"] == "risky"
+    assert artifact["capability"]["status"] == "draft"
+    notes = artifact["provenance"]["notes"]
+    assert "THE FLOW WAS NOT COMPLETED" in notes
+    assert "NEVER EXECUTED" in notes
+
+
+def test_a_completed_run_says_nothing_about_being_incomplete(recorded):
+    assert "NOT COMPLETED" not in recorded["provenance"]["notes"]

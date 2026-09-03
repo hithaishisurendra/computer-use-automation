@@ -1,0 +1,23 @@
+{
+  "run_id": "disc_04387ab7",
+  "status": "stuck",
+  "goal": "Transfer 5.00 from member 100234's first share to their second share, with a memo, and reach the confirmation screen",
+  "provider": "anthropic",
+  "model": "claude-sonnet-5",
+  "rate_limit_retries": 0,
+  "usage": {
+    "input_tokens": 77102,
+    "output_tokens": 3668,
+    "cache_creation_input_tokens": 3001,
+    "cache_read_input_tokens": 30010,
+    "calls": 11
+  },
+  "cost_usd": 0.204388,
+  "human_interventions": [],
+  "steps_attempted": 11,
+  "outputs": {},
+  "summary": null,
+  "message": "Member 100234's first share (100234-S0001) and second share (100234-S0070) are both in HOLD status. Attempting the transfer from the first share to the second share returned a validation error: 'Source share is HOLD and cannot be debited.' Since the source share for the requested transfer is on hold, this transaction cannot be completed to reach the confirmation screen without violating the business rule preventing debits from held shares.",
+  "duration_ms": 48711.94,
+  "artifact": null
+}

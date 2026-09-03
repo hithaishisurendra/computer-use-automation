@@ -210,6 +210,8 @@ def main() -> None:
         "provider": outcome.provider,
         "model": outcome.model,
         "rate_limit_retries": len(outcome.rate_limit_events),
+        "usage": outcome.usage,
+        "cost_usd": (round(outcome.cost_usd, 6) if outcome.cost_usd is not None else None),
         "human_interventions": outcome.human_interventions,
         "steps_attempted": outcome.steps_attempted,
         "outputs": outcome.outputs,
@@ -218,7 +220,7 @@ def main() -> None:
         "duration_ms": round(outcome.duration_ms, 2),
     }
 
-    if not outcome.succeeded:
+    if not outcome.recordable:
         summary["artifact"] = None
         _write_summary(loop, summary)
         print(json.dumps(summary, indent=2))
@@ -258,10 +260,16 @@ def main() -> None:
 
     summary["artifact"] = str(out_path)
     summary["steps_recorded"] = len(artifact["steps"])
+    summary["flow_completed"] = outcome.succeeded
     _write_summary(loop, summary)
 
     print(json.dumps(summary, indent=2))
-    raise SystemExit(0 if summary.get("artifact_valid") else 1)
+    # A risk block exits non-zero even though it emitted a usable artifact.
+    # The run did not accomplish the goal, and a caller scripting discovery
+    # should not read "artifact written" as "flow proven".
+    if not summary.get("artifact_valid"):
+        raise SystemExit(1)
+    raise SystemExit(0 if outcome.succeeded else 4)
 
 
 # Filler that names no part of the capability. "current"/"latest" and the

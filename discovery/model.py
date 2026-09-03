@@ -42,6 +42,34 @@ DEFAULT_MODELS = {
     "anthropic": "claude-sonnet-5",
 }
 
+# USD per million tokens, for reporting what a discovery run cost. Cache reads
+# are ~0.1x input and cache writes ~1.25x, per Anthropic's published rates.
+# Declared rather than computed so a stale entry is visible in review; a model
+# with no entry reports tokens and omits cost rather than inventing a number.
+PRICING_USD_PER_MTOK: dict[str, dict[str, float]] = {
+    "claude-sonnet-5": {"input": 2.00, "output": 10.00},
+    "claude-opus-5": {"input": 5.00, "output": 25.00},
+    "claude-haiku-4-5": {"input": 1.00, "output": 5.00},
+}
+CACHE_READ_MULTIPLIER = 0.1
+CACHE_WRITE_MULTIPLIER = 1.25
+
+
+def estimate_cost_usd(model: str, usage: dict[str, int]) -> Optional[float]:
+    """What a run's token usage cost, or None for an unpriced model."""
+    rates = PRICING_USD_PER_MTOK.get(model)
+    if rates is None:
+        return None
+    per_tok_in = rates["input"] / 1_000_000
+    per_tok_out = rates["output"] / 1_000_000
+    return (
+        usage.get("input_tokens", 0) * per_tok_in
+        + usage.get("cache_read_input_tokens", 0) * per_tok_in * CACHE_READ_MULTIPLIER
+        + usage.get("cache_creation_input_tokens", 0) * per_tok_in * CACHE_WRITE_MULTIPLIER
+        + usage.get("output_tokens", 0) * per_tok_out
+    )
+
+
 # Free-tier Gemini rate-limits aggressively, so retries are the normal case
 # rather than an edge case. Bounded so a run cannot hang indefinitely.
 MAX_RETRIES = 6
@@ -186,9 +214,10 @@ class ModelClient(ABC):
 
 
 class AnthropicClient(ModelClient):
-    """Alternate implementation. Kept because it is what proves the seam:
-    the neutral transcript above has to survive two genuinely different wire
-    formats, and only a second implementation can show that it does."""
+    """The default provider. GeminiClient is kept alongside it because that is
+    what proves the seam: the neutral transcript above has to survive two
+    genuinely different wire formats, and only a second implementation can
+    show that it does."""
 
     provider = "anthropic"
 
@@ -197,7 +226,17 @@ class AnthropicClient(ModelClient):
         import anthropic
 
         self._sdk = anthropic
-        self._client = anthropic.Anthropic()
+        if not os.environ.get("ANTHROPIC_API_KEY"):
+            raise RuntimeError(
+                "ANTHROPIC_API_KEY is not set. Put it in .env (gitignored) or export it."
+            )
+        # An identity-linked key must name the workspace each request acts in,
+        # and the API rejects the request outright without it -- a 400 on the
+        # first call rather than anything the run could recover from. Sent as a
+        # default header so every call in the run carries it.
+        workspace = os.environ.get("ANTHROPIC_WORKSPACE_ID")
+        headers = {"anthropic-workspace-id": workspace} if workspace else None
+        self._client = anthropic.Anthropic(default_headers=headers)
 
     def _to_wire(self, messages: list[Message]) -> list[dict[str, Any]]:
         wire: list[dict[str, Any]] = []
@@ -270,6 +309,15 @@ class AnthropicClient(ModelClient):
             usage={
                 "input_tokens": response.usage.input_tokens,
                 "output_tokens": response.usage.output_tokens,
+                # The system prompt carries a cache breakpoint and is stable
+                # across every turn, so after the first call most of the input
+                # should be a cache read. Recording both is what makes that
+                # checkable rather than assumed -- a cache_read of zero across
+                # a run means something is silently invalidating the prefix.
+                "cache_creation_input_tokens": getattr(
+                    response.usage, "cache_creation_input_tokens", 0) or 0,
+                "cache_read_input_tokens": getattr(
+                    response.usage, "cache_read_input_tokens", 0) or 0,
             },
         )
 

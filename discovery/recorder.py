@@ -452,8 +452,15 @@ def record(
     risk decision and every near-miss goes through it so the heuristic's
     reasoning is in the run's evidence, not only in the artifact.
     """
-    if not outcome.succeeded:
+    if not outcome.recordable:
         raise ValueError(f"cannot record an artifact from a {outcome.status!r} run")
+
+    # A run stopped by the risk gate still has a flow worth keeping. The
+    # blocked step is recorded so the artifact describes the whole capability
+    # including the action nobody performed -- otherwise the gate would mean
+    # irreversible capabilities can never be recorded, and the safe thing
+    # would be the thing that makes the system useless.
+    blocked = outcome.blocked_cycle if outcome.status == "risk_blocked" else None
 
     def emit(event: str, payload: dict[str, Any]) -> None:
         if log is not None:
@@ -472,6 +479,11 @@ def record(
     # which is the whole point of the artifact being separate from the
     # transcript.
     acted = [c for c in outcome.cycles if c.status == "ok" and c.tool_name]
+    if blocked is not None and blocked.tool_name:
+        # It never ran, but it was resolved: the model named a control, the
+        # resolver found it, and the gate refused before the click. That is
+        # enough to record the step and build its locator chain.
+        acted = acted + [blocked]
 
     inputs: dict[str, dict[str, Any]] = {}
     for cycle in acted:
@@ -606,6 +618,17 @@ def record(
     unrecordable.extend(checkpoint_problems)
 
     used_actions = sorted({s["action"] for s in steps})
+    incomplete_note = ""
+    if blocked is not None:
+        incomplete_note = (
+            " THE FLOW WAS NOT COMPLETED. Discovery stopped at the last step because "
+            "it is irreversible and this run's policy requires a person to perform it. "
+            "That step is recorded and was NEVER EXECUTED, so nothing after it was "
+            "observed: no confirmation screen, no outputs, and its checkpoint is the "
+            "best guess available rather than something the run verified. Approving "
+            "this artifact means approving a step no one has seen succeed."
+        )
+
     artifact = {
         "schema_version": SCHEMA_VERSION,
         "capability": {
@@ -646,6 +669,7 @@ def record(
                 "which strategies uniquely resolved each element at the moment it was acted "
                 "on; ambiguous strategies were discarded rather than recorded. "
                 "outcomes[] is empty because a happy-path run observes no business outcomes."
+                + incomplete_note
                 + _risk_summary(risk_rules, risk_notes)
                 + (f" Unrecordable: {'; '.join(unrecordable)}" if unrecordable else "")
             ),

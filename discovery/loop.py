@@ -2,10 +2,24 @@
 
 The model is in the loop here and only here. It decides *what to do*; it does
 not decide what is allowed. Every action it requests goes through the same
-`replay.executor` that production replay uses, so the policy allowlist,
-the risky-action rule and the frame/element resolution are literally the same
-code on both paths. Discovery cannot be more permissive than replay because
-there is no second implementation for it to be permissive in.
+`replay.executor` that production replay uses, so the policy allowlist, the
+risky-action rule and the frame/element resolution are literally the same code
+on both paths.
+
+That sharing is necessary and it was not sufficient. This docstring used to
+claim "discovery cannot be more permissive than replay because there is no
+second implementation for it to be permissive in" -- and that was false. The
+executor's risk gate reads `Step.risk`, and discovery constructed every Step
+without one, so the field defaulted to "safe" and `check_risk` never fired.
+Risk was assigned afterwards, by the recorder, at record time. Shared code is
+not shared enforcement: a guard that is never handed the input that trips it
+is not a guard. Observed live -- a discovery run clicked "Post Transfer" and
+moved money with no block and no escalation.
+
+So the classification now happens *here*, at act time, using the same app
+profile verb rules the recorder uses, and the same `check_risk` decides what
+to do about it. Under `require_confirmation` that means a discovery run
+walking an irreversible flow stops at the irreversible step.
 
 The loop is deliberately narrow:
 
@@ -39,6 +53,7 @@ from capability.schema import Element, LocatorRung, Policy, Scope, Step, Target
 from capability.validate import AuthConfigError, resolve_credentials
 from discovery.model import (
     ActionResult,
+    estimate_cost_usd,
     AssistantAction,
     Message,
     ModelClient,
@@ -49,10 +64,14 @@ from discovery.prompts import ACTION_TOOLS, TERMINAL_TOOLS, build_system_prompt,
 from perception.tree import filter_tree, snapshot_all_frames, to_compact_text
 from replay import resolver
 from escalation.session import ControlledSession
-from replay.executor import Executor, PolicyViolation, check_destination
+from replay.executor import Executor, PolicyViolation, RiskBlocked, check_destination
 from replay.resolver import ElementUnresolvable
 
-DEFAULT_PROVIDER = "gemini"
+# Anthropic by default. Gemini stays a first-class, fully-wired alternative --
+# both implementations remaining is what makes the provider seam a seam rather
+# than a claim, and the Gemini-recorded evidence in evidence/discovery/ stays
+# valid because the artifact does not depend on which model produced it.
+DEFAULT_PROVIDER = "anthropic"
 
 MAX_STEPS = 25
 # The run's own time budget. Provider backoff is deliberately NOT counted
@@ -126,7 +145,7 @@ class Cycle:
 
 @dataclass
 class DiscoveryOutcome:
-    status: str  # goal_reached | stuck | max_steps | timeout | policy_violation | failure_limit
+    status: str  # goal_reached | risk_blocked | stuck | max_steps | timeout | policy_violation | failure_limit
     run_id: str
     goal: str
     cycles: list[Cycle]
@@ -139,10 +158,28 @@ class DiscoveryOutcome:
     model: str = ""
     rate_limit_events: list[dict[str, Any]] = field(default_factory=list)
     human_interventions: list[dict[str, Any]] = field(default_factory=list)
+    usage: dict[str, int] = field(default_factory=dict)
+    cost_usd: Optional[float] = None
+
+    # The cycle a risky step stopped on, if one did. Recorded but never
+    # executed -- the flow up to it is real and worth keeping.
+    blocked_cycle: Optional["Cycle"] = None
 
     @property
     def succeeded(self) -> bool:
         return self.status == "goal_reached"
+
+    @property
+    def recordable(self) -> bool:
+        """Whether there is a flow worth emitting an artifact for.
+
+        A risk block is not a failed run: everything up to the irreversible
+        step worked, and the step itself is known -- it just was not
+        performed. Refusing to emit anything would make the gate mean
+        "irreversible capabilities cannot be recorded at all", which is a
+        worse outcome than recording one that stops short and says so.
+        """
+        return self.status in ("goal_reached", "risk_blocked")
 
 
 def _element_key(tool_input: dict[str, Any], action: str) -> str:
@@ -226,6 +263,13 @@ class DiscoveryLoop:
         self.rate_limit_events: list[dict[str, Any]] = []
         # Time spent waiting on the provider, excluded from the wall clock.
         self.backoff_s: float = 0.0
+        # Token usage across the run, so a run reports what it cost rather
+        # than leaving that to be inferred from the provider's dashboard.
+        self.usage: dict[str, int] = {
+            "input_tokens": 0, "output_tokens": 0,
+            "cache_creation_input_tokens": 0, "cache_read_input_tokens": 0,
+            "calls": 0,
+        }
         # Off by default, same reasoning as replay: a discovery run left
         # blocking on a human nobody is watching is worse than one that stops.
         self.escalate = escalate
@@ -247,6 +291,11 @@ class DiscoveryLoop:
         # diagnostic does. Model-facing text keeps the narrower pattern-only
         # scrubber -- see _scrub_for_model for why the two differ.
         self.profile = profile or profile_for(target)
+        # Same vocabulary the recorder uses. Imported here rather than
+        # duplicated so the two can never disagree about what "risky" means.
+        from discovery.recorder import risk_rules_from_profile
+
+        self.risk_rules = risk_rules_from_profile(self.profile)
         self.disk_scrubber = profile_scrubber(self.profile)
         self.model_scrubber = Scrubber()
         self.log_path = self.evidence_dir / "cycles.jsonl"
@@ -330,11 +379,16 @@ class DiscoveryLoop:
         if pinned.resolved:
             cycle.acted_node = pinned.node
 
+        # The risk classification the recorder would apply, applied now --
+        # before the action rather than after it. Same rules, same profile, so
+        # a step the artifact will call risky is a step discovery refuses to
+        # perform unattended, rather than one it performs and then labels.
         step_kwargs: dict[str, Any] = {
             "id": f"d{cycle.index}",
             "action": action,
             "element": key,
             "frame": frame,
+            "risk": self._classify_risk(action, tool_input, pinned),
         }
         if action in ("fill", "select"):
             step_kwargs["value"] = tool_input["value"]
@@ -352,6 +406,25 @@ class DiscoveryLoop:
         if action == "fill":
             return f"Filled {tool_input.get('name')!r} in frame {frame}."
         return f"Performed {action} on {tool_input.get('name')!r} in frame {frame}."
+
+    def _classify_risk(self, action: str, tool_input: dict[str, Any], resolution) -> str:
+        """Is this action irreversible, as far as the app profile can tell?
+
+        Only clicks: a fill or a select changes a form, the click is what
+        sends it. The resolved control's own accessible name is authoritative
+        over what the model said it was targeting, matching the recorder.
+        """
+        if action != "click":
+            return "safe"
+        name = ""
+        if resolution is not None and resolution.resolved and resolution.node:
+            name = (resolution.node.get("name") or "").strip()
+        name = name or (tool_input.get("name") or "").strip()
+        matched = self.risk_rules.match(name)
+        if matched:
+            self.log("risk_blocked_candidate", {"control": name, "matched_verb": matched})
+            return "risky"
+        return "safe"
 
     # -- authentication (never reaches the model) ---------------------------
 
@@ -399,6 +472,16 @@ class DiscoveryLoop:
 
     # -- run ----------------------------------------------------------------
 
+    def _record_usage(self, usage: dict[str, Any]) -> None:
+        if not usage:
+            return
+        self.usage["calls"] += 1
+        for key in (
+            "input_tokens", "output_tokens",
+            "cache_creation_input_tokens", "cache_read_input_tokens",
+        ):
+            self.usage[key] += int(usage.get(key) or 0)
+
     def _log_retry(self, event: dict[str, Any]) -> None:
         """Every provider retry lands in evidence. A run that spent four
         minutes in backoff is otherwise indistinguishable from a slow model."""
@@ -438,6 +521,7 @@ class DiscoveryLoop:
         outputs: dict[str, str] = {}
         consecutive_failures = 0
         status = "max_steps"
+        blocked_cycle = None
         summary = None
         message = None
 
@@ -479,6 +563,7 @@ class DiscoveryLoop:
                     messages.append(Observation(text=observation))
 
                     response = self.client.complete(system, messages, tools)
+                    self._record_usage(response.usage)
 
                     cycle.reasoning = response.text
                     tool_uses = response.calls
@@ -556,6 +641,23 @@ class DiscoveryLoop:
                             consecutive_failures = 0
                             if block.name == "extract" and cycle.extracted is not None:
                                 outputs[cycle.tool_input["output_name"]] = cycle.extracted
+                        except RiskBlocked as exc:
+                            # Not a failure the model can work around, and not
+                            # one it should be invited to retry: the step is
+                            # irreversible and policy says a person decides.
+                            # The run stops here and the recorder emits what
+                            # was learned up to and including this step.
+                            cycle.status = "blocked"
+                            cycle.detail = str(exc)
+                            self.cycles.append(cycle)
+                            self.log("cycle", cycle.as_log())
+                            self.log("risk_blocked", {
+                                "step": f"d{cycle.index}", "handling": exc.handling,
+                                "detail": exc.detail,
+                            })
+                            status, message = "risk_blocked", str(exc)
+                            blocked_cycle = cycle
+                            break
                         except PolicyViolation as exc:
                             cycle.status = "failed"
                             cycle.detail = str(exc)
@@ -612,6 +714,9 @@ class DiscoveryLoop:
             model=self.model,
             rate_limit_events=self.rate_limit_events,
             human_interventions=self.human_interventions,
+            blocked_cycle=blocked_cycle,
+            usage=dict(self.usage),
+            cost_usd=estimate_cost_usd(self.model, self.usage),
         )
         self.log(
             "run_finished",
@@ -623,6 +728,8 @@ class DiscoveryLoop:
                 "message": outcome.message,
                 "duration_ms": round(outcome.duration_ms, 2),
                 "rate_limit_retries": len(outcome.rate_limit_events),
+                "usage": outcome.usage,
+                "cost_usd": outcome.cost_usd,
             },
         )
         return outcome
