@@ -20,7 +20,8 @@ from pathlib import Path
 
 import pytest
 
-from capability.redaction import Scrubber, mask_identifier, seed_data_scrubber
+from capability.profile import load_profile
+from capability.redaction import Scrubber, mask_identifier, profile_scrubber
 from coreserv.data import MEMBERS
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -152,7 +153,7 @@ def test_too_short_literals_are_not_registered():
 
 
 def test_seed_scrubber_masks_every_seed_value():
-    scrubber = seed_data_scrubber()
+    scrubber = profile_scrubber(load_profile("coreserv"))
     for member in MEMBERS:
         scrubbed = scrubber.scrub(
             f"{member['ssn']} {member['date_of_birth']} {member['phone']} "
@@ -171,7 +172,7 @@ def test_seed_scrubber_masks_every_seed_value():
 def test_scrubber_leaves_non_sensitive_evidence_intact():
     """Over-masking destroys the thing evidence exists for. Roles, control
     names and statuses must survive."""
-    scrubber = seed_data_scrubber()
+    scrubber = profile_scrubber(load_profile("coreserv"))
     line = 'row: cell "Status" cell "restricted" link "View" button "Submit" columnheader "Balance"'
     assert scrubber.scrub(line) == line
 

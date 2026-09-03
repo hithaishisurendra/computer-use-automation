@@ -468,8 +468,20 @@ def test_row_scope_template_is_shared_by_both_tenants(base_artifact):
 
 
 def test_tenant_with_no_overlay_file_loads_the_base_unmodified(base_artifact):
+    """A tenant with no overlay runs the base flow.
+
+    Compared against the base with the same profile defaults applied, since
+    resolution now also fills in the login elements an artifact recorded
+    before the auth seam existed does not declare. The flow itself -- steps,
+    outputs, outcomes, policy -- must be untouched.
+    """
+    from capability.loader import apply_profile_defaults
+
     resolved = load_resolved(CAPABILITIES, "member_savings_balance", "1.0.0", tenant="northridge")
-    assert resolved == base_artifact
+    assert resolved == apply_profile_defaults(base_artifact)
+    assert resolved.steps == base_artifact.steps
+    assert resolved.outputs == base_artifact.outputs
+    assert resolved.outcomes == base_artifact.outcomes
 
 
 # -- what an overlay may NOT do ---------------------------------------------

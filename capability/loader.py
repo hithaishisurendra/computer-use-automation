@@ -213,6 +213,11 @@ def apply_overlay(base: Artifact, overlay: TenantOverlay) -> Artifact:
         )
 
     data = base.model_dump(mode="json", exclude_none=True)
+    # allowed_origins is derived from base_url, and an overlay may move
+    # base_url. Carrying the base's value forward would make the merged
+    # artifact declare an origin that disagrees with where it now points,
+    # which the schema (correctly) rejects. Dropping it lets it be re-derived.
+    data["policy"].pop("allowed_origins", None)
 
     unknown_inputs = set(overlay.input_overrides) - {i["name"] for i in data["inputs"]}
     if unknown_inputs:
@@ -268,11 +273,62 @@ def capability_paths(
     return base_path, overlay_path
 
 
+def apply_profile_defaults(artifact: Artifact, profile=None) -> Artifact:
+    """Fill in auth targeting the artifact did not declare, from the app profile.
+
+    Login used to be targeted by CSS selectors inside the engine, so no
+    artifact declared login elements -- and those artifacts must keep
+    replaying unchanged now that targeting goes through the element registry.
+    Rather than rewrite them, the app profile supplies the element
+    definitions and they are injected here under reserved keys.
+
+    An artifact that declares its own auth elements is left alone: this is a
+    compatibility path for artifacts recorded before the seam existed, not a
+    mechanism new artifacts should rely on.
+    """
+    from .profile import profile_for
+
+    auth = artifact.target.auth
+    if auth is None or auth.elements:
+        return artifact
+
+    profile = profile or profile_for(artifact.target)
+    defaults = profile.auth_defaults
+    if defaults is None or not defaults.fields:
+        return artifact
+
+    data = artifact.model_dump(mode="json", exclude_none=True)
+    data["policy"].pop("allowed_origins", None)
+    for key, element in defaults.elements.items():
+        data["elements"].setdefault(key, element)
+    data["target"]["auth"]["elements"] = {
+        # Only the fields this artifact actually uses. A profile may describe
+        # a branch select that a capability recorded before it existed never
+        # supplied, and declaring an element for a field nothing fills would
+        # fail validation for a value that is simply absent.
+        name: key
+        for name, key in defaults.fields.items()
+        if name in auth.credentials_ref or name in auth.parameters
+    }
+    if defaults.submit:
+        data["target"]["auth"]["submit"] = defaults.submit
+
+    try:
+        return Artifact.model_validate(data)
+    except ValidationError as exc:
+        raise ArtifactError(
+            f"app profile {profile.name!r} supplied auth defaults that do not fit "
+            f"capability {artifact.capability.id!r}:\n"
+            + _format_validation_error(Path(f"<profile:{profile.name}>"), exc)
+        ) from exc
+
+
 def load_resolved(
     root: str | Path,
     capability_id: str,
     version: str,
     tenant: Optional[str] = None,
+    profile=None,
 ) -> Artifact:
     """Load a capability and, if a tenant is named, resolve its overlay.
 
@@ -283,5 +339,5 @@ def load_resolved(
     base_path, overlay_path = capability_paths(root, capability_id, version, tenant)
     artifact = load_artifact(base_path)
     if overlay_path is not None and overlay_path.exists():
-        return apply_overlay(artifact, load_overlay(overlay_path))
-    return artifact
+        artifact = apply_overlay(artifact, load_overlay(overlay_path))
+    return apply_profile_defaults(artifact, profile)

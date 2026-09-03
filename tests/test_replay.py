@@ -25,6 +25,7 @@ from pathlib import Path
 import pytest
 
 from capability.loader import load_artifact, load_resolved
+from capability.profile import load_profile
 from capability.schema import Artifact, Element, LocatorRung, Scope
 from replay import classify, resolver
 from escalation.operator import Decision, OperatorDecision
@@ -39,6 +40,17 @@ BASE_URL = os.environ.get("CORESERV_URL", "http://localhost:8800")
 @pytest.fixture
 def artifact() -> Artifact:
     return load_artifact(BASE_PATH)
+
+
+@pytest.fixture
+def profile():
+    """The app profile the committed artifact is recorded against.
+
+    Error markers and recovery actions moved out of the classifier into this
+    file, so a classification test now has to say which application it is
+    classifying for -- which is the point of the change.
+    """
+    return load_profile("coreserv")
 
 
 # ---------------------------------------------------------------------------
@@ -374,35 +386,35 @@ def test_risky_step_under_block_is_refused_with_the_blocking_policy(artifact):
 # ---------------------------------------------------------------------------
 
 
-def test_engine_universals_win_over_artifact_outcomes(artifact):
+def test_engine_universals_win_over_artifact_outcomes(artifact, profile):
     """A session bounce shows a login page containing none of the member's
     data. A flow-first classifier would call that 'no such member' -- a wrong
     answer returned confidently. Universals must be checked first."""
     page_text = 'cell "Your session has ended."\ncell "No records match your criteria."'
-    detection = classify.classify(artifact, ["member_not_found"], page_text, "/")
+    detection = classify.classify(artifact, ["member_not_found"], page_text, "/", profile)
     assert detection.name == "session_expired"
     assert detection.classification == "hard_failure"
 
 
-def test_interstitial_is_recoverable_before_hard_failures(artifact):
+def test_interstitial_is_recoverable_before_hard_failures(artifact, profile):
     page_text = 'cell "System Maintenance"\ncell "An unexpected error occurred."'
-    detection = classify.detect_engine_universals(page_text)
+    detection = classify.detect_engine_universals(page_text, profile)
     assert detection.name == "maintenance_interstitial"
     assert detection.classification == "recoverable"
 
 
-def test_artifact_outcome_detected_when_no_universal_applies(artifact):
+def test_artifact_outcome_detected_when_no_universal_applies(artifact, profile):
     page_text = 'cell "No records match your criteria."'
-    detection = classify.classify(artifact, ["member_not_found"], page_text, "/search/results")
+    detection = classify.classify(artifact, ["member_not_found"], page_text, "/search/results", profile)
     assert detection.name == "member_not_found"
     assert detection.classification == "business_outcome"
 
 
-def test_outcome_not_declared_on_the_step_is_not_reported(artifact):
+def test_outcome_not_declared_on_the_step_is_not_reported(artifact, profile):
     """'No records match' is an answer after the search step and a non
     sequitur after the extract step."""
     page_text = 'cell "No records match your criteria."'
-    assert classify.classify(artifact, [], page_text, "/member/10001") is None
+    assert classify.classify(artifact, [], page_text, "/member/10001", profile) is None
 
 
 def test_unresolvable_element_is_escalation_eligible():
@@ -525,7 +537,7 @@ def test_risky_step_is_not_retried_on_a_recoverable_detection(tmp_path):
     artifact = make_artifact([RISKY_CLICK], risky_handling="flag")
     engine = build_engine(
         artifact, tmp_path,
-        observations=Observations(page_text=classify.INTERSTITIAL_MARKER),
+        observations=Observations(page_text=load_profile("coreserv").error_markers.maintenance[0]),
     )
     result = run_flow(engine)
 

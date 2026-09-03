@@ -69,6 +69,18 @@ class Scrubber:
         rules = DEFAULT_PATTERNS if patterns is None else patterns
         self._patterns = [(re.compile(p), r) for p, r in rules]
         self._literals: list[tuple[str, str]] = []
+        # Set by profile_scrubber. A bare Scrubber() is pattern-only by
+        # construction and says so rather than claiming sources it lacks.
+        self.sources: Optional["RedactionSources"] = None
+
+    def add_pattern(self, pattern: str, replacement: str) -> None:
+        """An app-specific shape rule, from its profile.
+
+        Needed for values that are neither enumerable nor covered by the
+        default shapes -- a per-session id printed into a status bar, or a
+        phone format the default rule does not match.
+        """
+        self._patterns.append((re.compile(pattern), replacement))
 
     def register_literal(self, value: str, replacement: str) -> None:
         if value and len(value) >= self.MIN_LITERAL:
@@ -110,25 +122,109 @@ class Scrubber:
         return obj
 
 
-def seed_data_scrubber() -> Scrubber:
-    """A Scrubber preloaded with CoreServ's seed dataset.
+class RedactionSources:
+    """What a scrubber was actually given, and whether that is enough.
 
-    Only possible because we own the fixture -- a real deployment cannot
-    enumerate its members, which is exactly why the pattern rules above are
-    the primary mechanism and this is a precision supplement for evidence
-    generated against our own app.
+    The phase-1 lesson was that redaction fails quietly: `seed_data_scrubber()`
+    imported `coreserv.data`, so on any app without that module it silently
+    became pattern-only and let names and street addresses through with
+    nothing saying so. A Scrubber therefore now carries an account of its own
+    sources, and a degraded one is reported rather than assumed adequate.
     """
-    from coreserv.data import MEMBERS
 
+    def __init__(self, profile_name: str = "<none>"):
+        self.profile_name = profile_name
+        self.sources: list[str] = []
+        self.literal_count = 0
+        self.pattern_count = 0
+
+    @property
+    def degraded(self) -> bool:
+        """True when only shape-based rules are in play.
+
+        Pattern rules catch an SSN, an email and a phone number by shape.
+        They do not catch a member's name or street address, which is exactly
+        what a whole-page evidence capture contains.
+        """
+        return self.literal_count == 0
+
+    def describe(self) -> dict:
+        return {
+            "profile": self.profile_name,
+            "sources": list(self.sources),
+            "known_literals": self.literal_count,
+            "extra_patterns": self.pattern_count,
+            "degraded": self.degraded,
+        }
+
+    def warning(self) -> Optional[str]:
+        if not self.degraded:
+            return None
+        return (
+            f"redaction is degraded: app profile {self.profile_name!r} supplies no "
+            "known-sensitive literals, so evidence is scrubbed by shape rules only. "
+            "Names and street addresses on a captured page will NOT be masked."
+        )
+
+
+def profile_scrubber(profile=None) -> Scrubber:
+    """Build a Scrubber from an app profile's declared redaction sources.
+
+    Replaces `seed_data_scrubber()`, which imported CoreServ's data module
+    from library code. Where the sensitive values come from is knowledge
+    about an application, so it is declared in that application's profile:
+
+      literals        values known up front, masked exactly
+      patterns        extra shape rules this app needs
+      fixture_module  an app whose dataset this repo owns, named in config
+                      rather than imported here -- the coupling that mattered
+                      was library code importing a specific target's module,
+                      not the fixture existing
+
+    A profile supplying no literal source produces a scrubber that says so;
+    see `Scrubber.sources`.
+    """
+    name = getattr(profile, "name", "<none>") if profile is not None else "<none>"
     scrubber = Scrubber()
-    scrubber.register_pii(m["ssn"] for m in MEMBERS)
-    scrubber.register_pii(m["date_of_birth"] for m in MEMBERS)
-    scrubber.register_pii(m["address"] for m in MEMBERS)
-    scrubber.register_pii(m["email"] for m in MEMBERS)
-    scrubber.register_pii(m["phone"] for m in MEMBERS)
-    scrubber.register_pii(f"{m['first_name']} {m['last_name']}" for m in MEMBERS)
-    scrubber.register_identifiers(
-        a["account_number"] for m in MEMBERS for a in m["accounts"]
-    )
-    scrubber.register_identifiers(m["member_id"] for m in MEMBERS)
+    scrubber.sources = RedactionSources(name)
+
+    if profile is None:
+        return scrubber
+
+    redaction = profile.redaction
+
+    if redaction.fixture_module:
+        import importlib
+
+        module = importlib.import_module(redaction.fixture_module)
+        members = getattr(module, "MEMBERS", [])
+        for m in members:
+            for field in ("ssn", "date_of_birth", "address", "email", "phone"):
+                if m.get(field):
+                    scrubber.register_literal(m[field], "<redacted:pii>")
+            if m.get("first_name") and m.get("last_name"):
+                scrubber.register_literal(f"{m['first_name']} {m['last_name']}", "<redacted:pii>")
+            if m.get("member_id"):
+                scrubber.register_identifiers([m["member_id"]])
+            for account in m.get("accounts") or []:
+                if account.get("account_number"):
+                    scrubber.register_identifiers([account["account_number"]])
+        scrubber.sources.sources.append(f"fixture_module:{redaction.fixture_module}")
+
+    if redaction.literals:
+        scrubber.register_pii(redaction.literals)
+        scrubber.sources.sources.append("profile:literals")
+
+    for rule in list(redaction.patterns) + list(profile.chrome_literals):
+        if rule.pattern:
+            scrubber.add_pattern(rule.pattern, rule.replacement)
+        else:
+            scrubber.register_literal(rule.value, rule.replacement)
+        scrubber.sources.pattern_count += 1
+    if profile.chrome_literals:
+        scrubber.sources.sources.append("profile:chrome_literals")
+    if redaction.patterns:
+        scrubber.sources.sources.append("profile:patterns")
+
+    scrubber.sources.literal_count = len(scrubber._literals)
     return scrubber

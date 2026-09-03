@@ -46,9 +46,6 @@ from capability.schema import SCHEMA_VERSION
 from discovery.loop import Cycle, DiscoveryOutcome
 from replay import resolver
 
-DEFAULT_PROFILES_PATH = Path(__file__).resolve().parent / "app_profiles.json"
-
-
 @dataclass(frozen=True)
 class RiskRules:
     """Per-app vocabulary for the risky-step heuristic.
@@ -81,23 +78,18 @@ def _first_word_match(text: str, verbs: tuple[str, ...]) -> Optional[str]:
     return None
 
 
-def load_risk_rules(
-    app: str, path: str | Path = DEFAULT_PROFILES_PATH
-) -> RiskRules:
-    """Read the app's risk vocabulary, falling back to the default profile.
+def risk_rules_from_profile(profile) -> RiskRules:
+    """The risky-step vocabulary, from the app profile.
 
-    An app with no entry is not an error -- it means the default vocabulary
-    applies, which is the expected case for a target nobody has specialised
-    yet. Keys beginning with '_' are commentary.
+    Lived in discovery/app_profiles.json, which was the right idea in the
+    wrong place: it is the same kind of per-app knowledge as the error
+    markers and the recovery actions, and splitting it across two config
+    files meant adding an app touched two.
     """
-    data = json.loads(Path(path).read_text(encoding="utf-8"))
-    base = data.get("default") or {}
-    profile = {k: v for k, v in (data.get(app) or {}).items() if not k.startswith("_")}
-    merged = {**base, **profile}
     return RiskRules(
-        app=app if app in data else "default",
-        post_like_verbs=tuple(merged.get("post_like_verbs") or ()),
-        near_miss_verbs=tuple(merged.get("near_miss_verbs") or ()),
+        app=profile.name,
+        post_like_verbs=tuple(profile.risk_verbs),
+        near_miss_verbs=tuple(profile.near_miss_verbs),
     )
 
 
@@ -383,6 +375,7 @@ def record(
     model: str,
     risk_rules: "RiskRules" = DEFAULT_RISK_RULES,
     log: Optional[Callable[[str, dict[str, Any]], None]] = None,
+    default_frame: Optional[str] = None,
 ) -> dict[str, Any]:
     """Build the artifact dict from a successful discovery run.
 
@@ -432,7 +425,7 @@ def record(
     for position, cycle in enumerate(acted, start=1):
         step_id = f"s{position}"
         action = cycle.tool_name
-        frame = cycle.tool_input.get("frame") or "content"
+        frame = cycle.tool_input.get("frame") or default_frame
 
         if action == "navigate":
             steps.append(
@@ -532,7 +525,7 @@ def record(
             )
         steps.append(step)
 
-    steps = _ensure_opening_navigate(steps, acted, target)
+    steps = _ensure_opening_navigate(steps, acted, target, default_frame)
     steps = _renumber(steps)
     steps, checkpoint_problems = _add_checkpoints(steps, elements, params)
     unrecordable.extend(checkpoint_problems)
@@ -610,7 +603,8 @@ def _find_acted_node(cycle: Cycle, tree: Optional[dict]) -> Optional[dict]:
 
 
 def _ensure_opening_navigate(
-    steps: list[dict[str, Any]], acted: list[Cycle], target: Any
+    steps: list[dict[str, Any]], acted: list[Cycle], target: Any,
+    default_frame: Optional[str] = None,
 ) -> list[dict[str, Any]]:
     """Make the artifact state its own starting precondition.
 
@@ -644,7 +638,7 @@ def _ensure_opening_navigate(
     # Frame the flow actually works in, so the opening navigate loads the
     # content region rather than replacing a frameset.
     frame = next(
-        (c.tool_input.get("frame") for c in acted if c.tool_input.get("frame")), "content"
+        (c.tool_input.get("frame") for c in acted if c.tool_input.get("frame")), default_frame
     )
     first_url = next((c.url for c in acted), None)
     observed = urlparse(first_url).path if first_url else None

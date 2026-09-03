@@ -130,6 +130,31 @@ class AuthSpec(StrictModel):
             "to a public repo. Resolved at runtime by capability.validate.resolve_credentials."
         )
     )
+    parameters: dict[str, str] = Field(
+        default_factory=dict,
+        description=(
+            "Non-secret sign-on values, as literals. MERIDIAN's sign-on takes a Branch, "
+            "which is neither a credential nor a caller input: forcing it through "
+            "credentials_ref would mean inventing an environment variable for a value "
+            "that is not a secret, and would make the credential block lie about what "
+            "is sensitive. Parameters are declared, reviewable, and written to evidence "
+            "in full."
+        ),
+    )
+    elements: dict[str, str] = Field(
+        default_factory=dict,
+        description=(
+            "Maps each credential role and parameter name to an element KEY in the "
+            "artifact's element registry. Login is targeted the same way every other "
+            "control is -- by role and accessible name through the resolver -- rather "
+            "than by CSS selectors embedded in engine code, which is what made the "
+            "login step the one part of the flow that could not be retargeted without "
+            "editing the engine."
+        ),
+    )
+    submit: Optional[str] = Field(
+        default=None, description="Element key of the control that submits the sign-on form."
+    )
     success_check: "Condition" = Field(
         description="Asserted after authenticating; failing it is an auth_failure."
     )
@@ -282,7 +307,16 @@ class LocatorRung(StrictModel):
 
 class Element(StrictModel):
     description: str
-    frame: str = Field(description="Frame the control lives in, by frame name.")
+    frame: Optional[str] = Field(
+        default=None,
+        description=(
+            "Frame the control lives in, by frame name. None means the document "
+            "itself, which is the ordinary case -- a frameset is the exception, not "
+            "the default. This was a required string, so every element on every "
+            "surface had to name a frame, and a single-document app could only "
+            "satisfy that by declaring the empty string as if it were a frame's name."
+        ),
+    )
     chain: list[LocatorRung] = Field(min_length=1)
     notes: Optional[str] = None
 
@@ -349,6 +383,7 @@ class Step(StrictModel):
             "surfaces. A desktop resolver would map this to a window or pane."
         ),
     )
+
     element: Optional[str] = None
     value: Optional[str] = None
     into: Optional[str] = None
@@ -396,7 +431,17 @@ class Policy(StrictModel):
     executor-level one is a control. The same policy layer sits under both
     discovery and replay."""
 
-    allowed_origins: list[str] = Field(min_length=1)
+    allowed_origins: list[str] = Field(
+        default_factory=list,
+        description=(
+            "DERIVED from target.base_url, not authored. It was stored "
+            "independently, which meant a tenant overlay could move base_url to "
+            "another host while the origin allowlist still named the old one -- so "
+            "the artifact failed its own origin check and the only way to point a "
+            "capability at a second host was to edit the base artifact. Declaring a "
+            "value that disagrees with base_url is now an error rather than a trap."
+        ),
+    )
     allowed_paths: list[str] = Field(min_length=1)
     allowed_actions: list[Action] = Field(min_length=1)
     risky_action_handling: Literal["block", "require_confirmation", "flag"] = "require_confirmation"
@@ -465,6 +510,41 @@ class Artifact(StrictModel):
                 f"unsupported schema_version {v!r}; this engine parses {SCHEMA_VERSION!r}"
             )
         return v
+
+    @model_validator(mode="after")
+    def _origins_follow_base_url(self) -> "Artifact":
+        """Derive the origin allowlist from where the artifact actually points.
+
+        Two things must not be able to disagree: the host the flow drives and
+        the host it is permitted to drive. Storing them separately made that
+        disagreement expressible, and a tenant overlay -- which may change
+        base_url but is forbidden from touching allowed_origins -- produced it
+        by construction.
+
+        Paths and actions keep the narrowing-only overlay rule. Only the
+        origin becomes derived, because it is the one entry that is not a
+        judgement about scope but a restatement of a fact already declared.
+        """
+        from urllib.parse import urlparse
+
+        parsed = urlparse(self.target.base_url)
+        if not parsed.scheme or not parsed.netloc:
+            raise ValueError(
+                f"target.base_url {self.target.base_url!r} is not an absolute URL, so no "
+                "origin allowlist can be derived from it"
+            )
+        derived = f"{parsed.scheme}://{parsed.netloc}"
+
+        declared = list(self.policy.allowed_origins or [])
+        if declared and declared != [derived]:
+            raise ValueError(
+                f"policy.allowed_origins {declared} does not match the origin of "
+                f"target.base_url ({derived!r}). allowed_origins is derived from "
+                "base_url; remove it from the artifact rather than maintaining a "
+                "second copy that can drift out of agreement"
+            )
+        self.policy.allowed_origins = [derived]
+        return self
 
     @model_validator(mode="after")
     def _references_resolve(self) -> "Artifact":
@@ -542,7 +622,29 @@ class Artifact(StrictModel):
             check_condition(outcome.detect, f"outcome {outcome.name!r} detect")
 
         if self.target.auth is not None:
-            check_condition(self.target.auth.success_check, "target.auth.success_check")
+            auth = self.target.auth
+            check_condition(auth.success_check, "target.auth.success_check")
+            for field_name, element_key in auth.elements.items():
+                if element_key not in element_keys:
+                    errors.append(
+                        f"target.auth.elements[{field_name!r}]: references unknown element "
+                        f"{element_key!r}"
+                    )
+            if auth.submit and auth.submit not in element_keys:
+                errors.append(
+                    f"target.auth.submit: references unknown element {auth.submit!r}"
+                )
+            # Every credential and parameter must be targetable, or the engine
+            # would resolve some fields and silently skip others.
+            if auth.elements:
+                unmapped = sorted(
+                    (set(auth.credentials_ref) | set(auth.parameters)) - set(auth.elements)
+                )
+                if unmapped:
+                    errors.append(
+                        f"target.auth: no element declared for {unmapped}; every credential "
+                        "and parameter needs a control to type it into"
+                    )
 
         # A run that reaches the end but extracts nothing is a failure, not
         # a success -- so a required output with no step producing it is a

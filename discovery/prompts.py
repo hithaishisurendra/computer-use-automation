@@ -14,7 +14,7 @@ model stopped producing tool calls", which otherwise look identical.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Optional
 
 from discovery.model import ToolSpec
 
@@ -38,14 +38,9 @@ state. This is the same representation a screen reader would use. You do not \
 get a screenshot, and you do not get HTML or CSS. Target elements by their \
 role and accessible name, never by position on screen.
 
-The application uses frames. Every action must name the frame it applies to. \
-The `content` frame holds the main working area; `navFrame` holds persistent \
-navigation. Identically named controls exist in both frames -- there is a \
-button named "Submit" in each -- so the frame is what disambiguates them. \
-Unless you have a specific reason, act on the `content` frame.
-
+{frames_section}
 TARGETING ELEMENTS
-Every action that touches an element takes `frame`, `role`, and `name`. \
+Every action that touches an element takes {target_params}. \
 `name` must match the accessible name in the snapshot exactly, including \
 capitalisation.
 
@@ -84,12 +79,26 @@ RULES
    right screen but reads nothing has not met the goal.
 """
 
+# What the prompt says about frames, and whether it says anything at all.
+# A frameset app needs the model to name a frame on every action; a
+# single-document app has no frames to name, and teaching it a frame model
+# that does not exist produces actions targeting a frame the page never had.
+FRAMES_SECTION = """\
+The application uses frames. Every action must name the frame it applies to, \
+and the snapshot labels each one. The `{content_frame}` frame holds the main \
+working area; the others hold persistent navigation and page furniture. The \
+same control name can appear in more than one frame, so the frame is what \
+disambiguates them. Unless you have a specific reason, act on the \
+`{content_frame}` frame.
+
+"""
+
 # Shared targeting parameters. Kept identical across every element-touching
 # tool so the model learns one addressing scheme rather than several.
 _TARGET_PROPERTIES: dict[str, Any] = {
     "frame": {
         "type": "string",
-        "description": "Frame the element is in, e.g. 'content' or 'navFrame'.",
+        "description": "Frame the element is in, as labelled in the snapshot.",
     },
     "role": {
         "type": "string",
@@ -109,23 +118,50 @@ _TARGET_PROPERTIES: dict[str, Any] = {
 }
 
 
-def _target_tool(name: str, description: str, extra: dict | None = None, required=None) -> ToolSpec:
+def _target_tool(
+    name: str, description: str, extra: dict | None = None, required=None, framed: bool = True
+) -> ToolSpec:
     properties = {**_TARGET_PROPERTIES, **(extra or {})}
+    if not framed:
+        properties.pop("frame", None)
+    fields = list(required or ["frame", "role", "name"])
+    if not framed:
+        fields = [f for f in fields if f != "frame"]
     return ToolSpec(
         name=name,
         description=description,
-        parameters={
-            "type": "object",
-            "properties": properties,
-            "required": required or ["frame", "role", "name"],
-        },
+        parameters={"type": "object", "properties": properties, "required": fields},
     )
 
 
 # Declared once, in plain JSON Schema, and handed to whichever provider is
 # configured. The vocabulary cannot drift in meaning between providers
 # because there is only one definition of it.
-TOOLS: list[ToolSpec] = [
+def build_tools(content_frame: Optional[str] = None) -> list[ToolSpec]:
+    """The action vocabulary, with frame targeting only where frames exist.
+
+    A tool schema that *requires* a frame on an app with none forces the
+    model to invent one, and an invented frame name resolves to nothing --
+    which surfaces as "element not found" and reads like a perception
+    failure rather than a prompt that described the wrong world.
+    """
+    framed = content_frame is not None
+    return [_reframe(tool, framed) for tool in _TOOLS_FRAMED]
+
+
+def _reframe(tool: ToolSpec, framed: bool) -> ToolSpec:
+    if framed:
+        return tool
+    properties = {k: v for k, v in tool.parameters["properties"].items() if k != "frame"}
+    required = [f for f in tool.parameters.get("required", []) if f != "frame"]
+    return ToolSpec(
+        name=tool.name,
+        description=tool.description,
+        parameters={"type": "object", "properties": properties, "required": required},
+    )
+
+
+_TOOLS_FRAMED: list[ToolSpec] = [
     ToolSpec(
         name="navigate",
         description=(
@@ -142,7 +178,7 @@ TOOLS: list[ToolSpec] = [
                 },
                 "frame": {
                     "type": "string",
-                    "description": "Frame to load the path into, usually 'content'.",
+                    "description": "Frame to load the path into, as labelled in the snapshot.",
                 },
             },
             "required": ["path", "frame"],
@@ -231,17 +267,34 @@ TOOLS: list[ToolSpec] = [
     ),
 ]
 
+# Module-level default, kept so the vocabulary can be inspected without a
+# profile. The frameless shape is the default because a frameset is the
+# exception.
+TOOLS: list[ToolSpec] = build_tools(None)
+
 TERMINAL_TOOLS = {"goal_reached", "stuck"}
-ACTION_TOOLS = {t.name for t in TOOLS} - TERMINAL_TOOLS
+ACTION_TOOLS = {t.name for t in _TOOLS_FRAMED} - TERMINAL_TOOLS
 
 
 def build_system_prompt(
-    goal: str, base_url: str, entry_path: str, allowed_paths: list[str], allowed_actions: list[str]
+    goal: str,
+    base_url: str,
+    entry_path: str,
+    allowed_paths: list[str],
+    allowed_actions: list[str],
+    content_frame: Optional[str] = None,
 ) -> str:
+    framed = content_frame is not None
     return SYSTEM_PROMPT.format(
         goal=goal,
         base_url=base_url,
         entry_path=entry_path,
         allowed_paths="\n".join(f"  {p}" for p in allowed_paths),
         allowed_actions=", ".join(allowed_actions),
+        frames_section=(
+            FRAMES_SECTION.format(content_frame=content_frame) if framed else ""
+        ),
+        target_params=(
+            "`frame`, `role`, and `name`" if framed else "`role` and `name`"
+        ),
     )

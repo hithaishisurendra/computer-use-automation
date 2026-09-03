@@ -184,13 +184,40 @@ Cascade searches by ten-digit account number, relabels the field and reorders
 the results grid; the overlay is two element chains, one input pattern and one
 version string.
 
-Cascade runs on **8800**, in place of northridge, rather than alongside it on
-a second port — and that is a limitation, not a preference. An overlay may
-override `base_url` but **not** `policy.allowed_origins`, so an artifact
-pointed at a second host would fail its own origin check, and the replay CLI
-has no host override. Pointing this run at 8801 silently drives northridge
-instead and returns a clean-looking `member_not_found`. `REPORT.md` §4 covers
-the finding and the fix; `evidence/README.md` records both runs.
+An overlay may now move a tenant to a different **host**, not just a
+different port. `policy.allowed_origins` is derived from `target.base_url`
+rather than stored beside it, so an overlay that sets `base_url` moves the
+origin allowlist with it. Previously the two were independent and
+`allowed_origins` was a forbidden overlay key, so a repointed artifact failed
+its own origin check — which is why the cascade demo runs on 8800 in place of
+northridge rather than alongside it. `evidence/README.md` records both runs.
+
+---
+
+## App profiles
+
+Everything the engine knows about a *specific application* lives in
+`config/app_profiles/{name}.json`, resolved from `target.app_profile`
+(defaulting to `target.app`). Two ship: `coreserv` and `meridian`.
+
+A profile carries the error markers that identify a session bounce, a server
+error and a maintenance interstitial on that app; what recovering from each
+actually means (`dismiss_control` vs `reload_step_url` — CoreServ's
+interstitial is a button that re-renders in place, MERIDIAN's is a link that
+navigates away and loses your position); the regex that reads the app version
+off the page; whether the app uses frames and which one holds the working
+area; the verbs the recorder treats as irreversible; the values the app
+prints into its own chrome that must be scrubbed from evidence; and where its
+known-sensitive literals come from.
+
+Pointing at a new application should be writing one of these, not editing
+`replay/` or `discovery/`. `tests/test_profile.py` asserts that structurally:
+it fails if any application name or app-shaped selector appears in executable
+code under `replay/`, `perception/` or `escalation/`.
+
+```bash
+python -m discovery.run --app coreserv --goal "..." --target http://localhost:8800
+```
 
 ---
 

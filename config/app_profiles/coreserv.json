@@ -1,0 +1,70 @@
+{
+  "name": "coreserv",
+  "description": "CoreServ 4.2.x, the frameset-based credit-union servicing console this repo ships as a proxy target. Every value here was a constant in engine code before profiles existed.",
+
+  "content_frame": "content",
+
+  "error_markers": {
+    "session_expired": ["Your session has ended."],
+    "server_error": ["An unexpected error occurred."],
+    "maintenance": ["System Maintenance"]
+  },
+
+  "recovery": {
+    "maintenance_interstitial": {
+      "kind": "dismiss_control",
+      "control_role": "button",
+      "control_name": "Continue",
+      "notes": "A <button> that re-renders the underlying page via its own return_to, so dismissing it in place keeps the flow where it was. It renders into every frame while the condition holds, so every frame showing it must be dismissed."
+    },
+    "checkpoint_timeout": {
+      "kind": "backoff",
+      "notes": "Nothing app-specific to do: wait longer and re-run the step."
+    }
+  },
+
+  "version_pattern": "CoreServ\\s+(\\d+\\.\\d+\\.\\d+)",
+
+  "risk_verbs": ["Post", "Confirm", "Transfer", "Save", "Delete"],
+  "near_miss_verbs": [
+    "Submit", "Apply", "Send", "Update", "Continue", "Accept",
+    "Approve", "Authorize", "Remove", "Void", "Reverse", "OK"
+  ],
+
+  "chrome_literals": [],
+
+  "redaction": {
+    "fixture_module": "coreserv.data",
+    "patterns": []
+  },
+
+  "auth_defaults": {
+    "elements": {
+      "_auth_username": {
+        "description": "Operator name field on the CoreServ login form",
+        "frame": null,
+        "chain": [
+          {"strategy": "role_name", "role": "textbox", "name": "Username", "confidence": "high"},
+          {"strategy": "role_ordinal", "role": "textbox", "index": 0, "confidence": "low", "brittle": true,
+           "notes": "First textbox on the login page. The login form is unlabelled in the accessibility tree on some builds, so position is the fallback."}
+        ]
+      },
+      "_auth_password": {
+        "description": "Password field on the CoreServ login form",
+        "frame": null,
+        "chain": [
+          {"strategy": "role_name", "role": "textbox", "name": "Password", "confidence": "high"},
+          {"strategy": "role_ordinal", "role": "textbox", "index": 1, "confidence": "low", "brittle": true,
+           "notes": "Second textbox on the login page."}
+        ]
+      },
+      "_auth_submit": {
+        "description": "Login button",
+        "frame": null,
+        "chain": [{"strategy": "role_name", "role": "button", "name": "Login", "confidence": "high"}]
+      }
+    },
+    "fields": {"username": "_auth_username", "password": "_auth_password"},
+    "submit": "_auth_submit"
+  }
+}

@@ -15,8 +15,30 @@ from typing import Any, Optional
 
 import pytest
 
+from capability.profile import AppProfile
 from capability.schema import Artifact
 from replay.executor import ActionOutcome, check_action, check_destination, check_risk
+
+# A profile for engine control-flow tests. Real enough to exercise the code
+# paths that consult one -- markers, a recovery action, a frame model -- and
+# named so it cannot be confused with a shipped profile.
+TEST_PROFILE = AppProfile(
+    name="test",
+    content_frame=None,
+    error_markers={
+        "session_expired": ["Your session has ended."],
+        "server_error": ["An unexpected error occurred."],
+        "maintenance": ["System Maintenance"],
+    },
+    recovery={
+        "maintenance_interstitial": {
+            "kind": "dismiss_control", "control_role": "button", "control_name": "Continue",
+        },
+        "checkpoint_timeout": {"kind": "backoff"},
+    },
+    version_pattern=None,
+    redaction={"literals": ["Ada Lovelace"]},
+)
 
 
 class FakePage:
@@ -81,7 +103,7 @@ class Observations:
 
 
 def build_engine(artifact: Artifact, tmp_path, *, observations=None, escalate=False,
-                 operator=None):
+                 operator=None, profile=None):
     """A ReplayEngine wired to fakes, with its real step logic intact."""
     from escalation.session import ControlledSession
     from replay.engine import ReplayEngine
@@ -92,6 +114,7 @@ def build_engine(artifact: Artifact, tmp_path, *, observations=None, escalate=Fa
         escalate=escalate,
         operator=operator,
         escalation_root=tmp_path / "escalation",
+        profile=profile or TEST_PROFILE,
     )
     obs = observations or Observations()
     engine.page = FakePage(obs.url)

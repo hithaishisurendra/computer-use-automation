@@ -27,6 +27,8 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any, Optional
 
+from capability.loader import apply_profile_defaults
+from capability.profile import AppProfile, profile_for
 from capability.schema import Artifact, Step
 from capability.validate import (
     AuthConfigError,
@@ -43,8 +45,13 @@ from replay.resolver import ElementUnresolvable
 from escalation.session import ControlledSession
 from replay.result import ReplayResult, StepTrace
 
-# CoreServ prints its build in the nav frame footer, e.g. "CoreServ 4.2.1".
-APP_VERSION_RE = re.compile(r"CoreServ\s+(\d+\.\d+\.\d+)")
+class AuthUnroutableError(Exception):
+    """Authentication is configured but has no controls to drive.
+
+    Distinct from AuthConfigError, which means a credential environment
+    variable is unset. This one means the artifact and the profile between
+    them never said *where* to type it.
+    """
 
 
 class ReplayEngine:
@@ -56,11 +63,25 @@ class ReplayEngine:
         escalate: bool = False,
         operator=None,
         escalation_root: str | Path = "evidence/escalation",
+        profile: Optional[AppProfile] = None,
     ):
-        self.artifact = artifact
+        # Everything the engine knows about this particular application. Not
+        # optional: an engine with no profile has no error markers and no
+        # recovery actions, and would fail to detect a session bounce quietly.
+        self.profile = profile or profile_for(artifact.target)
+        # Applied here rather than only in the loader so that every route into
+        # the engine gets them -- an artifact built in a test or handed over
+        # directly still authenticates, and does it through the registry.
+        self.artifact = artifact = apply_profile_defaults(artifact, self.profile)
         self.headless = headless
         self.run_id = f"run_{uuid.uuid4().hex[:8]}"
-        self.evidence = EvidenceWriter(Path(evidence_root) / self.run_id, artifact)
+        self.evidence = EvidenceWriter(
+            Path(evidence_root) / self.run_id, artifact, profile=self.profile
+        )
+        # Set once the version pattern has matched anything at all. A drift
+        # check that never fires is indistinguishable from one with nothing to
+        # report, so a run that never saw a version says so in its warnings.
+        self._version_seen = False
         # Off by default: unattended replay must stay unattended. A capability
         # invoked by an agent in production has nobody at a terminal, and
         # blocking forever for one is worse than failing cleanly.
@@ -102,10 +123,14 @@ class ReplayEngine:
             compact = to_compact_text(filter_tree(tree))
             if compact:
                 texts.append(compact)
+        # Which frame's URL identifies "where the flow is" is a property of
+        # the application: a frameset app navigates a content region while the
+        # top document stays put, a single-document app has only the one URL.
         url = ""
-        for frame in self.page.frames:
-            if frame.name == "content":
-                url = frame.url or ""
+        if self.profile.content_frame is not None:
+            for frame in self.page.frames:
+                if frame.name == self.profile.content_frame:
+                    url = frame.url or ""
         if not url:
             url = self.page.url
         return frames, "\n".join(texts), url
@@ -118,17 +143,27 @@ class ReplayEngine:
         A mismatch is a warning, not a failure: the flow may well still work
         on a newer build, and refusing to run would make every vendor patch
         an outage. Recording it is what makes drift observable.
+
+        The pattern comes from the app profile. It used to be a constant
+        matching CoreServ's footer, which meant that on any other app this
+        function returned on the first line, forever, and drift detection was
+        a no-op nobody could see. `_version_seen` is what makes that visible
+        now: a run that never matched a version reports it.
         """
-        match = APP_VERSION_RE.search(page_text)
+        pattern = self.profile.version_re
+        if pattern is None:
+            return
+        match = pattern.search(page_text)
         if not match:
             return
+        self._version_seen = True
         observed = match.group(1)
         expected = self.artifact.target.app_version
         if observed == expected:
             return
         warning = (
-            f"app version drift: artifact recorded against CoreServ {expected}, "
-            f"observed CoreServ {observed}"
+            f"app version drift: artifact recorded against {self.artifact.target.app} "
+            f"{expected}, observed {observed}"
         )
         # Drift is re-observed on every capture (the footer is on every
         # page); it is one fact about the run, so report it once.
@@ -148,14 +183,47 @@ class ReplayEngine:
         check_destination(self.artifact, target)
         await self.page.goto(target, wait_until="load")
 
-        # Field targeting for the login form is intentionally by form field
-        # name rather than by the element registry: authentication is engine
-        # infrastructure, not a recorded step, so it must not depend on the
-        # artifact declaring login elements.
-        await self.page.fill('input[name="username"]', credentials.get("username", ""))
-        await self.page.fill('input[name="password"]', credentials.get("password", ""))
+        # Login is targeted through the element registry, exactly like every
+        # other control. It used to be two CSS selectors and a
+        # button:has-text("Login") right here, which made the sign-on the one
+        # part of the flow that could not be retargeted without editing the
+        # engine -- and MERIDIAN's fields are named differently and its submit
+        # is an <input type=submit>, so none of the three matched.
+        if not auth.elements or not auth.submit:
+            raise AuthUnroutableError(
+                f"capability {self.artifact.capability.id!r} declares no login elements and "
+                f"app profile {self.profile.name!r} supplies no auth defaults, so there is "
+                "nothing to type the credentials into. Declare target.auth.elements, or add "
+                "auth_defaults to the profile."
+            )
+
+        values = {**credentials, **auth.parameters}
+        for field_name, element_key in auth.elements.items():
+            value = values.get(field_name)
+            if value is None:
+                continue
+            await self._fill_auth_control(element_key, value)
+
         async with self.page.expect_navigation():
-            await self.page.click('button:has-text("Login")')
+            _, submit = await self.executor.locate(auth.submit, {})
+            await submit.click()
+
+    async def _fill_auth_control(self, element_key: str, value: str) -> None:
+        """Type a sign-on value into whatever kind of control it is.
+
+        Dispatch is on the control's own accessibility role rather than on
+        anything the profile declares, because the role is already the thing
+        the resolver found it by. A branch select and an operator-id textbox
+        take the same declared value and need different verbs.
+        """
+        resolution, locator = await self.executor.locate(element_key, {})
+        role = (resolution.node.get("role") or "").strip().lower()
+        if role == "combobox":
+            await locator.select_option(value)
+        elif role in ("checkbox", "radio"):
+            await locator.check()
+        else:
+            await locator.fill(value)
 
     # -- steps --------------------------------------------------------------
 
@@ -176,6 +244,11 @@ class ReplayEngine:
         while True:
             attempt += 1
             trace.attempts = attempt
+            # Where the flow stood before this attempt. An app whose
+            # interstitial navigates away (rather than overlaying in place)
+            # recovers by coming back here, so it has to be captured before
+            # the action rather than reconstructed after it.
+            _, _, url_before = await self._capture()
 
             try:
                 outcome = await self.executor.execute(step, params)
@@ -240,7 +313,9 @@ class ReplayEngine:
             # session bounce explains why a checkpoint would fail, and
             # reporting "checkpoint not met" when the real cause is an
             # expired session is the misleading error this ordering avoids.
-            detection = classify.classify(self.artifact, step.outcomes, page_text, url)
+            detection = classify.classify(
+                self.artifact, step.outcomes, page_text, url, self.profile
+            )
 
             if detection is not None and detection.classification == "recoverable":
                 trace.detections.append(detection.as_dict())
@@ -258,7 +333,7 @@ class ReplayEngine:
                     result.trace.append(trace)
                     return "failed", blocked, None
                 if attempt <= classify.MAX_RECOVERY_ATTEMPTS:
-                    await self._recover(detection)
+                    await self._recover(detection, url_before)
                     continue
                 escalated = classify.Detection(
                     name=detection.name,
@@ -296,7 +371,9 @@ class ReplayEngine:
                     # can fail because a declared outcome occurred, which is
                     # an answer rather than a failure.
                     _, late_text, late_url = await self._capture()
-                    late = classify.classify(self.artifact, step.outcomes, late_text, late_url)
+                    late = classify.classify(
+                        self.artifact, step.outcomes, late_text, late_url, self.profile
+                    )
                     if late is not None:
                         trace.detections.append(late.as_dict())
                         trace.status = "failed" if late.classification == "hard_failure" else "ok"
@@ -335,29 +412,58 @@ class ReplayEngine:
             result.trace.append(trace)
             return "ok", None, extracted
 
-    async def _recover(self, detection: classify.Detection) -> None:
-        if detection.name == "maintenance_interstitial":
-            # The interstitial renders into EVERY frame while the condition
-            # holds, so it must be dismissed in every frame that shows it,
-            # not just the first one found. Dismissing once clears the
-            # server-side condition, but a frame that does not re-render
-            # keeps displaying its stale copy -- and since classification
-            # reads text from all frames, that stale copy would keep
-            # matching and burn the retry budget on an already-cleared
-            # condition. Clicking each frame's own Continue re-renders that
-            # frame via its own return_to.
-            for frame in self.page.frames:
-                try:
-                    button = frame.locator(f'button:has-text("{classify.INTERSTITIAL_DISMISS}")')
-                    if await button.count() >= 1:
-                        await button.first.click()
-                        await self._await_dismissal(frame)
-                except Exception:
-                    continue
-            return
-        await asyncio.sleep(0.5)
+    async def _recover(self, detection: classify.Detection, url_before: str) -> None:
+        """Do what this application's profile says clears the condition.
 
-    async def _await_dismissal(self, frame, timeout_s: float = 5.0) -> None:
+        Recovery is not a string, which is why it is not one in the profile.
+        CoreServ's interstitial is a <button> that re-renders the page
+        underneath it, so dismissing it in place is correct and keeps the
+        flow where it was. MERIDIAN's is <a href="/menu">, which navigates to
+        the main menu -- clicking it would "recover" by abandoning the step
+        being retried. So the profile names an action kind, not a control.
+        """
+        action = self.profile.recovery.get(detection.name)
+        if action is None or action.kind == "backoff":
+            await asyncio.sleep(0.5)
+            return
+
+        if action.kind == "reload_step_url":
+            if url_before:
+                check_destination(self.artifact, url_before)
+                await self.executor.goto(self.page, url_before)
+            return
+
+        # dismiss_control. The interstitial renders into EVERY frame while
+        # the condition holds, so it must be dismissed in every frame that
+        # shows it, not just the first one found. Dismissing once clears the
+        # server-side condition, but a frame that does not re-render keeps
+        # displaying its stale copy -- and since classification reads text
+        # from all frames, that stale copy would keep matching and burn the
+        # retry budget on an already-cleared condition.
+        for frame in self.page.frames:
+            try:
+                control = self._dismiss_locator(frame, action)
+                if await control.count() >= 1:
+                    await control.first.click()
+                    await self._await_dismissal(frame, action)
+            except Exception:
+                continue
+
+    @staticmethod
+    def _dismiss_locator(frame, action):
+        """The profile's dismiss control, addressed by role and name.
+
+        Role rather than tag: the same affordance is a <button> on one app,
+        an <a> on another and an <input type=submit> on a third, and the
+        accessibility role is what those have in common. This is the same
+        addressing scheme the rest of the system uses, reached here through
+        Playwright's role engine because recovery runs outside the resolver.
+        """
+        return frame.get_by_role(
+            (action.control_role or "button").strip().lower(), name=action.control_name
+        )
+
+    async def _await_dismissal(self, frame, action, timeout_s: float = 5.0) -> None:
         """Wait until a dismissed interstitial has actually gone.
 
         Returning as soon as the click is issued leaves the app's
@@ -375,9 +481,7 @@ class ReplayEngine:
             except Exception:
                 pass
             try:
-                remaining = await frame.locator(
-                    f'button:has-text("{classify.INTERSTITIAL_DISMISS}")'
-                ).count()
+                remaining = await self._dismiss_locator(frame, action).count()
             except Exception:
                 return  # frame navigated out from under us; that is the goal
             if remaining == 0:
@@ -435,6 +539,14 @@ class ReplayEngine:
         self.evidence.log(
             "inputs_validated", {"inputs": validated.redacted, "run_id": self.run_id}
         )
+
+        # Redaction that quietly weakened is the phase-1 failure this makes
+        # loud. A profile with no known-sensitive literals scrubs by shape
+        # rules only -- which catches an SSN but not a member's name or street
+        # address -- so the caller is told, not just the log.
+        degraded = self.evidence.redaction_warning()
+        if degraded:
+            result.warnings.append(degraded)
 
         # 2. Our own credentials -- also before any browser exists.
         try:
@@ -505,7 +617,7 @@ class ReplayEngine:
                 # *symptom*. Reporting auth_failure would send someone to
                 # check credentials that are perfectly fine, when the real
                 # answer is that the application is down.
-                universal = classify.detect_engine_universals(page_text)
+                universal = classify.detect_engine_universals(page_text, self.profile)
                 if universal is not None:
                     result.classification = "hard_failure"
                     result.failed_step = "auth"
@@ -668,7 +780,8 @@ class ReplayEngine:
 
         directory = escalation_dir(self.run_id, self.escalation_root)
         url, screenshot, snapshot_path, snapshot = await capture_state(
-            self.page, self._perceive, directory
+            self.page, self._perceive, directory,
+            profile=self.profile, content_frame=self.profile.content_frame,
         )
 
         if classification == "risk_blocked":
@@ -702,11 +815,11 @@ class ReplayEngine:
             inputs_redacted=result.inputs_redacted,
             completed_steps=[t.step_id for t in result.trace if t.status in ("ok", "recovered")],
         )
-        request_path = write_request(request, self.escalation_root)
+        request_path = write_request(request, self.escalation_root, profile=self.profile)
         result.evidence["intervention_request"] = str(request_path)
         self.evidence.log("intervention_raised", {"step_id": step.id, "request": str(request_path)})
 
-        capture = HumanActionCapture(self.page, self._perceive)
+        capture = HumanActionCapture(self.page, self._perceive, self.profile.content_frame)
         await capture.begin()
 
         # Automation is locked out from here until control comes back. The
@@ -720,7 +833,8 @@ class ReplayEngine:
 
         activity = await capture.end(decision)
         handoff_path = write_activity(
-            self.run_id, activity, self.control.as_dict(), self.escalation_root
+            self.run_id, activity, self.control.as_dict(), self.escalation_root,
+            profile=self.profile,
         )
         result.evidence["handoff"] = str(handoff_path)
         result.human_interventions.append(

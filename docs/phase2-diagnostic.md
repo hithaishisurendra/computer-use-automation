@@ -566,6 +566,115 @@ outcome, not a regression.
 
 ---
 
+# The adapter seam
+
+Six items, all landed. 273 tests pass against a live CoreServ (227 before,
+46 new); the two committed artifacts load and replay unchanged.
+
+## What moved into config
+
+`config/app_profiles/{coreserv,meridian}.json`, resolved from
+`target.app_profile` and defaulting to `target.app` — so artifacts written
+before profiles existed name theirs correctly without being edited. A missing
+profile is a hard error, not a default: an engine with no markers detects no
+session bounce and would do it quietly, which is the failure this replaces.
+
+Now data rather than engine constants: error markers per condition; recovery
+as a typed **action** (`dismiss_control` / `reload_step_url` / `backoff`)
+rather than a control name; the version regex; the frame model; the recorder's
+risk vocabulary (moved out of `discovery/app_profiles.json`, which was the
+right idea in the wrong file); chrome values to scrub; redaction sources; and
+default auth element definitions.
+
+## Proof the seam holds
+
+Two independent checks.
+
+**Structural.** `tests/test_profile.py` parses `replay/`, `perception/` and
+`escalation/`, strips docstrings and comments, and fails if any application
+name or app-shaped selector (`input[name=`, `button:has-text(`, a literal
+`'content'`) appears in executable code. Prose may name an app — explaining
+why a rule exists usually requires it. Running code may not.
+
+**Live.** The engine drove MERIDIAN end to end with no MERIDIAN-specific code:
+signed on through the element registry including the Branch select, navigated
+to a member record, and extracted `share_balance = 40.00` via `cell_in_row` +
+`column_header` — the rung that resolved *nothing* on this target before item
+6. Origins derived to `https://web-sample.interface-hiring.com`; the session
+id and operator were scrubbed from evidence by the profile's chrome rules
+(verified: zero raw `SID`/`OPR` occurrences, both replacement markers
+present). This used a throwaway in-memory artifact, not a recorded
+capability.
+
+## What I could not push into a profile, and why
+
+Honest list, since "it was pure config" would be flattering and false.
+
+**Recovery action kinds are engine code.** The profile *chooses* between
+`dismiss_control`, `reload_step_url` and `backoff`; the engine implements
+them. A third app needing a genuinely new mechanism — acknowledging a native
+JS dialog, say — needs an engine change. That is the right boundary (an
+executable action is not JSON) but it is a boundary, and the vocabulary is
+currently three items wide.
+
+**Auth control-verb dispatch is engine code.** `_fill_auth_control` picks
+fill / select / check from the control's resolved accessibility role. A
+sign-on needing a verb outside that set — a file upload, a multi-step SSO
+redirect, a challenge-response — is engine work, not a profile entry.
+
+**The `cell_in_row` header fallback is engine code**, deliberately, per the
+brief. Teaching `_find_column_index` to read a table's first row as headers
+when it has no `columnheader` is a general strategy improvement; encoding
+"this app uses `<td>` headers" as a per-app flag would have been the
+workaround version of the same fix.
+
+**Signature changes rippled.** `classify()` and `detect_engine_universals()`
+take a profile; `EvidenceWriter`, `capture_state`, `write_request`,
+`write_activity` and `HumanActionCapture` take a profile or a content frame;
+`Executor.locate` and `Executor.goto` became public so authentication and
+recovery can use the resolver without being recorded steps. Unavoidable
+plumbing — the values are config, but something has to carry them.
+
+**`_run_step` now captures the URL before each attempt.** `reload_step_url`
+needs somewhere to go back to, and that had to be observed before the action
+rather than reconstructed after it. New engine capability, not config.
+
+**Schema changes.** `Element.frame` became optional (null = the document,
+rather than every surface having to name a frame); `AuthSpec` gained
+`elements`, `submit` and `parameters`; `Policy.allowed_origins` became
+derived from `base_url` and rejects a declared value that disagrees.
+
+**`loader.apply_profile_defaults` is a compatibility path.** Artifacts
+recorded before auth used the registry declare no login elements, and the
+constraint was that they keep replaying unchanged. The profile supplies them
+and the loader injects them under reserved keys. Applied in the engine too,
+so any route in gets them. This is a bridge for existing artifacts, not a
+mechanism new ones should lean on.
+
+**Discovery's CLI defaults are still CoreServ's** — `--entry /search`, and
+`build_target`'s `success_pattern` of `/home|/search`. They are arguments now
+rather than literals, but their defaults name one app. `success_pattern` in
+particular is per-app knowledge that arguably belongs in the profile; I left
+it as a parameter because auth success is a property of the *target* an
+artifact declares, and moving it would split that declaration across two
+files.
+
+## One thing that broke, found by the live check
+
+**`{{param}}` is not substituted in a navigate step's `path`.** The live seam
+check first ran with `"path": "/members/{{member_ref}}"` and navigated to that
+string literally. `Step.value` is templated and validated; `Step.path` is
+neither — `check_template` never inspects it, so a parameterised path passes
+validation and then fails at runtime as a confusing 404.
+
+CoreServ never exposed this because its flow reaches a member by searching and
+clicking, so no path ever needed a parameter. MERIDIAN puts the member record
+at `/members/{id}`, so any capability against it needs one. Not fixed here —
+it is adaptation work, not seam work — but it blocks the first MERIDIAN
+capability and should be the next thing done.
+
+---
+
 ## The three things that decide the shape of the sprint
 
 1. **The adapter seam is real but it is not one seam.** Perception transfers

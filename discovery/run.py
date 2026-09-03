@@ -18,13 +18,15 @@ import asyncio
 import json
 import sys
 from pathlib import Path
+from typing import Optional
 
 from capability.loader import ArtifactError, load_artifact, widening_paths
+from capability.profile import ProfileError, load_profile
 from capability.redaction import Scrubber
 from capability.schema import AuthSpec, Condition, Policy, Target
 from discovery.loop import DEFAULT_PROVIDER, DiscoveryLoop
 from discovery.model import DEFAULT_MODELS, PROVIDERS, load_dotenv
-from discovery.recorder import load_risk_rules, record
+from discovery.recorder import record, risk_rules_from_profile
 from escalation.operator import ConsoleOperator
 
 # Declared, reviewable, version-controlled. Not assembled from CLI flags:
@@ -32,7 +34,6 @@ from escalation.operator import ConsoleOperator
 # and it would contradict the rule the capability layer already enforces on
 # tenant overlays -- allowlists may only narrow.
 DEFAULT_POLICY_PATH = Path(__file__).resolve().parent / "policy.json"
-DEFAULT_PROFILES_PATH = Path(__file__).resolve().parent / "app_profiles.json"
 
 
 class PolicyWidened(Exception):
@@ -65,22 +66,38 @@ def load_policy(path: str | Path, base_url: str, narrow_to: list[str] | None) ->
     return declared.model_copy(update={"allowed_paths": list(narrow_to)})
 
 
-def build_target(base_url: str, entry: str, tenant: str, app_version: str) -> Target:
+def build_target(
+    base_url: str,
+    entry: str,
+    tenant: str,
+    app_version: str,
+    app: str = "coreserv",
+    auth_path: str = "/",
+    credentials_ref: Optional[dict[str, str]] = None,
+    auth_parameters: Optional[dict[str, str]] = None,
+    success_pattern: str = "/home|/search",
+) -> Target:
+    """The target a discovery run drives.
+
+    Every CoreServ fact here used to be a literal with no way to change it:
+    the app name, the auth path, the credential variable names and the
+    post-sign-on URL pattern. They are arguments now, defaulted to CoreServ so
+    the existing demo path is unchanged.
+    """
     return Target(
         surface="web",
-        app="coreserv",
+        app=app,
         app_version=app_version,
         tenant=tenant,
         base_url=base_url.rstrip("/"),
         entry_path=entry,
         auth=AuthSpec(
             mode="form_login",
-            path="/",
-            credentials_ref={
-                "username": "CORESERV_USERNAME",
-                "password": "CORESERV_PASSWORD",
-            },
-            success_check=Condition(type="url_matches", pattern="/home|/search"),
+            path=auth_path,
+            credentials_ref=credentials_ref
+            or {"username": "CORESERV_USERNAME", "password": "CORESERV_PASSWORD"},
+            parameters=auth_parameters or {},
+            success_check=Condition(type="url_matches", pattern=success_pattern),
         ),
     )
 
@@ -101,11 +118,12 @@ def main() -> None:
     )
     parser.add_argument("--policy", default=str(DEFAULT_POLICY_PATH))
     parser.add_argument(
-        "--app-profiles",
-        default=str(DEFAULT_PROFILES_PATH),
+        "--app",
+        default="coreserv",
         help=(
-            "Per-app vocabulary for the recorder's risky-step heuristic. "
-            "See discovery/app_profiles.json."
+            "App profile to run under. Names a file in config/app_profiles/, "
+            "which carries this application's error markers, recovery actions, "
+            "frame model, version pattern and redaction sources."
         ),
     )
     parser.add_argument("--capability-id", default=None)
@@ -133,7 +151,15 @@ def main() -> None:
     except PolicyWidened as exc:
         print(json.dumps({"status": "policy_error", "message": str(exc)}, indent=2))
         raise SystemExit(2)
-    target = build_target(args.target, args.entry, args.tenant, args.app_version)
+    try:
+        profile = load_profile(args.app)
+    except ProfileError as exc:
+        print(json.dumps({"status": "profile_error", "message": str(exc)}, indent=2))
+        raise SystemExit(2)
+
+    target = build_target(
+        args.target, args.entry, args.tenant, args.app_version, app=args.app
+    )
 
     loop = DiscoveryLoop(
         goal=args.goal,
@@ -143,6 +169,7 @@ def main() -> None:
         headless=not (args.headed or args.escalate),
         provider=args.provider,
         model=args.model,
+        profile=profile,
         escalate=args.escalate,
         operator=(ConsoleOperator() if args.escalate else None),
     )
@@ -173,7 +200,7 @@ def main() -> None:
     # Which words mean "commit" is per-app knowledge, so it comes from the app
     # profile rather than from the recorder. An app with no entry inherits the
     # default vocabulary.
-    risk_rules = load_risk_rules(target.app, args.app_profiles)
+    risk_rules = risk_rules_from_profile(profile)
     artifact = record(
         outcome=outcome,
         capability_id=capability_id,
@@ -184,6 +211,7 @@ def main() -> None:
         model=f"{outcome.provider}:{outcome.model}",
         risk_rules=risk_rules,
         log=loop.log,
+        default_frame=profile.content_frame,
     )
 
     out_path = Path(args.out) if args.out else loop.evidence_dir / "artifact.json"

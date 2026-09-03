@@ -7,11 +7,11 @@ member detail heading, observed the results table still present" -- rather
 than a bare failure string, plus the live URL, a screenshot, and the
 accessibility snapshot of the page as it stands.
 
-Everything is written through `seed_data_scrubber`, not the pattern-only
-scrubber. An intervention request is a whole-page capture by construction:
-it exists precisely because something went wrong on a screen nobody
-anticipated, so the values on it were never declared as fields and only a
-value-aware scrubber will catch them.
+Everything is written through the app profile's scrubber, not a bare
+pattern-only one. An intervention request is a whole-page capture by
+construction: it exists precisely because something went wrong on a screen
+nobody anticipated, so the values on it were never declared as fields and only
+a value-aware scrubber will catch them.
 """
 
 from __future__ import annotations
@@ -22,7 +22,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
-from capability.redaction import seed_data_scrubber
+from capability.redaction import profile_scrubber
 
 
 @dataclass
@@ -107,11 +107,12 @@ def escalation_dir(run_id: str, root: str | Path = "evidence/escalation") -> Pat
 
 
 def write_request(
-    request: InterventionRequest, root: str | Path = "evidence/escalation"
+    request: InterventionRequest, root: str | Path = "evidence/escalation",
+    profile=None,
 ) -> Path:
     """Persist the request, scrubbed. Returns the file path."""
     directory = escalation_dir(request.run_id, root)
-    scrubber = seed_data_scrubber()
+    scrubber = profile_scrubber(profile)
     payload = scrubber.scrub_obj(request.as_dict())
     path = directory / "request.json"
     path.write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
@@ -119,7 +120,7 @@ def write_request(
 
 
 async def capture_state(
-    page, perceive, directory: Path
+    page, perceive, directory: Path, profile=None, content_frame: Optional[str] = None
 ) -> tuple[Optional[str], Optional[str], Optional[str], Optional[str]]:
     """Screenshot + compact accessibility snapshot of the stuck page.
 
@@ -129,14 +130,20 @@ async def capture_state(
     """
     from perception.tree import filter_tree, to_compact_text
 
-    scrubber = seed_data_scrubber()
+    scrubber = profile_scrubber(profile)
     url = None
     screenshot_path = None
     snapshot_path = None
     snapshot_text = None
 
     try:
-        url = next((f.url for f in page.frames if f.name == "content"), page.url)
+        # Which frame carries "where the run is" is an application property,
+        # so it comes from the profile. None means the document itself.
+        url = (
+            next((f.url for f in page.frames if f.name == content_frame), page.url)
+            if content_frame is not None
+            else page.url
+        )
     except Exception:
         pass
 
