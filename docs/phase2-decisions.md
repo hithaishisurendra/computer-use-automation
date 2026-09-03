@@ -378,3 +378,141 @@ Considered and rejected: recording the blocked step as `safe` so the artifact
 replays end-to-end. Rejected for the obvious reason, but worth writing down:
 it is the shape the pressure pushes toward, because a fully-replayable
 artifact looks more finished.
+
+---
+
+## Select steps record the option value, never the display label
+
+A `select` records the option's `value` attribute, read back from the browser
+after the selection, rather than whatever string the model passed.
+
+The first funds-transfer recording stored
+`"100234-S0001-6 - Regular Shares ($40.00)"` — the option's visible label,
+which embeds the balance at record time. The same run debited that share, so
+the artifact's own locator was stale before it was committed. Recording the
+capability broke it. Playwright matches an option by value *or* label, so what
+the caller passed does not reveal which one it was; reading the element back
+is the only way to observe the stable identifier.
+
+Same class as the phase-1 circular locator, where the model targeted the
+balance cell by its displayed value. The recorder already suppresses
+name-based rungs for extraction targets for exactly this reason; a value
+derived from what the page currently shows resolves during discovery
+*because* the page still shows what discovery saw.
+
+Considered and rejected: parsing the label to its leading token before " - ".
+Rejected as guessing at another app's formatting — it happens to work on
+MERIDIAN and would silently mangle any console that formats options
+differently.
+
+---
+
+## Every select becomes a declared input
+
+Not only the ones whose options vary per record.
+
+MERIDIAN's selects split into member-scoped (From Share, To Share, the Hold
+share picker) and fixed-vocabulary (Share Type, Reason Code, Search by).
+Parameterising only the first group needs a heuristic — "does the option value
+contain the member ref?" — that works for share ids and nothing else, and it
+is the same kind of guess as the verb list, which has already misfired in the
+wild. The fixed-vocabulary selects are also exactly what a caller varies:
+"open a Money Market" versus "a Certificate" is one capability with a
+different argument.
+
+The asymmetry decides it. Over-parameterising costs a required input the
+caller must supply: annoying, visible, safe. Under-parameterising bakes in a
+value that silently does the wrong thing.
+
+Considered and rejected: templating share ids against `member_ref`
+(`{{member_ref}}-S0001-12`). Rejected because share suffixes differ per
+member, so it would fabricate a share id that may not exist. `from_share` is a
+plain input whose description says it must belong to `member_ref`.
+
+Also decided: select parameters take the plain label slug (`from_share`), not
+the `_ref` suffix identifier text fields get. That convention exists because
+tenants relabel identifier *fields* while meaning the same entity; a select's
+label names its role in the flow, which is stable.
+
+---
+
+## A recorded value containing a currency amount is flagged
+
+`suspect_value()` refuses to let a currency amount inside a `select` value
+pass unremarked: it is logged as evidence and written into
+`provenance.notes` in capitals.
+
+Scoped to selects deliberately. A `fill` value containing currency is normal —
+an amount of `5.00` is precisely what the caller typed. A select value
+containing currency cannot be caller intent, because the caller did not
+compose it: the page did.
+
+Considered and rejected: refusing to record the step at all, by analogy with
+name-based extraction rungs. Rejected because dropping a select breaks the
+flow, whereas dropping a circular *rung* leaves other rungs. With the value
+read-back in place this guard should never fire; it exists for when the
+read-back is unavailable.
+
+---
+
+## The risk heuristic only considers submit-type controls
+
+A click is a risk candidate only when the resolved control's role is `button`
+— `<button>` and `<input type=submit>`. Links matching a commit verb are
+logged as near-misses, not marked risky.
+
+The first live transfer recording marked a *navigation link* named "Funds
+Transfer" as risky, because the verb list contains `Transfer`. Navigation
+links share the commit vocabulary with commit actions; only a submit-type
+control can commit.
+
+Considered and rejected: removing `Transfer` from the verb list. Rejected
+because it is the right verb for `Post Transfer` and for the transfer button
+on other consoles — the problem was never the word, it was applying it to
+controls that cannot commit anything.
+
+---
+
+## An incomplete recording loads, but cannot replay
+
+`provenance.flow_completed` is false when the risk gate blocked discovery
+mid-flow. Such an artifact is exempt from the "a risky step must declare a
+checkpoint" rule, and replay refuses it outright before validating inputs.
+
+This closed a hole the gate itself opened. A blocked step was never performed,
+so nothing after it was observed and there is no post-action URL to derive a
+checkpoint from — the artifact failed validation and the partial recording was
+unusable. Inventing a checkpoint would have been worse: it claims a
+verification nobody did.
+
+Considered and rejected: dropping the checkpoint requirement for risky steps
+generally. Rejected because it is the rule that makes escalation meaningful
+for *completed* capabilities. The exemption is scoped to artifacts that
+declare themselves unfinished, and those are refused at replay rather than
+run.
+
+---
+
+## Recording posture and replay posture are separate
+
+The emitted artifact always carries `risky_action_handling:
+"require_confirmation"`, regardless of what the discovery run used.
+`config/discovery_policies/meridian-recording.json` relaxes the gate to `flag`
+for recording only.
+
+You cannot record a review→post flow without posting once, so a gate that
+blocks discovery makes every capability ending in a post unrecordable — the
+safe-looking choice would make the system useless for half the brief's
+function list. So the gate is relaxed for recording, by an engineer, on the
+command line, in a named file that explains itself, with the policy path in
+the run's evidence.
+
+That is the opposite of the bug it replaces. Until this phase discovery never
+evaluated step risk at all, and nobody knew. The difference between "the gate
+is off because of a bug" and "the gate is off because this file says so" is
+the entire distinction.
+
+Considered and rejected: letting the artifact inherit the recording policy.
+Rejected because a relaxed recording session would then emit a capability that
+posts unattended in production — one engineer's convenience becoming everyone
+else's default.

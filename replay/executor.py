@@ -74,6 +74,12 @@ class ActionOutcome:
     resolution: Optional[Resolution] = None
     extracted: Optional[str] = None
     detail: Optional[str] = None
+    # For `select`: the option's underlying value attribute, read back after
+    # the selection. Playwright matches an option by value OR by label, so
+    # what the caller passed does not tell you which one it was -- and the
+    # label is display text that can carry live page data. The recorder needs
+    # the stable identifier, and this is the only place it can be observed.
+    selected_value: Optional[str] = None
 
 
 def _path_allowed(path: str, allowed: list[str]) -> bool:
@@ -258,7 +264,15 @@ class Executor:
         if step.action == "select":
             value = resolver.substitute(step.value, params)
             await locator.select_option(value)
-            return ActionOutcome(step.id, step.action, resolution, detail=risk_note)
+            # Read back what is actually selected. On a <select> this is the
+            # chosen option's value attribute, not its visible text.
+            try:
+                selected = await locator.input_value()
+            except Exception:
+                selected = None
+            return ActionOutcome(
+                step.id, step.action, resolution, detail=risk_note, selected_value=selected
+            )
 
         if step.action == "check":
             await locator.check()

@@ -524,6 +524,26 @@ class ReplayEngine:
             run_id=self.run_id,
         )
 
+        # 0. An incomplete recording is not a capability. Discovery stopped
+        # before the end of the flow, so the steps after the block were never
+        # observed and the blocked step has no verified success condition.
+        # Refused before inputs are even validated, because no set of inputs
+        # makes it runnable.
+        if not self.artifact.provenance.flow_completed:
+            result.classification = "hard_failure"
+            result.message = (
+                f"capability {self.artifact.capability.id!r} was recorded from a flow "
+                "that did not complete -- discovery was blocked at an irreversible step "
+                "and never observed what follows it. It is a record for a human to "
+                "finish, not a runnable capability."
+            )
+            result.expected = "a capability recorded from a completed flow"
+            result.observed = "provenance.flow_completed is false"
+            result.duration_ms = (time.perf_counter() - started) * 1000
+            self.evidence.log("incomplete_artifact_refused", {"capability": self.artifact.capability.id})
+            self.evidence.write_result(result)
+            return result
+
         # 1. Caller inputs -- before any browser exists.
         try:
             validated = validate_inputs(self.artifact, params)

@@ -1,0 +1,49 @@
+{
+  "_comment": [
+    "RECORDING POLICY. Identical to meridian.json except risky_action_handling,",
+    "which is 'flag' rather than 'require_confirmation'.",
+    "",
+    "Why this file exists, and why it is not a hole. Recording an irreversible",
+    "capability requires performing the irreversible action exactly once: you",
+    "cannot record a review->post flow without posting, and a gate that blocks",
+    "discovery makes every capability ending in a post unrecordable. So the gate",
+    "is relaxed for recording, by an engineer, on the command line, in a named",
+    "file that says so -- and the run's evidence records which policy it used.",
+    "",
+    "That is the opposite of the bug this replaced. Until phase 2, discovery",
+    "never evaluated step risk at all: the executor's gate read Step.risk and",
+    "discovery built every Step without one, so the gate could not fire and",
+    "nobody knew. The difference between 'the gate is off because of a bug' and",
+    "'the gate is off because this file says so' is the whole distinction.",
+    "",
+    "The emitted artifact does NOT inherit this. discovery/recorder.py always",
+    "writes risky_action_handling: 'require_confirmation' into the capability,",
+    "so a relaxed recording session cannot produce something that posts",
+    "unattended in replay.",
+    "",
+    "Use meridian.json for anything that is not recording a known-irreversible",
+    "flow. If you reach for this file, you should be able to say which step you",
+    "expect to perform and why."
+  ],
+  "allowed_origins": [
+    "https://web-sample.interface-hiring.com"
+  ],
+  "allowed_paths": [
+    "/signon",
+    "/menu",
+    "/members",
+    "/members/*"
+  ],
+  "allowed_actions": [
+    "navigate",
+    "click",
+    "fill",
+    "select",
+    "check",
+    "extract",
+    "wait_for"
+  ],
+  "risky_action_handling": "flag",
+  "max_steps": 25,
+  "timeout_ms": 300000
+}

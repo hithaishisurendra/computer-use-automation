@@ -12,6 +12,7 @@ that reads its expectation out of the file under test proves nothing.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import re
 from pathlib import Path
@@ -764,3 +765,78 @@ def test_name_variants_only_flips_a_comma_form():
     assert name_variants("Lovelace, Ada") == ["Ada Lovelace"]
     assert name_variants("22 Harbor Lane, Arlington") == ["Arlington 22 Harbor Lane"]
     assert name_variants("no comma here") == []
+
+
+# ---------------------------------------------------------------------------
+# Incomplete recordings
+# ---------------------------------------------------------------------------
+
+
+def _incomplete(tmp_path, completed: bool, checkpoint=None):
+    data = json.loads(json.dumps(TEMPLATED_ARTIFACT))
+    data["steps"] = [{
+        "id": "s1", "action": "navigate", "path": "/members/{{member_ref}}", "risk": "risky",
+        **({"checkpoint": checkpoint} if checkpoint else {}),
+    }]
+    data["provenance"]["flow_completed"] = completed
+    path = tmp_path / "a.json"
+    path.write_text(json.dumps(data))
+    return path
+
+
+def test_an_incomplete_artifact_may_carry_an_unverified_risky_step(tmp_path):
+    """Its risky step was blocked and never performed, so what success looks
+    like was never observed. Inventing a checkpoint would claim a verification
+    nobody did."""
+    artifact = load_artifact(_incomplete(tmp_path, completed=False))
+    assert artifact.provenance.flow_completed is False
+    assert artifact.steps[0].risk == "risky" and artifact.steps[0].checkpoint is None
+
+
+def test_a_completed_artifact_still_may_not(tmp_path):
+    with pytest.raises(ArtifactError) as exc:
+        load_artifact(_incomplete(tmp_path, completed=True))
+    assert "must declare a checkpoint" in str(exc.value)
+
+
+def test_replay_refuses_an_incomplete_artifact(tmp_path):
+    """No set of inputs makes it runnable, so it is refused before they are
+    even validated."""
+    from replay.engine import ReplayEngine
+
+    artifact = load_artifact(_incomplete(tmp_path, completed=False))
+    engine = ReplayEngine(artifact, evidence_root=tmp_path / "ev",
+                          profile=load_profile("meridian"))
+    result = asyncio.run(engine.run({"member_ref": "100234"}))
+    assert result.classification == "hard_failure"
+    assert "did not complete" in result.message
+    assert result.observed == "provenance.flow_completed is false"
+
+
+def test_an_artifact_never_inherits_a_relaxed_recording_posture():
+    """Recording an irreversible capability is an attended act; replay is
+    unattended production. A session that relaxed the gate to walk the flow
+    once must not emit a capability that posts without a human."""
+    from capability.schema import Policy
+    from discovery.recorder import record
+    from discovery.loop import Cycle, DiscoveryOutcome
+
+    relaxed = Policy(
+        allowed_origins=["https://x.test"], allowed_paths=["/menu"],
+        allowed_actions=["navigate"], risky_action_handling="flag",
+    )
+
+    class T:
+        surface, app, app_version, tenant = "web", "meridian", "1.0.0", "demo"
+        base_url, entry_path, auth = "https://x.test", "/menu", None
+        def model_dump(self, **kw):
+            return {"surface": "web", "app": "meridian", "app_version": "1.0.0",
+                    "tenant": "demo", "base_url": "https://x.test", "entry_path": "/menu"}
+
+    outcome = DiscoveryOutcome(
+        status="goal_reached", run_id="d", goal="g",
+        cycles=[Cycle(index=1, url="/menu", observation="", reasoning="",
+                      tool_name="goal_reached", tool_input={}, status="terminal")],
+        steps_attempted=1)
+    artifact = record(outcome, "cap", "1.0.0", T(), relaxed, "g", "m", default_frame=None)
+    assert artifact["policy"]["risky_action_handling"] == "require_confirmation"
