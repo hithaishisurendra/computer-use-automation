@@ -1,15 +1,18 @@
 {
   "name": "meridian",
   "description": "MERIDIAN CORE 4.2.1 (Cornerstone Financial Systems), the live legacy credit-union console at web-sample.interface-hiring.com. Values measured in evidence/a11y_diagnostic_meridian/, not guessed.",
-
   "content_frame": null,
-
   "error_markers": {
-    "session_expired": ["YOUR SESSION HAS TIMED OUT"],
-    "server_error": ["APPLICATION ERROR"],
-    "maintenance": ["SCHEDULED MAINTENANCE IN PROGRESS"]
+    "session_expired": [
+      "YOUR SESSION HAS TIMED OUT"
+    ],
+    "server_error": [
+      "APPLICATION ERROR"
+    ],
+    "maintenance": [
+      "SCHEDULED MAINTENANCE IN PROGRESS"
+    ]
   },
-
   "recovery": {
     "maintenance_interstitial": {
       "kind": "reload_step_url",
@@ -19,15 +22,28 @@
       "kind": "backoff"
     }
   },
-
   "version_pattern": "MERIDIAN CORE.*?\\bv(\\d+\\.\\d+\\.\\d+)",
-
-  "risk_verbs": ["Post", "Confirm", "Transfer", "Save", "Delete"],
-  "near_miss_verbs": [
-    "Submit", "Apply", "Send", "Update", "Continue", "Accept",
-    "Approve", "Authorize", "Remove", "Void", "Reverse", "OK"
+  "risk_verbs": [
+    "Post",
+    "Confirm",
+    "Transfer",
+    "Save",
+    "Delete"
   ],
-
+  "near_miss_verbs": [
+    "Submit",
+    "Apply",
+    "Send",
+    "Update",
+    "Continue",
+    "Accept",
+    "Approve",
+    "Authorize",
+    "Remove",
+    "Void",
+    "Reverse",
+    "OK"
+  ],
   "chrome_literals": [
     {
       "pattern": "SID\\s+[0-9A-F]{6,}",
@@ -40,11 +56,13 @@
       "description": "The status bar prints the signed-on operator id beside the clock. register_secrets covers the literal once credentials are resolved; this covers the rendering before that and on pages served after the session ended."
     }
   ],
-
   "redaction": {
     "literals": [
-      "Lovelace, Ada", "Hopper, Grace", "Johnson, Katherine",
-      "Turing, Alan", "Noether, Emmy",
+      "Lovelace, Ada",
+      "Hopper, Grace",
+      "Johnson, Katherine",
+      "Turing, Alan",
+      "Noether, Emmy",
       "22 Harbor Lane, Arlington",
       "jane@example.com"
     ],
@@ -56,28 +74,55 @@
       }
     ]
   },
-
   "auth_defaults": {
     "elements": {
       "_auth_operator": {
         "description": "Operator ID field on the MERIDIAN sign-on screen",
         "frame": null,
-        "chain": [{"strategy": "role_name", "role": "textbox", "name": "Operator ID", "confidence": "high"}]
+        "chain": [
+          {
+            "strategy": "role_name",
+            "role": "textbox",
+            "name": "Operator ID",
+            "confidence": "high"
+          }
+        ]
       },
       "_auth_password": {
         "description": "Password field on the MERIDIAN sign-on screen",
         "frame": null,
-        "chain": [{"strategy": "role_name", "role": "textbox", "name": "Password", "confidence": "high"}]
+        "chain": [
+          {
+            "strategy": "role_name",
+            "role": "textbox",
+            "name": "Password",
+            "confidence": "high"
+          }
+        ]
       },
       "_auth_branch": {
         "description": "Branch select on the MERIDIAN sign-on screen",
         "frame": null,
-        "chain": [{"strategy": "role_name", "role": "combobox", "name": "Branch", "confidence": "high"}]
+        "chain": [
+          {
+            "strategy": "role_name",
+            "role": "combobox",
+            "name": "Branch",
+            "confidence": "high"
+          }
+        ]
       },
       "_auth_submit": {
         "description": "Sign On control. Rendered as <input type=submit>, which the accessibility tree reports as a button named by its value attribute.",
         "frame": null,
-        "chain": [{"strategy": "role_name", "role": "button", "name": "Sign On", "confidence": "high"}]
+        "chain": [
+          {
+            "strategy": "role_name",
+            "role": "button",
+            "name": "Sign On",
+            "confidence": "high"
+          }
+        ]
       }
     },
     "fields": {
@@ -85,6 +130,19 @@
       "password": "_auth_password",
       "branch": "_auth_branch"
     },
-    "submit": "_auth_submit"
+    "submit": "_auth_submit",
+    "path": "/signon",
+    "success_pattern": "/menu",
+    "credentials_ref": {
+      "username": "MERIDIAN_OPERATOR",
+      "password": "MERIDIAN_PASSWORD"
+    },
+    "parameters": {
+      "branch": "MAIN-001"
+    }
+  },
+  "entry_path": "/menu",
+  "parameter_aliases": {
+    "Value": "member_ref"
   }
 }

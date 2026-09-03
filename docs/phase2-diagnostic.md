@@ -675,6 +675,168 @@ capability and should be the next thing done.
 
 ---
 
+# First MERIDIAN capability
+
+`capabilities/member_share_balance/1.0.0.json`, recorded by the discovery loop
+against the live target and committed **exactly as emitted** — no hand edits.
+Run `disc_c4c2cab8`, `gemini-3.1-flash-lite`.
+
+## Templated fields: the audit found five, not one
+
+`Step.path` was named. Auditing every field that carries caller data found
+four more in the same state — read but never substituted, and never validated
+against declared inputs:
+
+| field | substituted before | validated before | now |
+|---|---|---|---|
+| `Step.value` | yes | yes | unchanged |
+| `Scope.contains` | yes | yes | unchanged |
+| `Step.path` | **no** | **no** | both |
+| `Condition.text` | **no** | **no** | both |
+| `Condition.pattern` | **no** | **no** | both, value regex-escaped |
+| `Scope.name` | **no** | **no** | both |
+| `LocatorRung.name` | **no** | **no** | both |
+
+A checkpoint asserting `text_present: "Member {{member_ref}}"` would have
+silently never matched, which is the same defect wearing different clothes.
+Values substituted into a regex are `re.escape`d — a caller-supplied value is
+data, not pattern syntax.
+
+## The run
+
+Goal reached. 7 steps attempted, 6 recorded — the dropped one is a failed
+extract the model retried, which is exactly what `steps_attempted` vs
+`steps_recorded` exists to keep honest.
+
+**Did `member_ref` generalise?** Yes, and in two places. The parameter is
+`member_ref` (not `value_ref` — see below), the fill value is
+`{{member_ref}}`, and the balance row scope came out as
+`cell_equals: "{{member_ref}}-S0001"` — parameterised *inside* a compound
+identifier, which the previous whole-string comparison could not do and which
+is what makes the capability portable.
+
+**Which rungs for the balance**, in recorded order:
+
+```
+cell_in_row  scope{row cell_equals "{{member_ref}}-S0001"}  column_header Balance   high
+cell_in_row  scope{row cell_equals "{{member_ref}}-S0001"}  column_index 2          medium
+cell_in_row  scope{row contains "{{member_ref}}-S0001 Regular Shares"} header       medium
+cell_in_row  scope{row contains "{{member_ref}}-S0001 Regular Shares"} index 2      low
+role_ordinal cell index 19                                                    low, brittle
+```
+
+**Was a name-based rung suppressed?** Yes. No `role_name(cell, "$2,499.00")`
+appears, though it resolved uniquely at record time. That rung is circular —
+it finds the balance only while the balance is still what it was during
+discovery — and `is_extraction` suppresses every name-based strategy for
+exactly that reason.
+
+**Did `frame` come out null?** Yes, on all five elements and the opening
+navigate. Nothing declares `"content"`.
+
+**Did the prompt's frame vocabulary behave?** Yes. No tool call in any of the
+four MERIDIAN runs named a frame, because the frameless tool schema has no
+`frame` property to name and the prompt's frames paragraph was omitted.
+
+## Replayed on three different members, unedited
+
+Discovered on 100234. Replayed for members it had never seen:
+
+```
+101555 -> success  balance 18015.00   (live: $18,015.00)
+103001 -> success  balance   760.50   (live: $760.50)
+102777 -> success  balance 41980.00   (live: $41,980.00)
+```
+
+Every step resolved on **rung 0**, confidence high — no fallback, no brittle
+rung. Inputs logged as `****55`, masked by declared sensitivity.
+
+## Four recorder bugs this exposed, all fixed
+
+1. **Chains were built against a tree of `None`.** Snapshots are keyed by
+   frame name, the main frame's name is `""`, and a frameless element's frame
+   is `None` — so `frames_before.get(None)` missed and *nothing* resolved
+   uniquely. The first run emitted one step and zero elements while the
+   executor had resolved every control fine. The resolver already normalised
+   this; the recorder did not.
+2. **Extraction could be scoped on the value being read.** After an ambiguous
+   scope failed, the model retried with `row_contains: "2,499.00"` — the
+   balance itself. Recorded, that locator finds the balance only while it is
+   unchanged. Name-based suppression did not catch it because the circularity
+   was in the scope, not the name.
+3. **No scope could identify a row whose id is a prefix of its siblings.**
+   `contains: "100234-S0001"` matches nine rows on a member whose shares are
+   suffix-numbered. Added `Scope.cell_equals` — a direct cell child matching
+   exactly — and the recorder now proposes one scope per sibling cell and
+   keeps whichever resolve uniquely.
+4. **Outputs were named after the discovered record.** The model asked for
+   `balance_100234_s0001`; an output name is the contract a calling agent
+   binds to, and that one reads as a different output per member. Digit-
+   bearing tokens are now stripped, matching the rule capability ids already
+   follow.
+
+Fix 4 landed after the committed artifact was recorded, and the free-tier
+quota was exhausted before it could be re-recorded — so the committed artifact
+still carries `balance_100234_s0001`. Left as emitted rather than hand-edited,
+since editing it is exactly what "no manual editing" rules out. The next
+recording will produce `balance`; `_output_name` is unit-tested.
+
+## Two things fixed in discovery itself
+
+**The wall clock counted provider backoff.** A run spent 300s, most of it
+waiting out free-tier rate limits, and was reported as `timeout` — the
+agent's behaviour blamed for the quota. Backoff is now excluded from the
+budget and reported separately; each call's backoff is bounded by
+`MAX_RETRIES`, so this cannot hang.
+
+**Ambiguous and missing arrived as the same advice.** `ElementUnresolvable`
+told the model to "target something that is actually present", which is right
+for a missing control and actively wrong for one matched nine times — from
+where the model sits, the target *is* present. Observed: a weaker model
+re-sent the identical ambiguous scope three times and hit the consecutive-
+failure limit with the answer on screen. It now gets told the count, that
+narrowing is the fix, and that a prefix-of-siblings identifier is the usual
+cause.
+
+## A redaction hole the run itself found
+
+Committing the evidence surfaced PII in it: the run summary read
+`member 100234 (Ada Lovelace) is 20`. The profile declares
+`"Lovelace, Ada"` — the surname-first form MERIDIAN renders — and literal
+scrubbing is exact, so the flipped form passed straight through.
+
+The general shape: **the model's own prose is a redaction channel.** It
+restates observed values in forms nobody enumerated, and every literal-based
+rule is exact by construction. `register_pii` now also registers the comma
+flip, which catches the common case and is not a claim to catch every
+paraphrase. Existing evidence was re-scrubbed rather than deleted.
+
+Worth noting where this was caught: not by a test, by grepping the staging
+area before committing. That is a weak control to be relying on.
+
+## Two judgement calls worth challenging
+
+**`parameter_aliases` in the profile.** MERIDIAN labels its member search
+field `Value` — correct on screen beside a "Search by" selector, useless as a
+parameter name, and the recorder derives names from labels. Without an alias
+the contract reads `value_ref`. The profile now maps `Value -> member_ref`.
+Which entity a generically-labelled field identifies is app knowledge, so it
+sits with the app's other knowledge — but it is a per-app patch on a
+heuristic, and a reviewer might prefer the recorder simply refuse to name a
+parameter from a generic label.
+
+**The goal had to be sharpened.** On "read their share balance", the lite
+model read the **Shares column of the search results** — a *count* of 20 —
+called it the balance, and reported success without ever opening the member
+record. A wrong answer returned confidently. The goal was rewritten to name
+the share and require the record. That is legitimate — a goal is the caller's
+spec — but it is worth stating plainly that the first formulation produced a
+confidently wrong capability, and that nothing in the system caught it. The
+artifact would have replayed "successfully" forever, returning a share count
+labelled as money. Discovery-time output verification is the gap.
+
+---
+
 ## The three things that decide the shape of the sprint
 
 1. **The adapter seam is real but it is not one seam.** Perception transfers

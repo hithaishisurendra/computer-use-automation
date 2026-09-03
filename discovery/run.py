@@ -33,7 +33,18 @@ from escalation.operator import ConsoleOperator
 # an allowlist a caller can extend at invocation time is not an allowlist,
 # and it would contradict the rule the capability layer already enforces on
 # tenant overlays -- allowlists may only narrow.
-DEFAULT_POLICY_PATH = Path(__file__).resolve().parent / "policy.json"
+# Per-app, beside the app profiles. The allowlist stays a separate file from
+# the profile on purpose: a profile describes what an app *is*, a policy
+# declares what the agent may *do* to it, and collapsing the two would put a
+# safety decision inside a description.
+POLICY_ROOT = Path(__file__).resolve().parent.parent / "config" / "discovery_policies"
+
+
+def default_policy_path(app: str) -> Path:
+    return POLICY_ROOT / f"{app}.json"
+
+
+DEFAULT_POLICY_PATH = default_policy_path("coreserv")
 
 
 class PolicyWidened(Exception):
@@ -68,36 +79,38 @@ def load_policy(path: str | Path, base_url: str, narrow_to: list[str] | None) ->
 
 def build_target(
     base_url: str,
-    entry: str,
+    entry: Optional[str],
     tenant: str,
     app_version: str,
-    app: str = "coreserv",
-    auth_path: str = "/",
-    credentials_ref: Optional[dict[str, str]] = None,
-    auth_parameters: Optional[dict[str, str]] = None,
-    success_pattern: str = "/home|/search",
+    profile,
 ) -> Target:
-    """The target a discovery run drives.
+    """The target a discovery run drives, described by its app profile.
 
-    Every CoreServ fact here used to be a literal with no way to change it:
-    the app name, the auth path, the credential variable names and the
-    post-sign-on URL pattern. They are arguments now, defaulted to CoreServ so
-    the existing demo path is unchanged.
+    Every value here was a CoreServ literal: the app name, the auth path, the
+    credential variable names, the sign-on parameters and the pattern proving
+    login worked. They come from the profile now. `entry` stays a CLI
+    argument because which screen a *flow* starts on is a property of the
+    goal, not of the application -- but its default is the profile's.
     """
+    auth = profile.auth_defaults
+    if auth is None or not auth.credentials_ref:
+        raise ValueError(
+            f"app profile {profile.name!r} declares no auth_defaults.credentials_ref, "
+            "so discovery has no credentials to sign on with"
+        )
     return Target(
         surface="web",
-        app=app,
+        app=profile.name,
         app_version=app_version,
         tenant=tenant,
         base_url=base_url.rstrip("/"),
-        entry_path=entry,
+        entry_path=entry or profile.entry_path or "/",
         auth=AuthSpec(
             mode="form_login",
-            path=auth_path,
-            credentials_ref=credentials_ref
-            or {"username": "CORESERV_USERNAME", "password": "CORESERV_PASSWORD"},
-            parameters=auth_parameters or {},
-            success_check=Condition(type="url_matches", pattern=success_pattern),
+            path=auth.path,
+            credentials_ref=dict(auth.credentials_ref),
+            parameters=dict(auth.parameters),
+            success_check=Condition(type="url_matches", pattern=auth.success_pattern),
         ),
     )
 
@@ -105,8 +118,12 @@ def build_target(
 def main() -> None:
     parser = argparse.ArgumentParser(prog="discovery.run")
     parser.add_argument("--goal", required=True)
-    parser.add_argument("--target", default="http://localhost:8800")
-    parser.add_argument("--entry", default="/search")
+    parser.add_argument("--target", default=None, help="Base URL. Required.")
+    parser.add_argument(
+        "--entry",
+        default=None,
+        help="Where the flow starts, post-authentication. Defaults to the app profile's entry_path.",
+    )
     parser.add_argument(
         "--allow-path",
         action="append",
@@ -116,7 +133,8 @@ def main() -> None:
             "declared policy in discovery/policy.json; a path outside it is refused."
         ),
     )
-    parser.add_argument("--policy", default=str(DEFAULT_POLICY_PATH))
+    parser.add_argument("--policy", default=None,
+                        help="Defaults to config/discovery_policies/{app}.json.")
     parser.add_argument(
         "--app",
         default="coreserv",
@@ -136,6 +154,13 @@ def main() -> None:
     parser.add_argument("--out", default=None, help="Where to write the emitted artifact.")
     parser.add_argument("--headed", action="store_true")
     parser.add_argument(
+        "--max-seconds", type=float, default=None,
+        help=(
+            "Wall-clock budget for the run's own work. Provider backoff is not "
+            "counted against it."
+        ),
+    )
+    parser.add_argument(
         "--escalate",
         action="store_true",
         help=(
@@ -145,9 +170,13 @@ def main() -> None:
     )
     args = parser.parse_args()
     load_dotenv()
+    if not args.target:
+        raise SystemExit("--target is required (the base URL of the app to drive)")
 
     try:
-        policy = load_policy(args.policy, args.target, args.allow_path)
+        policy = load_policy(
+            args.policy or default_policy_path(args.app), args.target, args.allow_path
+        )
     except PolicyWidened as exc:
         print(json.dumps({"status": "policy_error", "message": str(exc)}, indent=2))
         raise SystemExit(2)
@@ -157,9 +186,7 @@ def main() -> None:
         print(json.dumps({"status": "profile_error", "message": str(exc)}, indent=2))
         raise SystemExit(2)
 
-    target = build_target(
-        args.target, args.entry, args.tenant, args.app_version, app=args.app
-    )
+    target = build_target(args.target, args.entry, args.tenant, args.app_version, profile)
 
     loop = DiscoveryLoop(
         goal=args.goal,
@@ -172,6 +199,7 @@ def main() -> None:
         profile=profile,
         escalate=args.escalate,
         operator=(ConsoleOperator() if args.escalate else None),
+        **({"max_wall_clock_s": args.max_seconds} if args.max_seconds else {}),
     )
     outcome = asyncio.run(loop.run())
 

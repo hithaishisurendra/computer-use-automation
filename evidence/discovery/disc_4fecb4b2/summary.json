@@ -1,0 +1,15 @@
+{
+  "run_id": "disc_4fecb4b2",
+  "status": "timeout",
+  "goal": "Look up member 100234 and read their share balance",
+  "provider": "gemini",
+  "model": "gemini-3.6-flash",
+  "rate_limit_retries": 3,
+  "human_interventions": [],
+  "steps_attempted": 5,
+  "outputs": {},
+  "summary": null,
+  "message": "wall clock limit of 300s reached",
+  "duration_ms": 305423.5,
+  "artifact": null
+}

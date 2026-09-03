@@ -50,13 +50,20 @@ from replay import resolver
 class RiskRules:
     """Per-app vocabulary for the risky-step heuristic.
 
-    Loaded from discovery/app_profiles.json rather than hardcoded here: which
-    words mean "commit" is knowledge about a target, not about recording.
+    Loaded from the app profile rather than hardcoded here: which words mean
+    "commit" is knowledge about a target, not about recording.
     """
 
     app: str = "default"
     post_like_verbs: tuple[str, ...] = ()
     near_miss_verbs: tuple[str, ...] = ()
+    parameter_aliases: tuple[tuple[str, str], ...] = ()
+
+    def alias_for(self, label: str) -> Optional[str]:
+        for candidate, name in self.parameter_aliases:
+            if candidate.strip().lower() == (label or "").strip().lower():
+                return name
+        return None
 
     def match(self, control_name: str) -> Optional[str]:
         """The post-like verb this control name matches, if any."""
@@ -90,6 +97,7 @@ def risk_rules_from_profile(profile) -> RiskRules:
         app=profile.name,
         post_like_verbs=tuple(profile.risk_verbs),
         near_miss_verbs=tuple(profile.near_miss_verbs),
+        parameter_aliases=tuple(profile.parameter_aliases.items()),
     )
 
 
@@ -206,14 +214,18 @@ def build_chain(
 
     row = _ancestor_row(tree, target)
     scope_text = declared.get("row_contains")
+    if is_extraction and scope_text and scope_text in (target.get("name") or ""):
+        # Circular: the row was identified by the value being read out of it,
+        # so the locator would only find the balance while the balance still
+        # has the value it had during discovery. The model reaches for this
+        # when a better scope was ambiguous, which makes it exactly the case
+        # worth catching rather than trusting.
+        scope_text = None
     # Prefer a scope keyed on a parameter: "the row for {{member_ref}}"
     # generalises across invocations, where a literal from this one run does
     # not. This is the difference between a reusable capability and a
     # recording that only works for the record it was discovered on.
-    param_scope = next(
-        (f"{{{{{p}}}}}" for p, v in params.items() if scope_text and str(v) == str(scope_text)),
-        None,
-    )
+    param_scope = _parameterise(scope_text, params)
     scope_value = param_scope or scope_text
 
     if row is not None and role and name and not is_extraction:
@@ -234,32 +246,43 @@ def build_chain(
 
     if row is not None and role in ("cell", "columnheader", "rowheader"):
         header = declared.get("column_header") or _column_header_for(tree, row, target)
-        row_text = scope_value or _row_scope_text(row, target)
-        if row_text:
+        cells = _row_cells(row)
+        index = cells.index(target) if target in cells else None
+
+        # Every way this row could be named, most robust first. Each is
+        # probed against the live tree below and kept only if it resolves to
+        # exactly this cell, so proposing several costs nothing but gives the
+        # chain somewhere to fall to.
+        #
+        # cell_equals comes first because it is the only one immune to the
+        # prefix problem: `contains: "100234-S0001"` matches nine rows on a
+        # member whose shares are numbered with suffixes, and an ambiguous
+        # rung is discarded, which is how a flow ends up with no chain at all.
+        scopes: list[tuple[dict, str]] = []
+        for sibling in cells:
+            if sibling is target:
+                continue
+            text = (sibling.get("name") or "").strip()
+            if not text:
+                continue
+            scopes.append(({"role": "row", "cell_equals": _parameterise(text, params) or text},
+                           "high"))
+        for text in filter(None, [scope_value, _row_scope_text(row, target)]):
+            scopes.append(({"role": "row", "contains": text}, "medium"))
+
+        for scope, confidence in scopes:
             if header:
                 candidates.append(
-                    (
-                        "cell_in_row",
-                        {
-                            "strategy": "cell_in_row",
-                            "scope": {"role": "row", "contains": row_text},
-                            "column_header": header,
-                            "confidence": "high",
-                        },
-                    )
+                    ("cell_in_row",
+                     {"strategy": "cell_in_row", "scope": scope,
+                      "column_header": header, "confidence": confidence})
                 )
-            cells = _row_cells(row)
-            if target in cells:
+            if index is not None:
                 candidates.append(
-                    (
-                        "cell_in_row",
-                        {
-                            "strategy": "cell_in_row",
-                            "scope": {"role": "row", "contains": row_text},
-                            "column_index": cells.index(target),
-                            "confidence": "medium",
-                        },
-                    )
+                    ("cell_in_row",
+                     {"strategy": "cell_in_row", "scope": scope,
+                      "column_index": index,
+                      "confidence": "medium" if confidence == "high" else "low"})
                 )
 
     if role:
@@ -285,13 +308,54 @@ def build_chain(
         for candidate_strategy, rung in candidates:
             if candidate_strategy != strategy:
                 continue
-            fingerprint = repr(sorted(rung.items(), key=lambda kv: kv[0]))
+            fingerprint = json.dumps(rung, sort_keys=True, default=str)
             if fingerprint in seen:
                 continue
             if _resolves_uniquely(tree, rung, params, target):
                 seen.add(fingerprint)
                 chain.append(rung)
     return chain
+
+
+def _output_name(raw: str, taken: set[str]) -> str:
+    """Name an output after what it is, not after the record it was found on.
+
+    Same rule as `_derive_capability_id`: a token containing a digit is a
+    value from this one run, not a name. The model asked for
+    `balance_100234_s0001`, which reads as a different output for every member
+    the capability is invoked with -- and an output name is the public
+    contract a calling agent binds to, so it must not carry the identity the
+    parameter already carries.
+
+    The model's own name is kept when stripping would leave nothing, or would
+    collide with an output already declared: a confusing name is better than
+    a wrong one or a lost value.
+    """
+    parts = [p for p in re.split(r"[^A-Za-z0-9]+", raw or "") if p]
+    kept = [p for p in parts if not any(c.isdigit() for c in p)]
+    candidate = "_".join(kept).lower()
+    if not candidate or candidate in taken:
+        return raw
+    return candidate
+
+
+def _parameterise(text: Optional[str], params: dict[str, Any]) -> Optional[str]:
+    """Replace a discovered literal inside a scope with its {{param}}.
+
+    Substring rather than whole-string, which matters for compound
+    identifiers: a share id of `100234-S0001` becomes `{{member_ref}}-S0001`
+    and travels to the next member, where a whole-string comparison would
+    have left the discovered member baked in. Longest example first so a
+    short value that is a substring of a longer one cannot corrupt it.
+    """
+    if not text:
+        return None
+    out = text
+    for name, example in sorted(params.items(), key=lambda kv: -len(str(kv[1]))):
+        example = str(example)
+        if example and example in out:
+            out = out.replace(example, f"{{{{{name}}}}}")
+    return out if out != text else None
 
 
 def _row_scope_text(row: dict, target: dict) -> Optional[str]:
@@ -342,11 +406,15 @@ def _parameter_name(label: str, is_identifier: bool) -> str:
     return f"{stem}_ref" if stem else "param_ref"
 
 
-def _infer_input(value: str, label: str) -> dict[str, Any]:
-    """Declare a typed input for a literal the model typed."""
+def _infer_input(value: str, label: str, alias: Optional[str] = None) -> dict[str, Any]:
+    """Declare a typed input for a literal the model typed.
+
+    `alias` overrides the label-derived name where the app profile says the
+    label is too generic to name a public contract after.
+    """
     is_identifier = value.isdigit()
     spec: dict[str, Any] = {
-        "name": _parameter_name(label, is_identifier),
+        "name": alias or _parameter_name(label, is_identifier),
         "type": "string",
         "required": True,
         "description": (
@@ -411,7 +479,7 @@ def record(
             value = cycle.tool_input.get("value", "")
             label = cycle.tool_input.get("name") or "value"
             if value and value in goal:
-                spec = _infer_input(value, label)
+                spec = _infer_input(value, label, risk_rules.alias_for(label))
                 inputs[spec["name"]] = spec
 
     params = {spec["name"]: spec["example"] for spec in inputs.values()}
@@ -439,7 +507,12 @@ def record(
             )
             continue
 
-        tree = (cycle.frames_before or {}).get(frame)
+        # Snapshots are keyed by frame NAME, and the main frame's name is the
+        # empty string. An element that declares no frame is None here, and
+        # `.get(None)` misses -- so on a frameless app every chain was built
+        # against a tree of None and nothing could ever resolve uniquely. The
+        # resolver already normalises this; the recorder has to as well.
+        tree = (cycle.frames_before or {}).get(resolver.frame_key(frame))
         node = cycle.acted_node or _find_acted_node(cycle, tree)
         if node is None:
             unrecordable.append(f"{step_id}: could not re-locate the element that was acted on")
@@ -512,7 +585,9 @@ def record(
                     break
             step["value"] = value
         if action == "extract":
-            output_name = cycle.tool_input["output_name"]
+            output_name = _output_name(
+                cycle.tool_input["output_name"], {o["name"] for o in outputs}
+            )
             step["into"] = output_name
             outputs.append(
                 {

@@ -314,7 +314,7 @@ class ReplayEngine:
             # reporting "checkpoint not met" when the real cause is an
             # expired session is the misleading error this ordering avoids.
             detection = classify.classify(
-                self.artifact, step.outcomes, page_text, url, self.profile
+                self.artifact, step.outcomes, page_text, url, self.profile, params
             )
 
             if detection is not None and detection.classification == "recoverable":
@@ -372,7 +372,7 @@ class ReplayEngine:
                     # an answer rather than a failure.
                     _, late_text, late_url = await self._capture()
                     late = classify.classify(
-                        self.artifact, step.outcomes, late_text, late_url, self.profile
+                        self.artifact, step.outcomes, late_text, late_url, self.profile, params
                     )
                     if late is not None:
                         trace.detections.append(late.as_dict())
@@ -675,7 +675,7 @@ class ReplayEngine:
                     # will be checked when they hand control back.
                     result.message = detection.message
                     result.expected = (
-                        checkpoints.describe(step.checkpoint)
+                        checkpoints.describe(step.checkpoint, params)
                         if step.checkpoint is not None
                         else "no checkpoint declared -- this step is unverifiable"
                     )

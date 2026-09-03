@@ -118,10 +118,18 @@ class ElementUnresolvable(Exception):
 
 
 def substitute(text: Optional[str], params: dict[str, Any]) -> Optional[str]:
-    """Substitute {{param}} references in a scope's `contains` clause.
+    """Substitute {{param}} references anywhere an artifact carries caller data.
 
     This is what makes "the View link in the row for member 10001"
-    expressible instead of "the third View link".
+    expressible instead of "the third View link", and "/members/10234"
+    expressible as a flow rather than a bookmark.
+
+    Every field an artifact templates goes through here. That uniformity is
+    the point: `Step.path` was the one field that carried caller data and was
+    never substituted, so an artifact could declare
+    `navigate /members/{{member_ref}}`, pass validation, and then request that
+    string literally. Two fields doing the same job and only one treated as
+    such is how that happens.
     """
     if text is None:
         return None
@@ -131,6 +139,27 @@ def substitute(text: Optional[str], params: dict[str, Any]) -> Optional[str]:
         if name not in params:
             raise KeyError(f"no value supplied for template parameter {name!r}")
         return str(params[name])
+
+    return TEMPLATE_RE.sub(repl, text)
+
+
+def substitute_regex(text: Optional[str], params: dict[str, Any]) -> Optional[str]:
+    """Substitute into a field that is itself a regex, escaping what goes in.
+
+    A caller-supplied value is data, not pattern syntax. Interpolating it raw
+    would let an input containing `.` or `(` change what the surrounding
+    pattern means -- at best a checkpoint that matches too much, at worst a
+    pattern that fails to compile at replay time on a value that passed
+    input validation.
+    """
+    if text is None:
+        return None
+
+    def repl(match: re.Match) -> str:
+        name = match.group(1)
+        if name not in params:
+            raise KeyError(f"no value supplied for template parameter {name!r}")
+        return re.escape(str(params[name]))
 
     return TEMPLATE_RE.sub(repl, text)
 
@@ -173,6 +202,15 @@ def _name_of(node: dict) -> str:
     return (node.get("name") or "").strip()
 
 
+def _row_cells(row: dict) -> list[dict]:
+    """Direct cell children of a row, in document order."""
+    return [
+        child
+        for child in (row.get("children") or [])
+        if _role_of(child) in ("cell", "columnheader", "rowheader")
+    ]
+
+
 def find_scopes(root: Optional[dict], scope: Scope, params: dict[str, Any]) -> list[dict]:
     """Find containers matching a scope, keeping only the INNERMOST matches.
 
@@ -185,7 +223,8 @@ def find_scopes(root: Optional[dict], scope: Scope, params: dict[str, Any]) -> l
     """
     wanted_role = scope.role.strip().lower()
     contains = substitute(scope.contains, params)
-    wanted_name = scope.name
+    wanted_name = substitute(scope.name, params)
+    cell_equals = substitute(scope.cell_equals, params)
 
     matches: list[dict] = []
     for node in iter_nodes(root):
@@ -194,6 +233,10 @@ def find_scopes(root: Optional[dict], scope: Scope, params: dict[str, Any]) -> l
         if contains and contains not in node_text(node):
             continue
         if wanted_name and _name_of(node) != wanted_name:
+            continue
+        if cell_equals and not any(
+            _name_of(cell) == cell_equals for cell in _row_cells(node)
+        ):
             continue
         matches.append(node)
 
@@ -204,15 +247,6 @@ def find_scopes(root: Optional[dict], scope: Scope, params: dict[str, Any]) -> l
         if not any(id(other) in descendants for other in matches):
             innermost.append(candidate)
     return innermost
-
-
-def _row_cells(row: dict) -> list[dict]:
-    """Direct cell children of a row, in document order."""
-    return [
-        child
-        for child in (row.get("children") or [])
-        if _role_of(child) in ("cell", "columnheader", "rowheader")
-    ]
 
 
 def _find_column_index(root: Optional[dict], row: dict, column_header: str) -> Optional[int]:
@@ -295,10 +329,13 @@ def _header_row_index(root: Optional[dict], row: dict, column_header: str) -> Op
 # ---------------------------------------------------------------------------
 
 
-def _match_role_name(root: Optional[dict], rung: LocatorRung) -> list[dict]:
+def _match_role_name(
+    root: Optional[dict], rung: LocatorRung, params: dict[str, Any]
+) -> list[dict]:
+    wanted_name = substitute(rung.name, params)
     wanted_role = (rung.role or "").strip().lower()
     return [
-        n for n in iter_nodes(root) if _role_of(n) == wanted_role and _name_of(n) == rung.name
+        n for n in iter_nodes(root) if _role_of(n) == wanted_role and _name_of(n) == wanted_name
     ]
 
 
@@ -306,12 +343,13 @@ def _match_role_name_scoped(
     root: Optional[dict], rung: LocatorRung, params: dict[str, Any]
 ) -> list[dict]:
     wanted_role = (rung.role or "").strip().lower()
+    wanted_name = substitute(rung.name, params)
     found: list[dict] = []
     for container in find_scopes(root, rung.scope, params):
         found.extend(
             n
             for n in iter_nodes(container)
-            if n is not container and _role_of(n) == wanted_role and _name_of(n) == rung.name
+            if n is not container and _role_of(n) == wanted_role and _name_of(n) == wanted_name
         )
     return found
 
@@ -342,7 +380,7 @@ def _match_role_ordinal(root: Optional[dict], rung: LocatorRung) -> list[dict]:
 
 def match_rung(root: Optional[dict], rung: LocatorRung, params: dict[str, Any]) -> list[dict]:
     if rung.strategy == "role_name":
-        return _match_role_name(root, rung)
+        return _match_role_name(root, rung, params)
     if rung.strategy == "role_name_scoped":
         return _match_role_name_scoped(root, rung, params)
     if rung.strategy == "cell_in_row":

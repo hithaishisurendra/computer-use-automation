@@ -1,0 +1,86 @@
+{
+  "schema_version": "1.0",
+  "capability": {
+    "id": "member_share_balance",
+    "version": "1.0.0",
+    "name": "Look up member 100234 and read their share balance",
+    "description": "Look up member 100234 and read their share balance",
+    "status": "draft"
+  },
+  "target": {
+    "surface": "web",
+    "app": "meridian",
+    "app_version": "4.2.1",
+    "tenant": "demo",
+    "base_url": "https://web-sample.interface-hiring.com",
+    "entry_path": "/menu",
+    "auth": {
+      "mode": "form_login",
+      "path": "/signon",
+      "credentials_ref": {
+        "username": "MERIDIAN_OPERATOR",
+        "password": "MERIDIAN_PASSWORD"
+      },
+      "parameters": {
+        "branch": "MAIN-001"
+      },
+      "elements": {},
+      "success_check": {
+        "type": "url_matches",
+        "pattern": "/menu"
+      }
+    }
+  },
+  "inputs": [
+    {
+      "name": "value_ref",
+      "type": "string",
+      "required": true,
+      "description": "The identifier used to locate the record, entered into 'Value'.",
+      "example": "100234",
+      "pattern": "^[0-9]{6}$",
+      "sensitivity": "identifier"
+    }
+  ],
+  "outputs": [],
+  "elements": {},
+  "steps": [
+    {
+      "id": "s1",
+      "action": "navigate",
+      "path": "/menu",
+      "frame": null,
+      "risk": "safe",
+      "notes": "Added at record time: the session was already at /menu when the first action ran, so no navigation was observed. Recorded explicitly so the flow declares where it starts instead of inheriting it from wherever the surface happened to open."
+    }
+  ],
+  "outcomes": [],
+  "policy": {
+    "allowed_origins": [
+      "https://web-sample.interface-hiring.com"
+    ],
+    "allowed_paths": [
+      "/signon",
+      "/menu",
+      "/members",
+      "/members/*"
+    ],
+    "allowed_actions": [
+      "navigate"
+    ],
+    "risky_action_handling": "require_confirmation",
+    "max_steps": 25,
+    "timeout_ms": 300000
+  },
+  "provenance": {
+    "source": "discovery",
+    "discovered_at": "2026-09-03T10:06:27.047485Z",
+    "goal": "Look up member 100234 and read their share balance",
+    "model": "gemini:gemini-3.5-flash",
+    "discovery_run_id": "disc_7a1ed63e",
+    "steps_attempted": 7,
+    "steps_recorded": 1,
+    "human_interventions": 0,
+    "notes": "Emitted by discovery/recorder.py. Locator chains were built by probing which strategies uniquely resolved each element at the moment it was acted on; ambiguous strategies were discarded rather than recorded. outcomes[] is empty because a happy-path run observes no business outcomes. Risk heuristic (app profile 'meridian'): no clicked control matched or neared a post-like verb. Unrecordable: s1: no strategy uniquely identified 'member_inquiry_selection_link'; s2: no strategy uniquely identified 'value_field'; s3: no strategy uniquely identified 'search_button'; s4: no strategy uniquely identified 'select_link'; s5: no strategy uniquely identified 'share_balance_source'"
+  }
+}

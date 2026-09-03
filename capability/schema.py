@@ -251,6 +251,17 @@ class Scope(StrictModel):
     role: str
     contains: Optional[str] = None
     name: Optional[str] = None
+    cell_equals: Optional[str] = Field(
+        default=None,
+        description=(
+            "A direct cell child whose accessible name is EXACTLY this. `contains` "
+            "is a substring test over the container's whole subtree, which is the "
+            "right default for 'the row mentioning 100234' but wrong wherever "
+            "identifiers are prefixes of one another -- a share id like "
+            "'100234-S0001' is a substring of '100234-S0001-6', so scoping on it "
+            "matches nine rows. Exact cell matching is how such a row is named."
+        ),
+    )
 
 
 class LocatorRung(StrictModel):
@@ -570,6 +581,11 @@ class Artifact(StrictModel):
         def check_condition(cond: Condition, where: str) -> None:
             if cond.element and cond.element not in element_keys:
                 errors.append(f"{where}: references unknown element {cond.element!r}")
+            # A condition's text and pattern carry caller data like any other
+            # templated field, so an undeclared {{param}} in one is the same
+            # error as an undeclared {{param}} in a fill value.
+            check_template(cond.text, f"{where} text")
+            check_template(cond.pattern, f"{where} pattern")
             for sub in cond.conditions or []:
                 check_condition(sub, where)
 
@@ -582,8 +598,11 @@ class Artifact(StrictModel):
 
         for key, element in self.elements.items():
             for rung in element.chain:
+                check_template(rung.name, f"element {key!r} rung name")
                 if rung.scope is not None:
                     check_template(rung.scope.contains, f"element {key!r} scope.contains")
+                    check_template(rung.scope.name, f"element {key!r} scope.name")
+                    check_template(rung.scope.cell_equals, f"element {key!r} scope.cell_equals")
 
         allowed_actions = set(self.policy.allowed_actions)
         for step in self.steps:
@@ -612,6 +631,10 @@ class Artifact(StrictModel):
                     "the run could not tell whether it took effect."
                 )
             check_template(step.value, f"{where} value")
+            # The bug this closes: a path could name an input that does not
+            # exist, load cleanly, and then be requested as a literal string.
+            # Both fields carry caller data; both are checked.
+            check_template(step.path, f"{where} path")
             if step.checkpoint is not None:
                 check_condition(step.checkpoint, f"{where} checkpoint")
             for name in step.outcomes:

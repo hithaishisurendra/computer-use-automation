@@ -56,6 +56,29 @@ def mask_identifier(value: str) -> str:
     return "*" * (len(value) - 2) + value[-2:]
 
 
+def name_variants(value: str) -> list[str]:
+    """Other orderings a person's name is likely to be written in.
+
+    Back-office consoles render names surname-first ("Lovelace, Ada"), and a
+    literal registered in that form does not match the same person written
+    naturally. That is not hypothetical: a discovery run's own summary said
+    "member 100234 (Ada Lovelace)" and the scrubber, holding the comma form,
+    let it through into evidence.
+
+    Free text that restates a value in a different shape is a redaction
+    channel nobody enumerates, and the model's prose is exactly that channel.
+    Covering the comma flip is cheap and catches the common case; it is not a
+    claim to catch every paraphrase.
+    """
+    if "," not in value:
+        return []
+    last, _, first = value.partition(",")
+    last, first = last.strip(), first.strip()
+    if not last or not first:
+        return []
+    return [f"{first} {last}"]
+
+
 class Scrubber:
     """Applies pattern rules and registered literals to text."""
 
@@ -95,6 +118,8 @@ class Scrubber:
     def register_pii(self, values: Iterable[str]) -> None:
         for value in values:
             self.register_literal(value, "<redacted:pii>")
+            for variant in name_variants(value):
+                self.register_literal(variant, "<redacted:pii>")
 
     def register_identifiers(self, values: Iterable[str]) -> None:
         for value in values:

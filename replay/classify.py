@@ -221,6 +221,7 @@ def detect_artifact_outcomes(
     step_outcome_names: list[str],
     page_text: str,
     url: str,
+    params: Optional[dict[str, Any]] = None,
 ) -> Optional[Detection]:
     """Check the outcomes this step declared it might produce.
 
@@ -232,7 +233,7 @@ def detect_artifact_outcomes(
         outcome: Optional[Outcome] = artifact.outcome_map.get(name)
         if outcome is None:
             continue
-        if _detect_matches(outcome, page_text, url):
+        if _detect_matches(outcome, page_text, url, params or {}):
             return Detection(
                 name=outcome.name,
                 layer="artifact",
@@ -242,22 +243,29 @@ def detect_artifact_outcomes(
     return None
 
 
-def _detect_matches(outcome: Outcome, page_text: str, url: str) -> bool:
+def _detect_matches(
+    outcome: Outcome, page_text: str, url: str, params: dict[str, Any]
+) -> bool:
     import re
+
+    from replay import resolver
 
     condition = outcome.detect
     if condition.type == "text_present":
-        return condition.text in page_text
+        # An outcome may legitimately be keyed on the record being looked at
+        # ("no shares for member 100234"), so its detect text carries caller
+        # data like any other templated field.
+        return resolver.substitute(condition.text, params) in page_text
     if condition.type == "url_matches":
-        return bool(re.search(condition.pattern, url))
+        return bool(re.search(resolver.substitute_regex(condition.pattern, params), url))
     if condition.type == "any_of":
         return any(
-            _detect_matches(outcome.model_copy(update={"detect": c}), page_text, url)
+            _detect_matches(outcome.model_copy(update={"detect": c}), page_text, url, params)
             for c in condition.conditions or []
         )
     if condition.type == "all_of":
         return all(
-            _detect_matches(outcome.model_copy(update={"detect": c}), page_text, url)
+            _detect_matches(outcome.model_copy(update={"detect": c}), page_text, url, params)
             for c in condition.conditions or []
         )
     # element_present detection is deliberately unsupported here: outcomes
@@ -272,6 +280,7 @@ def classify(
     page_text: str,
     url: str,
     profile,
+    params: Optional[dict[str, Any]] = None,
 ) -> Optional[Detection]:
     """Full two-layer classification for one step.
 
@@ -281,4 +290,4 @@ def classify(
     universal = detect_engine_universals(page_text, profile)
     if universal is not None:
         return universal
-    return detect_artifact_outcomes(artifact, step_outcome_names, page_text, url)
+    return detect_artifact_outcomes(artifact, step_outcome_names, page_text, url, params)

@@ -55,6 +55,11 @@ from replay.resolver import ElementUnresolvable
 DEFAULT_PROVIDER = "gemini"
 
 MAX_STEPS = 25
+# The run's own time budget. Provider backoff is deliberately NOT counted
+# against it: a run that spent four minutes waiting out a free-tier rate limit
+# has not wandered for four minutes, and failing it as a timeout reports the
+# agent's behaviour when the cause was the quota. Each call's backoff is
+# bounded by MAX_RETRIES, so excluding it cannot make a run hang.
 MAX_WALL_CLOCK_S = 300  # 5 minutes
 MAX_CONSECUTIVE_FAILURES = 3
 
@@ -208,6 +213,7 @@ class DiscoveryLoop:
         escalate: bool = False,
         operator=None,
         escalation_root: str | Path = "evidence/escalation",
+        max_wall_clock_s: float = MAX_WALL_CLOCK_S,
     ):
         self.goal = goal
         self.policy = policy
@@ -218,6 +224,8 @@ class DiscoveryLoop:
         self.provider = self.client.provider
         self.model = self.client.model
         self.rate_limit_events: list[dict[str, Any]] = []
+        # Time spent waiting on the provider, excluded from the wall clock.
+        self.backoff_s: float = 0.0
         # Off by default, same reasoning as replay: a discovery run left
         # blocking on a human nobody is watching is worse than one that stops.
         self.escalate = escalate
@@ -225,6 +233,7 @@ class DiscoveryLoop:
         self.escalation_root = escalation_root
         self.control = None
         self.human_interventions: list[dict[str, Any]] = []
+        self.max_wall_clock_s = max_wall_clock_s
         self.run_id = f"disc_{uuid.uuid4().hex[:8]}"
         self.evidence_dir = Path(evidence_dir) / self.run_id
         self.evidence_dir.mkdir(parents=True, exist_ok=True)
@@ -394,13 +403,14 @@ class DiscoveryLoop:
         """Every provider retry lands in evidence. A run that spent four
         minutes in backoff is otherwise indistinguishable from a slow model."""
         self.rate_limit_events.append(event)
+        self.backoff_s += float(event.get("sleep_s") or 0.0)
         self.log("rate_limited", event)
 
     async def run(self) -> DiscoveryOutcome:
         from playwright.async_api import async_playwright
 
         started = time.perf_counter()
-        deadline = started + MAX_WALL_CLOCK_S
+        budget = self.max_wall_clock_s
 
         system = build_system_prompt(
             goal=self.goal,
@@ -452,8 +462,13 @@ class DiscoveryLoop:
                 await self.page.goto(entry, wait_until="load")
 
                 for index in range(1, MAX_STEPS + 1):
-                    if time.perf_counter() > deadline:
-                        status, message = "timeout", f"wall clock limit of {MAX_WALL_CLOCK_S}s reached"
+                    working_s = (time.perf_counter() - started) - self.backoff_s
+                    if working_s > budget:
+                        status, message = (
+                            "timeout",
+                            f"wall clock limit of {budget}s reached "
+                            f"(excluding {self.backoff_s:.0f}s of provider backoff)",
+                        )
                         break
 
                     observation, url, frames = await self._observe()
@@ -550,10 +565,7 @@ class DiscoveryLoop:
                             status, message = "policy_violation", str(exc)
                             break
                         except ElementUnresolvable as exc:
-                            result_text = (
-                                f"Could not find that element: {exc}. Re-read the snapshot and "
-                                "target something that is actually present."
-                            )
+                            result_text = _unresolvable_advice(exc)
                             cycle.status = "failed"
                             cycle.detail = str(exc)
                             consecutive_failures += 1
@@ -683,6 +695,34 @@ class DiscoveryLoop:
             )
         except Exception:
             pass
+
+
+def _unresolvable_advice(exc: ElementUnresolvable) -> str:
+    """Tell the model what actually went wrong, and what to do about it.
+
+    "Target something that is actually present" is the right advice for a
+    control that is not there and the wrong advice for one that is there
+    several times -- and the two arrive as the same exception. A model told to
+    look for something else will keep re-sending an ambiguous target, because
+    from where it sits the target looks correct. Observed: a weaker model
+    repeated the same nine-way-ambiguous row scope three times and hit the
+    consecutive-failure limit with the answer on screen in front of it.
+    """
+    ambiguous = [a for a in exc.resolution.attempts if a.outcome == "ambiguous"]
+    if ambiguous:
+        worst = max(ambiguous, key=lambda a: a.match_count)
+        return (
+            f"That target is AMBIGUOUS, not missing: it matched {worst.match_count} "
+            "elements, so it does not identify one. Narrow it. If you used "
+            "row_contains, the text you gave appears in several rows -- a value that "
+            "is a prefix of other values (an account id whose siblings add a suffix) "
+            "does this. Add more text from the same row to make it unique, or use "
+            "text from a different column of that row."
+        )
+    return (
+        f"Could not find that element: {exc}. Re-read the snapshot and target "
+        "something that is actually present."
+    )
 
 
 def resolve_credentials_for(target: Target) -> dict[str, str]:

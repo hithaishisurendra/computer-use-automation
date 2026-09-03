@@ -1,0 +1,19 @@
+{
+  "run_id": "disc_7a1ed63e",
+  "status": "goal_reached",
+  "goal": "Look up member 100234 and read their share balance",
+  "provider": "gemini",
+  "model": "gemini-3.5-flash",
+  "rate_limit_retries": 0,
+  "human_interventions": [],
+  "steps_attempted": 7,
+  "outputs": {
+    "share_balance": "$2,499.00"
+  },
+  "summary": "Looked up member 100234 and extracted their primary share balance of $2,499.00.",
+  "message": null,
+  "duration_ms": 300534.2,
+  "artifact_valid": true,
+  "artifact": "evidence/discovery/disc_7a1ed63e/artifact.json",
+  "steps_recorded": 1
+}

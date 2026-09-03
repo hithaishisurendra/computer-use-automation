@@ -1,0 +1,19 @@
+{
+  "run_id": "disc_11ab782a",
+  "status": "goal_reached",
+  "goal": "Look up member 100234 and read their share balance",
+  "provider": "gemini",
+  "model": "gemini-3.1-flash-lite",
+  "rate_limit_retries": 0,
+  "human_interventions": [],
+  "steps_attempted": 5,
+  "outputs": {
+    "share_balance": "20"
+  },
+  "summary": "The share balance for member 100234 (<redacted:pii>) is 20.",
+  "message": null,
+  "duration_ms": 7075.66,
+  "artifact_valid": true,
+  "artifact": "evidence/discovery/disc_11ab782a/artifact.json",
+  "steps_recorded": 5
+}

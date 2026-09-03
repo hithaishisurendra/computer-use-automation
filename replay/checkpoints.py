@@ -43,18 +43,24 @@ class CheckResult:
         return d
 
 
-def describe(condition: Condition) -> str:
-    """Human-readable rendering of what a condition demands."""
+def describe(condition: Condition, params: Optional[dict[str, Any]] = None) -> str:
+    """Human-readable rendering of what a condition demands.
+
+    Templates are resolved when params are available, so an operator reading
+    an intervention request sees "text 'Member 100234' present" rather than
+    the template -- what they need to know is what this run is looking for.
+    """
+    params = params or {}
     t = condition.type
     if t == "element_present":
         return f"element {condition.element!r} present"
     if t == "text_present":
-        return f"text {condition.text!r} present on page"
+        return f"text {resolver.substitute(condition.text, params)!r} present on page"
     if t == "url_matches":
-        return f"url matching {condition.pattern!r}"
+        return f"url matching {resolver.substitute_regex(condition.pattern, params)!r}"
     if t in ("any_of", "all_of"):
         joiner = " OR " if t == "any_of" else " AND "
-        return "(" + joiner.join(describe(c) for c in condition.conditions or []) + ")"
+        return "(" + joiner.join(describe(c, params) for c in condition.conditions or []) + ")"
     return f"<unknown condition {t!r}>"
 
 
@@ -73,7 +79,7 @@ def evaluate_once(
     each child independently would let a checkpoint pass against two
     different moments in time.
     """
-    expected = describe(condition)
+    expected = describe(condition, params)
     t = condition.type
 
     if t == "element_present":
@@ -90,12 +96,15 @@ def evaluate_once(
         return CheckResult(False, expected, observed)
 
     if t == "text_present":
-        if condition.text in page_text:
+        # Substituted for the same reason a fill value is: a checkpoint that
+        # asserts the record you asked for is on screen has to know which
+        # record you asked for.
+        if resolver.substitute(condition.text, params) in page_text:
             return CheckResult(True, expected, "found")
         return CheckResult(False, expected, "text not present on page")
 
     if t == "url_matches":
-        if re.search(condition.pattern, url):
+        if re.search(resolver.substitute_regex(condition.pattern, params), url):
             return CheckResult(True, expected, f"url is {url!r}")
         return CheckResult(False, expected, f"url is {url!r}")
 
