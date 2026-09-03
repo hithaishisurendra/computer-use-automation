@@ -3,8 +3,8 @@
   "capability": {
     "id": "member_funds_transfer",
     "version": "1.0.0",
-    "name": "Transfer 5.00 from member 100234's share 100234-S0001-12 to their share 10023...",
-    "description": "Transfer 5.00 from member 100234's share 100234-S0001-12 to their share 100234-MMKT-11, with the memo 'quarterly rebalance', reach the confirmation screen and read the confirmation number",
+    "name": "Transfer 5.00 from member 100234's share 100234-S0001-14 to their share 10023...",
+    "description": "Transfer 5.00 from member 100234's share 100234-S0001-14 to their share 100234-MMKT-11, with the memo 'quarterly rebalance', and reach the confirmation screen",
     "status": "draft"
   },
   "target": {
@@ -47,7 +47,7 @@
       "required": true,
       "description": "Option selected in 'From Share'. Must be valid for the record this capability is invoked against.",
       "sensitivity": "identifier",
-      "example": "100234-S0001-12"
+      "example": "100234-S0001-14"
     },
     {
       "name": "to_share",
@@ -74,15 +74,7 @@
       "sensitivity": "public"
     }
   ],
-  "outputs": [
-    {
-      "name": "confirmation_number",
-      "type": "string",
-      "required": true,
-      "description": "Value read from CN480183.",
-      "sensitivity": "public"
-    }
-  ],
+  "outputs": [],
   "elements": {
     "funds_transfer_link": {
       "description": "link Funds Transfer",
@@ -168,6 +160,18 @@
           "confidence": "low",
           "brittle": true,
           "notes": "Positional, but scoped to its own row: if that row goes this fails rather than selecting whatever moved into the position."
+        },
+        {
+          "strategy": "role_ordinal",
+          "role": "link",
+          "index": 0,
+          "scope": {
+            "role": "row",
+            "contains": "<redacted:pii>"
+          },
+          "confidence": "low",
+          "brittle": true,
+          "notes": "Positional, but scoped to its own row: if that row goes this fails rather than selecting whatever moved into the position."
         }
       ],
       "notes": "Chain built by probing which strategies uniquely resolved this element during discovery."
@@ -181,6 +185,18 @@
           "role": "combobox",
           "name": "From Share",
           "confidence": "high"
+        },
+        {
+          "strategy": "role_ordinal",
+          "role": "combobox",
+          "index": 0,
+          "scope": {
+            "role": "row",
+            "contains": "* From Share"
+          },
+          "confidence": "low",
+          "brittle": true,
+          "notes": "Positional, but scoped to its own row: if that row goes this fails rather than selecting whatever moved into the position."
         }
       ],
       "notes": "Chain built by probing which strategies uniquely resolved this element during discovery."
@@ -194,6 +210,18 @@
           "role": "combobox",
           "name": "To Share",
           "confidence": "high"
+        },
+        {
+          "strategy": "role_ordinal",
+          "role": "combobox",
+          "index": 0,
+          "scope": {
+            "role": "row",
+            "contains": "* To Share"
+          },
+          "confidence": "low",
+          "brittle": true,
+          "notes": "Positional, but scoped to its own row: if that row goes this fails rather than selecting whatever moved into the position."
         }
       ],
       "notes": "Chain built by probing which strategies uniquely resolved this element during discovery."
@@ -270,43 +298,6 @@
           "role": "button",
           "name": "Post Transfer",
           "confidence": "high"
-        }
-      ],
-      "notes": "Chain built by probing which strategies uniquely resolved this element during discovery."
-    },
-    "confirmation_number_source": {
-      "description": "cell CN480183",
-      "frame": null,
-      "chain": [
-        {
-          "strategy": "cell_in_row",
-          "scope": {
-            "role": "row",
-            "cell_equals": "Confirmation"
-          },
-          "column_index": 1,
-          "confidence": "medium"
-        },
-        {
-          "strategy": "cell_in_row",
-          "scope": {
-            "role": "row",
-            "contains": "Confirmation"
-          },
-          "column_index": 1,
-          "confidence": "low"
-        },
-        {
-          "strategy": "role_ordinal",
-          "role": "cell",
-          "index": 1,
-          "scope": {
-            "role": "row",
-            "contains": "Confirmation"
-          },
-          "confidence": "low",
-          "brittle": true,
-          "notes": "Positional, but scoped to its own row: if that row goes this fails rather than selecting whatever moved into the position."
         }
       ],
       "notes": "Chain built by probing which strategies uniquely resolved this element during discovery."
@@ -412,17 +403,10 @@
       "risk": "risky",
       "notes": "Marked risky by the recorder: the control name 'Post Transfer' matched the post-like verb 'Post' in app profile 'meridian'. This is a heuristic first guess, not a determination -- confirm it during the draft -> approved review.",
       "checkpoint": {
-        "type": "element_present",
-        "element": "confirmation_number_source",
+        "type": "url_matches",
+        "pattern": "/members/[^/]+/transfer/post$",
         "timeout_ms": 8000
       }
-    },
-    {
-      "id": "s12",
-      "action": "extract",
-      "element": "confirmation_number_source",
-      "risk": "safe",
-      "into": "confirmation_number"
     }
   ],
   "outcomes": [],
@@ -438,7 +422,6 @@
     ],
     "allowed_actions": [
       "click",
-      "extract",
       "fill",
       "navigate",
       "select"
@@ -449,12 +432,12 @@
   },
   "provenance": {
     "source": "discovery",
-    "discovered_at": "2026-09-03T23:09:30.797008Z",
-    "goal": "Transfer 5.00 from member 100234's share 100234-S0001-12 to their share 100234-MMKT-11, with the memo 'quarterly rebalance', reach the confirmation screen and read the confirmation number",
+    "discovered_at": "2026-09-03T23:07:29.506419Z",
+    "goal": "Transfer 5.00 from member 100234's share 100234-S0001-14 to their share 100234-MMKT-11, with the memo 'quarterly rebalance', and reach the confirmation screen",
     "model": "anthropic:claude-sonnet-5",
-    "discovery_run_id": "disc_5941a1a7",
+    "discovery_run_id": "disc_0950efe2",
     "steps_attempted": 12,
-    "steps_recorded": 12,
+    "steps_recorded": 11,
     "human_interventions": 0,
     "flow_completed": true,
     "notes": "Emitted by discovery/recorder.py. Locator chains were built by probing which strategies uniquely resolved each element at the moment it was acted on; ambiguous strategies were discarded rather than recorded. outcomes[] is empty because a happy-path run observes no business outcomes. Risk heuristic (app profile 'meridian'; a first guess for review, not a determination): s1 near-miss: 'Funds Transfer' matched 'Transfer' but is a link, not a submit control; s9 near-miss: 'Continue' contains 'Continue', which the profile does not treat as a commit; s10 risky: 'Post Transfer' via 'Post'."

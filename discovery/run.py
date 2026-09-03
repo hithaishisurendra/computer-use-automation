@@ -242,6 +242,10 @@ def main() -> None:
         risk_rules=risk_rules,
         log=loop.log,
         default_frame=profile.content_frame,
+        # A locator must never be keyed on personal data. The app profile
+        # already declares what counts, so the same declaration that scrubs
+        # evidence also keeps names and addresses out of recorded chains.
+        is_sensitive=_sensitivity_predicate(profile),
     )
 
     out_path = Path(args.out) if args.out else loop.evidence_dir / "artifact.json"
@@ -301,6 +305,16 @@ def _derive_capability_id(goal: str) -> str:
         if w not in _GOAL_STOPWORDS and not any(c.isdigit() for c in w)
     ][:5]
     return "_".join(keep) or "discovered_capability"
+
+
+def _sensitivity_predicate(profile):
+    """True when scrubbing a string changes it -- i.e. the profile calls it
+    sensitive. Reuses the redaction declaration rather than adding a second,
+    quietly divergent idea of what is personal."""
+    from capability.redaction import profile_scrubber
+
+    scrubber = profile_scrubber(profile)
+    return lambda text: bool(text) and scrubber.scrub(text) != text
 
 
 def _write_summary(loop: DiscoveryLoop, summary: dict) -> None:

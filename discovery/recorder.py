@@ -187,6 +187,7 @@ def build_chain(
     declared: dict[str, Any],
     params: dict[str, Any],
     is_extraction: bool = False,
+    is_sensitive: Optional[Callable[[str], bool]] = None,
 ) -> list[dict[str, Any]]:
     """Probe every strategy against the live tree; keep the ones that work.
 
@@ -285,23 +286,69 @@ def build_chain(
                       "confidence": "medium" if confidence == "high" else "low"})
                 )
 
-    if role:
-        same_role = [n for n, _ in _iter_with_parents(tree) if (n.get("role") or "").lower() == role]
-        if target in same_role:
+    # Positional rungs, SCOPED to a container the target sits in. Counting
+    # position across the whole document is the dangerous form: any control
+    # inserted anywhere earlier shifts the index, and the rung still resolves
+    # -- to a stranger. Counted inside "the row labelled Amount" it breaks
+    # when that row goes, which a run reports instead of acting on.
+    if role and row is not None:
+        for text in _scope_texts(row, target, params, is_sensitive):
+            scoped_index = _index_within(row, target, role)
+            if scoped_index is None:
+                continue
             candidates.append(
                 (
                     "role_ordinal",
                     {
                         "strategy": "role_ordinal",
                         "role": role,
-                        "index": same_role.index(target),
+                        "index": scoped_index,
+                        "scope": {"role": "row", "contains": text},
                         "confidence": "low",
                         "brittle": True,
-                        "notes": "Positional fallback; recorded only because it resolved uniquely.",
+                        "notes": (
+                            "Positional, but scoped to its own row: if that row goes this "
+                            "fails rather than selecting whatever moved into the position."
+                        ),
                     },
                 )
             )
 
+    chain = _assemble(tree, candidates, params, target)
+    if chain:
+        return chain
+
+    # Nothing identified this element except where it sits in the document.
+    # A document-wide ordinal is never APPENDED to a chain that already has a
+    # real rung -- it would only ever fire when that rung failed, which is
+    # exactly when position is least trustworthy. As the SOLE rung it is the
+    # difference between a flawed recording and no recording at all, so it is
+    # kept and flagged loudly for review.
+    if role:
+        same_role = [n for n, _ in _iter_with_parents(tree) if (n.get("role") or "").lower() == role]
+        if target in same_role:
+            last_resort = {
+                "strategy": "role_ordinal",
+                "role": role,
+                "index": same_role.index(target),
+                "confidence": "low",
+                "brittle": True,
+                "notes": (
+                    "DOCUMENT-WIDE POSITIONAL, AND THE ONLY RUNG. Nothing else "
+                    "identified this control uniquely. This counts position across the "
+                    "whole page, so any control added before it shifts the index and "
+                    "this resolves to the wrong element without failing. Review before "
+                    "approving: give the control an accessible name, or find a "
+                    "container to scope it to."
+                ),
+            }
+            if _resolves_uniquely(tree, last_resort, params, target):
+                return [last_resort]
+    return []
+
+
+def _assemble(tree, candidates, params, target) -> list[dict[str, Any]]:
+    """Keep the candidates that uniquely resolve, most robust strategy first."""
     chain: list[dict[str, Any]] = []
     seen: set[str] = set()
     for strategy in STRATEGY_ORDER:
@@ -315,6 +362,56 @@ def build_chain(
                 seen.add(fingerprint)
                 chain.append(rung)
     return chain
+
+
+def _scope_texts(
+    row: dict,
+    target: dict,
+    params: dict[str, Any],
+    is_sensitive: Optional[Callable[[str], bool]] = None,
+) -> list[str]:
+    """Texts that might identify this row, safest first.
+
+    Two filters, both learned the hard way.
+
+    A scope keyed on a PARAMETER generalises across invocations; a literal
+    from this one run does not. So when any cell in the row parameterises,
+    only the parameterised forms are kept -- the alternatives would be
+    strictly worse locators recorded alongside a better one.
+
+    That rule also happens to be the privacy rule, and this is not a
+    coincidence: the cells that carry a record's identity are the ones that
+    carry its personal data. A results row holds the member number AND the
+    member's name, and the first tightened recording scoped a locator on
+    "Lovelace, Ada" -- a member's name, in an artifact bound for a repo. The
+    scrubber's own declaration decides what counts as sensitive, rather than
+    this module guessing.
+    """
+    literals: list[str] = []
+    parameterised: list[str] = []
+    for cell in _row_cells(row):
+        if cell is target:
+            continue
+        text = (cell.get("name") or "").strip()
+        if not text:
+            continue
+        if is_sensitive is not None and is_sensitive(text):
+            continue
+        templated = _parameterise(text, params)
+        target_list = parameterised if templated else literals
+        candidate = templated or text
+        if candidate not in target_list:
+            target_list.append(candidate)
+    return (parameterised or literals)[:3]
+
+
+def _index_within(container: dict, target: dict, role: str) -> Optional[int]:
+    """Position of the target among same-role nodes inside the container."""
+    same = [
+        n for n, _ in _iter_with_parents(container)
+        if n is not container and (n.get("role") or "").lower() == role
+    ]
+    return same.index(target) if target in same else None
 
 
 def _output_name(raw: str, taken: set[str]) -> str:
@@ -525,6 +622,7 @@ def record(
     risk_rules: "RiskRules" = DEFAULT_RISK_RULES,
     log: Optional[Callable[[str, dict[str, Any]], None]] = None,
     default_frame: Optional[str] = None,
+    is_sensitive: Optional[Callable[[str], bool]] = None,
 ) -> dict[str, Any]:
     """Build the artifact dict from a successful discovery run.
 
@@ -601,6 +699,7 @@ def record(
     outputs: list[dict[str, Any]] = []
     unrecordable: list[str] = []
     risk_notes: list[str] = []
+    positional_only: list[str] = []
 
     for position, cycle in enumerate(acted, start=1):
         step_id = f"s{position}"
@@ -630,7 +729,17 @@ def record(
             unrecordable.append(f"{step_id}: could not re-locate the element that was acted on")
             continue
 
-        chain = build_chain(tree, node, cycle.tool_input, params, is_extraction=(action == "extract"))
+        chain = build_chain(tree, node, cycle.tool_input, params,
+                            is_extraction=(action == "extract"), is_sensitive=is_sensitive)
+        if len(chain) == 1 and "DOCUMENT-WIDE POSITIONAL" in (chain[0].get("notes") or ""):
+            positional_only.append(
+                f"{step_id} ({cycle.element_key!r}): identified only by its position in the "
+                f"document ({chain[0]['role']} index {chain[0]['index']})"
+            )
+            emit("positional_only_element", {
+                "step_id": step_id, "element": cycle.element_key,
+                "role": chain[0]["role"], "index": chain[0]["index"],
+            })
         if not chain:
             unrecordable.append(
                 f"{step_id}: no strategy uniquely identified {cycle.element_key!r}"
@@ -797,6 +906,13 @@ def record(
                     " SUSPECT RECORDED VALUES -- these look like live page data rather "
                     "than caller intent and will go stale: " + "; ".join(suspect) + "."
                     if suspect
+                    else ""
+                )
+                + (
+                    " POSITIONALLY IDENTIFIED ELEMENTS -- these resolve only by where they "
+                    "sit in the document and will silently target the wrong control after a "
+                    "layout change: " + "; ".join(positional_only) + "."
+                    if positional_only
                     else ""
                 )
                 + _risk_summary(risk_rules, risk_notes)
