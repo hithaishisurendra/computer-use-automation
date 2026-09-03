@@ -517,6 +517,20 @@ class Artifact(StrictModel):
                 errors.append(f"{where}: references unknown element {step.element!r}")
             if step.into and step.into not in output_names:
                 errors.append(f"{where}: extracts into undeclared output {step.into!r}")
+            if step.risk == "risky" and step.checkpoint is None:
+                # An irreversible step with no checkpoint is unverifiable, and
+                # the escalation model depends on verification: a human
+                # performs the action and the checkpoint is what confirms it
+                # landed. Without one, "the operator resumed" is an
+                # assumption, and assuming a transfer posted is precisely the
+                # failure this contract exists to prevent. Caught here so it
+                # fails before a browser opens rather than mid-run, after a
+                # person has already acted.
+                errors.append(
+                    f"{where}: a step marked risk='risky' must declare a checkpoint. "
+                    "An irreversible action with no checkpoint cannot be verified, so "
+                    "the run could not tell whether it took effect."
+                )
             check_template(step.value, f"{where} value")
             if step.checkpoint is not None:
                 check_condition(step.checkpoint, f"{where} checkpoint")

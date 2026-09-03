@@ -10,6 +10,15 @@ A violation is an immediate hard failure, never a warning and never a skip.
 An agent that tried to navigate outside its allowlist has done something the
 operator did not sanction, and continuing would mean the allowlist describes
 intent rather than behaviour.
+
+Two refusals live here and they are deliberately different exceptions.
+`PolicyViolation` means the run tried to do something it is not permitted to
+do -- a disallowed action, an off-allowlist origin or path. Nobody can
+authorise that mid-run; it is a hard failure, always. `RiskBlocked` means the
+step is permitted but irreversible, and policy says a person decides. That is
+not a violation of anything -- it is the guardrail working -- and it has to be
+able to reach a human. Sharing one exception type between them is what made
+the second case unreachable.
 """
 
 from __future__ import annotations
@@ -24,13 +33,38 @@ from replay.resolver import Resolution
 
 
 class PolicyViolation(Exception):
-    """An action or destination outside what the artifact's policy permits."""
+    """An action or destination outside what the artifact's policy permits.
+
+    Never escalatable. There is no human answer to "you tried to leave the
+    allowlist" that makes the attempt acceptable after the fact.
+    """
 
     def __init__(self, kind: str, detail: str, step_id: Optional[str] = None):
         self.kind = kind
         self.detail = detail
         self.step_id = step_id
         super().__init__(f"policy violation ({kind}): {detail}")
+
+
+class RiskBlocked(Exception):
+    """A risky step automation refused to perform.
+
+    Raised BEFORE the action, so nothing has happened to the application when
+    this propagates -- which is what lets the engine hand the step to a human
+    without first having to work out whether a side effect already landed.
+
+    `handling` carries the policy that produced the refusal, because the two
+    cases differ in what the engine may do next:
+
+        block                  nobody may perform this step. Not escalatable.
+        require_confirmation   a person may perform it themselves and resume.
+    """
+
+    def __init__(self, step_id: str, handling: str, detail: str):
+        self.step_id = step_id
+        self.handling = handling
+        self.detail = detail
+        super().__init__(f"risky step {step_id!r} blocked (policy: {handling}): {detail}")
 
 
 @dataclass
@@ -84,13 +118,23 @@ def check_action(artifact: Artifact, action: str, step_id: Optional[str] = None)
 
 
 def check_risk(artifact: Artifact, step: Step) -> Optional[str]:
-    """Apply the artifact's risky-action policy.
+    """Apply the artifact's risky-action policy, before the action runs.
 
-    Returns a note when a risky step is merely flagged. Raises when policy
-    says to block. `require_confirmation` has no interactive channel during
-    an unattended replay, so it is treated as a block and routed to the
-    human-escalation path rather than silently proceeding -- proceeding is
-    exactly what "requires confirmation" rules out.
+    Returns a note when a risky step is merely flagged. Otherwise raises
+    `RiskBlocked`, which the engine routes to a human under
+    `require_confirmation` and treats as terminal under `block`.
+
+    What `require_confirmation` means here is a decision worth stating: the
+    human performs the step themselves in the live session, and the step's
+    checkpoint verifies it landed. Automation never performs an irreversible
+    action on the strength of an approval, because the only approval channel
+    that exists today is a keypress on a terminal -- there is no
+    authenticated operator identity behind it and nothing tying the approval
+    to someone with the authority to give it. In a regulated context that is
+    worse than no gate, because it looks like oversight while providing
+    none. When approvals carry an identity, an approve-and-execute path
+    becomes reasonable; until then the human acts with their own credentials
+    and their own accountability.
     """
     if step.risk != "risky":
         return None
@@ -98,13 +142,18 @@ def check_risk(artifact: Artifact, step: Step) -> Optional[str]:
     handling = artifact.policy.risky_action_handling
     if handling == "flag":
         return f"step {step.id} is risky and was flagged (policy: flag)"
-    raise PolicyViolation(
-        "risky_action",
-        (
-            f"step {step.id} is marked risky and policy is {handling!r}; unattended replay "
-            "cannot obtain confirmation, so the step is blocked pending human escalation"
-        ),
+    if handling == "block":
+        raise RiskBlocked(
+            step.id,
+            handling,
+            "policy blocks risky steps outright; no operator may perform this step "
+            "through this capability",
+        )
+    raise RiskBlocked(
         step.id,
+        handling,
+        "the step is irreversible and policy requires a person to perform it; "
+        "automation stopped before acting",
     )
 
 

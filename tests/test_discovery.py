@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import ast
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -435,6 +436,164 @@ def test_outcomes_are_empty_and_that_is_deliberate(recorded):
     the artifact asserting something discovery never established."""
     assert recorded["outcomes"] == []
     assert "outcomes[] is empty" in recorded["provenance"]["notes"]
+
+
+# ---------------------------------------------------------------------------
+# Risk heuristic
+#
+# A first guess, not a determination. The tests assert both halves of that:
+# that it fires on a plainly irreversible control, and that it declines to
+# fire on the generic form-submit verb that would otherwise mark every
+# read-only search as risky.
+# ---------------------------------------------------------------------------
+
+
+def _click_run(control_name, results_tree, next_url="/members/100234/transfer/post",
+               risk_rules=None, log=None):
+    """Record a one-click flow and return the resulting step."""
+    from discovery.recorder import DEFAULT_RISK_RULES
+
+    page = node(
+        "document", "",
+        [node("table", "", [node("row", "", [node("cell", "", [
+            node("button", control_name, ref="b_act")])])])],
+    )
+    cycles = [
+        make_cycle(1, "click", {"frame": "content", "role": "button", "name": control_name},
+                   {"content": page}, "b_act"),
+        # The observation that followed the click. Terminal cycles carry one
+        # too, which is the only view of the page a final post produces.
+        Cycle(index=2, url=next_url, observation="", reasoning="",
+              tool_name="goal_reached", tool_input={}, status="terminal"),
+    ]
+    outcome = DiscoveryOutcome(
+        status="goal_reached", run_id="disc_risk", goal="Move money for member 100234",
+        cycles=cycles, steps_attempted=2,
+    )
+    artifact = record(
+        outcome, "cap", "1.0.0",
+        build_target("http://localhost:8800", "/start", "northridge", "4.2.1"),
+        load_policy(DEFAULT_POLICY_PATH, "http://localhost:8800", None),
+        outcome.goal, "claude-sonnet-5",
+        risk_rules=risk_rules or DEFAULT_RISK_RULES,
+        log=log,
+    )
+    # steps[0] is the opening navigate the recorder always adds.
+    return artifact, next(s for s in artifact["steps"] if s["action"] == "click")
+
+
+def test_recorder_marks_a_post_transfer_click_as_risky(results_tree):
+    artifact, step = _click_run("Post Transfer", results_tree)
+    assert step["risk"] == "risky"
+    assert "Post" in step["notes"]
+    assert "heuristic first guess" in step["notes"]
+    assert "risky" in artifact["provenance"]["notes"]
+
+
+def test_recorder_marks_a_view_click_as_safe(results_tree):
+    _, step = _click_run("View", results_tree)
+    assert step["risk"] == "safe"
+    assert "notes" not in step
+
+
+def test_submit_is_a_near_miss_not_a_commit(results_tree):
+    """Submit sends any form, including a search. Treating it as a commit
+    would mark read-only lookups risky and block them under
+    require_confirmation -- so it is recorded as considered-and-rejected
+    rather than silently ignored."""
+    artifact, step = _click_run("Submit", results_tree)
+    assert step["risk"] == "safe"
+    assert "near-miss" in artifact["provenance"]["notes"]
+    assert "Submit" in artifact["provenance"]["notes"]
+
+
+def test_risk_decisions_and_near_misses_are_logged(results_tree):
+    events = []
+    _click_run("Post Transfer", results_tree, log=lambda e, p: events.append((e, p)))
+    _click_run("Submit", results_tree, log=lambda e, p: events.append((e, p)))
+
+    decisions = [p for e, p in events if e == "risk_classified"]
+    assert {d["decision"] for d in decisions} == {"risky", "safe"}
+    assert any(d.get("matched_verb") == "Post" for d in decisions)
+    assert any(d.get("near_miss_verb") == "Submit" for d in decisions)
+
+
+def test_verb_vocabulary_comes_from_the_app_profile(results_tree):
+    """Which words mean commit is per-app knowledge, so it is configuration."""
+    from discovery.recorder import RiskRules, load_risk_rules
+
+    default = load_risk_rules("coreserv")
+    assert "Post" in default.post_like_verbs
+    assert "Submit" in default.near_miss_verbs
+
+    _, step = _click_run(
+        "Submit", results_tree,
+        risk_rules=RiskRules(app="other", post_like_verbs=("Submit",)),
+    )
+    assert step["risk"] == "risky", "an app where Submit commits can say so"
+
+
+def test_verb_matching_is_whole_word(results_tree):
+    """A substring test would match Post inside 'Postal Address'."""
+    _, step = _click_run("Edit Postal Address", results_tree)
+    assert step["risk"] == "safe"
+
+
+def test_a_terminal_risky_click_still_gets_a_checkpoint(results_tree):
+    """The recorder's usual rule asserts the NEXT step's control, and a post
+    has no next step. Without a fallback the recorder would emit an artifact
+    that fails validation."""
+    artifact, step = _click_run("Post Transfer", results_tree)
+    assert step["checkpoint"]["type"] == "url_matches"
+    assert "transfer/post" in step["checkpoint"]["pattern"]
+
+
+def test_the_terminal_checkpoint_is_parameterised(results_tree):
+    """The URL observed during discovery names one member; the checkpoint has
+    to travel to the next member the capability is invoked for."""
+    page = node("document", "", [node("table", "", [node("row", "", [
+        node("cell", "", [node("textbox", "Member ID", ref="t_id")]),
+        node("cell", "", [node("button", "Post Transfer", ref="b_act")])])])])
+    cycles = [
+        make_cycle(1, "fill", {"frame": "content", "role": "textbox",
+                               "name": "Member ID", "value": "100234"},
+                   {"content": page}, "t_id"),
+        make_cycle(2, "click", {"frame": "content", "role": "button",
+                                "name": "Post Transfer"}, {"content": page}, "b_act"),
+        Cycle(index=3, url="/members/100234/transfer/post", observation="", reasoning="",
+              tool_name="goal_reached", tool_input={}, status="terminal"),
+    ]
+    outcome = DiscoveryOutcome(
+        status="goal_reached", run_id="d", goal="Transfer funds for member 100234",
+        cycles=cycles, steps_attempted=3,
+    )
+    artifact = record(
+        outcome, "cap", "1.0.0",
+        build_target("http://localhost:8800", "/start", "northridge", "4.2.1"),
+        load_policy(DEFAULT_POLICY_PATH, "http://localhost:8800", None),
+        outcome.goal, "m",
+    )
+    step = next(s for s in artifact["steps"] if s["action"] == "click")
+    pattern = step["checkpoint"]["pattern"]
+    assert "100234" not in pattern, "the discovered member must not be pinned"
+    assert re.search(pattern, "/members/999999/transfer/post")
+
+
+def test_an_artifact_with_a_risky_step_still_loads(results_tree, tmp_path):
+    """The whole point of the checkpoint fallback: the schema now rejects a
+    risky step without one, so the recorder has to satisfy its own rule."""
+    artifact, step = _click_run("Post Transfer", results_tree)
+    assert step["risk"] == "risky"
+    path = tmp_path / "a.json"
+    path.write_text(json.dumps(artifact), encoding="utf-8")
+    loaded = load_artifact(path)
+    assert any(s.risk == "risky" and s.checkpoint is not None for s in loaded.steps)
+
+
+def test_no_private_key_survives_into_the_artifact(results_tree):
+    """_after_url is bookkeeping; the schema forbids unknown keys."""
+    artifact, _ = _click_run("Post Transfer", results_tree)
+    assert all("_after_url" not in s for s in artifact["steps"])
 
 
 def test_recording_a_failed_run_is_refused():

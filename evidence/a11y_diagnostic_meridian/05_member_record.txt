@@ -1,0 +1,164 @@
+STEP: 05_member_record
+page.url: https://web-sample.interface-hiring.com/members/100234
+frame count: 1
+NOTE: sensitive values below are masked on write. Node and token counts are measured BEFORE masking, so they reflect what perception actually produces for an LLM.
+==============================================================================
+
+--- FRAME name='' url='https://web-sample.interface-hiring.com/members/100234' ---
+raw node count: 151
+raw estimated tokens (full JSON snapshot): 20915
+filtered node count: 149
+filtered estimated tokens (compact text): 1164
+
+interactive controls: 8/8 named ({'platform': 8})
+
+compact rendering:
+document
+  table
+    rowgroup
+      row
+        cell "MERIDIAN CORE Member Services Platform v4.2.1 Cornerstone Financial Systems™"
+          text "Member Services Platform v4.2.1"
+      row
+        cell
+          generic
+            link "Main Menu" [href=/menu]
+            text "·"
+            link "Member Inquiry" [href=/members]
+            text "·"
+            link "System Settings" [href=/settings]
+            text "·"
+            link "Sign Off" [href=/signoff]
+      row
+        cell
+          heading "MEMBER RECORD" [level=1]
+          table
+            rowgroup
+              row
+                cell "Member No."
+                cell "100234"
+                cell "Name"
+                cell "<redacted:pii>"
+              row
+                cell "E-mail"
+                cell "<redacted:pii>"
+                cell "Phone"
+                cell "555-0142"
+              row
+                cell "Address"
+                cell "<redacted:pii>"
+          text "SHARES / BALANCES"
+          table
+            rowgroup
+              row
+                cell "Share ID"
+                cell "Type"
+                cell "Balance"
+                cell "Status"
+              row
+                cell "100234-S0001"
+                cell "Regular Shares"
+                cell "$2,499.00"
+                cell "HOLD [HOLD]"
+              row
+                cell "100234-S0070"
+                cell "Share Draft (Checking)"
+                cell "$1,240.55"
+                cell "HOLD [HOLD]"
+              row
+                cell "100234-MMKT-3"
+                cell "Money Market"
+                cell "$11.00"
+                cell "HOLD [HOLD]"
+              row
+                cell "100234-MMKT-4"
+                cell "Money Market"
+                cell "$25.00"
+                cell "HOLD [HOLD]"
+              row
+                cell "100234-S0001-5"
+                cell "Regular Shares"
+                cell "$23.00"
+                cell "HOLD [HOLD]"
+              row
+                cell "100234-S0001-6"
+                cell "Regular Shares"
+                cell "$40.00"
+                cell "OPEN"
+              row
+                cell "100234-MMKT-7"
+                cell "Money Market"
+                cell "$30.00"
+                cell "HOLD [HOLD]"
+              row
+                cell "100234-MMKT-8"
+                cell "Money Market"
+                cell "$15.00"
+                cell "HOLD [HOLD]"
+              row
+                cell "100234-MMKT-9"
+                cell "Money Market"
+                cell "$201.00"
+                cell "HOLD [HOLD]"
+              row
+                cell "100234-MMKT-10"
+                cell "Money Market"
+                cell "$20.00"
+                cell "HOLD [HOLD]"
+              row
+                cell "100234-MMKT-11"
+                cell "Money Market"
+                cell "$21.00"
+                cell "OPEN"
+              row
+                cell "100234-S0001-12"
+                cell "Regular Shares"
+                cell "$50.00"
+                cell "OPEN"
+              row
+                cell "100234-S0001-13"
+                cell "Regular Shares"
+                cell "$10.00"
+                cell "OPEN"
+              row
+                cell "100234-S0001-14"
+                cell "Regular Shares"
+                cell "$100.00"
+                cell "OPEN"
+              row
+                cell "100234-CERT-15"
+                cell "Certificate"
+                cell "$500.00"
+                cell "HOLD [HOLD]"
+              row
+                cell "100234-MMKT-16"
+                cell "Money Market"
+                cell "$25.00"
+                cell "OPEN"
+              row
+                cell "100234-S0070-17"
+                cell "Share Draft (Checking)"
+                cell "$50.00"
+                cell "OPEN"
+              row
+                cell "100234-S0001-18"
+                cell "Regular Shares"
+                cell "$11.00"
+                cell "OPEN"
+              row
+                cell "100234-S0001-19"
+                cell "Regular Shares"
+                cell "$99.00"
+                cell "OPEN"
+          text "ACTIONS"
+          link "Funds Transfer" [href=/members/100234/transfer]
+          text "·"
+          link "Open New Share" [href=/members/100234/open-share]
+          text "·"
+          link "Update Member Information" [href=/members/100234/update]
+          text "·"
+          link "Place Account Hold" [href=/members/100234/hold]
+      row
+        cell "OPR TELLER1 | BR MAIN-001 | 09/03/2026 04:48:54 | SID A14F786A"
+      row
+        cell "F3=Sign Off F5=Main Menu F7=Member Inquiry F12=Cancel"

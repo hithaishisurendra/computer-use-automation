@@ -27,6 +27,7 @@ import pytest
 from capability.loader import load_artifact, load_resolved
 from capability.schema import Artifact, Element, LocatorRung, Scope
 from replay import classify, resolver
+from escalation.operator import Decision, OperatorDecision
 from replay.executor import PolicyViolation, check_action, check_destination
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -339,12 +340,33 @@ def test_allowed_paths_accept_globbed_member_routes(artifact):
 
 
 def test_risky_step_is_blocked_under_require_confirmation(artifact):
-    from replay.executor import check_risk
+    """Blocked, and blocked as its own exception type.
+
+    This previously asserted a PolicyViolation, which is what made risky
+    steps unable to reach a human: the engine aborts the run on a policy
+    violation, by design, so the escalation route was never consulted. The
+    refusal is real either way; what changed is that it is now distinguishable
+    from "you tried to leave the allowlist".
+    """
+    from replay.executor import RiskBlocked, check_risk
 
     risky = artifact.steps[2].model_copy(update={"risk": "risky"})
-    with pytest.raises(PolicyViolation) as exc:
+    with pytest.raises(RiskBlocked) as exc:
         check_risk(artifact, risky)
-    assert exc.value.kind == "risky_action"
+    assert exc.value.handling == "require_confirmation"
+    assert exc.value.step_id == risky.id
+
+
+def test_risky_step_under_block_is_refused_with_the_blocking_policy(artifact):
+    from replay.executor import RiskBlocked, check_risk
+
+    blocking = artifact.model_copy(
+        update={"policy": artifact.policy.model_copy(update={"risky_action_handling": "block"})}
+    )
+    risky = artifact.steps[2].model_copy(update={"risk": "risky"})
+    with pytest.raises(RiskBlocked) as exc:
+        check_risk(blocking, risky)
+    assert exc.value.handling == "block"
 
 
 # ---------------------------------------------------------------------------
@@ -387,6 +409,171 @@ def test_unresolvable_element_is_escalation_eligible():
     detection = classify.element_unresolvable_detection("member_ref_field", "tried 2 rungs")
     assert detection.classification == "hard_failure"
     assert detection.escalation_eligible
+
+
+# ---------------------------------------------------------------------------
+# Risky steps: blocked before acting, and never retried
+#
+# The two rules under test are safety properties, not behaviours: a risky
+# step must not be performed unattended, and once performed it must not be
+# performed a second time because its confirmation was slow. Both are
+# asserted by counting executions, since a retry is only visible as the same
+# step running twice.
+# ---------------------------------------------------------------------------
+
+from tests.conftest import Observations, build_engine, make_artifact  # noqa: E402
+
+RISKY_CLICK = {
+    "id": "s1",
+    "action": "click",
+    "element": "post_button",
+    "risk": "risky",
+    "checkpoint": {"type": "text_present", "text": "TRANSFER POSTED", "timeout_ms": 300},
+}
+SAFE_CLICK = {
+    "id": "s1",
+    "action": "click",
+    "element": "post_button",
+    "risk": "safe",
+    "checkpoint": {"type": "text_present", "text": "TRANSFER POSTED", "timeout_ms": 300},
+}
+
+
+def run_flow(engine, params=None):
+    from replay.result import ReplayResult
+
+    result = ReplayResult(
+        classification="success", capability_id="t", capability_version="1.0.0",
+        tenant="t", run_id=engine.run_id,
+    )
+    asyncio.run(engine._run_flow(params or {}, result))
+    return result
+
+
+def test_risky_step_is_blocked_before_the_action_runs(tmp_path):
+    """check_risk fires ahead of the click, so a blocked step leaves the
+    application in exactly the state the previous step left it in."""
+    artifact = make_artifact([RISKY_CLICK])
+    engine = build_engine(artifact, tmp_path)
+    result = run_flow(engine)
+
+    assert engine.executor.calls == [], "the risky action must not have been performed"
+    assert result.classification == "hard_failure"
+    assert result.observed == "the step was not performed; automation stopped before acting"
+    assert "irreversible" in result.message
+
+
+def test_risky_block_reports_what_the_checkpoint_would_verify(tmp_path):
+    """The operator needs to know what 'done' looks like before they act, so
+    `expected` describes the checkpoint rather than restating the error."""
+    engine = build_engine(make_artifact([RISKY_CLICK]), tmp_path)
+    result = run_flow(engine)
+    assert "TRANSFER POSTED" in result.expected
+
+
+def test_risky_step_without_escalation_hard_fails_cleanly(tmp_path):
+    """Unattended replay stays unattended: it fails, it does not block."""
+    engine = build_engine(make_artifact([RISKY_CLICK]), tmp_path, escalate=False)
+    result = run_flow(engine)
+
+    assert result.classification == "hard_failure"
+    assert result.failed_step == "s1"
+    assert result.escalation_eligible is True  # eligible, but nobody was listening
+    assert not result.human_interventions
+
+
+def test_block_policy_is_not_escalation_eligible(tmp_path):
+    """'block' means no. Offering a human the chance to say yes would make it
+    a synonym for require_confirmation."""
+    artifact = make_artifact([RISKY_CLICK], risky_handling="block")
+    engine = build_engine(artifact, tmp_path)
+    result = run_flow(engine)
+
+    assert result.classification == "hard_failure"
+    assert result.escalation_eligible is False
+    assert engine.executor.calls == []
+
+
+def test_flag_policy_still_performs_the_step(tmp_path):
+    """The third handling is unchanged: note it and carry on."""
+    artifact = make_artifact([RISKY_CLICK], risky_handling="flag")
+    engine = build_engine(
+        artifact, tmp_path, observations=Observations(page_text="TRANSFER POSTED")
+    )
+    result = run_flow(engine)
+
+    assert engine.executor.calls == ["s1"]
+    assert result.classification == "success"
+
+
+def test_risky_step_is_not_retried_on_checkpoint_timeout(tmp_path):
+    """The dangerous case: the click landed and the confirmation did not
+    arrive. A retry here is how one transfer becomes two."""
+    artifact = make_artifact([RISKY_CLICK], risky_handling="flag")
+    engine = build_engine(artifact, tmp_path, observations=Observations(page_text=""))
+    result = run_flow(engine)
+
+    assert engine.executor.calls == ["s1"], "a risky step must never be clicked twice"
+    assert result.classification == "hard_failure"
+    assert "may or may not have taken effect" in result.message
+    assert result.escalation_eligible is True
+
+
+def test_risky_step_is_not_retried_on_a_recoverable_detection(tmp_path):
+    """Same rule via the other retry path: an interstitial after a risky
+    click is not a reason to click again."""
+    artifact = make_artifact([RISKY_CLICK], risky_handling="flag")
+    engine = build_engine(
+        artifact, tmp_path,
+        observations=Observations(page_text=classify.INTERSTITIAL_MARKER),
+    )
+    result = run_flow(engine)
+
+    assert engine.executor.calls == ["s1"]
+    assert result.classification == "hard_failure"
+    assert "never retried automatically" in result.message
+
+
+def test_safe_step_still_retries_up_to_the_budget(tmp_path):
+    """The guard is keyed on risk, not applied to everything: a safe step
+    keeps the two recovery attempts it always had."""
+    artifact = make_artifact([SAFE_CLICK])
+    engine = build_engine(artifact, tmp_path, observations=Observations(page_text=""))
+    result = run_flow(engine)
+
+    assert len(engine.executor.calls) == classify.MAX_RECOVERY_ATTEMPTS + 1 == 3
+    assert result.classification == "hard_failure"
+
+
+def test_origin_violation_hard_fails_whatever_the_escalate_flag_says(tmp_path):
+    """A policy violation is a different thing from a risk decision and must
+    not have picked up the escalation route on the way past."""
+    from escalation.operator import ScriptedOperator
+    from replay.executor import PolicyViolation as PV
+
+    artifact = make_artifact([{
+        "id": "s1", "action": "navigate", "path": "/forbidden", "risk": "safe",
+    }], allowed_paths=["/start"])
+
+    for escalate in (False, True):
+        engine = build_engine(
+            artifact, tmp_path / f"e{escalate}", escalate=escalate,
+            operator=ScriptedOperator([OperatorDecision(Decision.RESUME)]) if escalate else None,
+        )
+        with pytest.raises(PV) as exc:
+            run_flow(engine)
+        assert exc.value.kind == "path"
+        assert not engine.executor.calls
+
+
+def test_risk_and_policy_are_separate_exception_types():
+    """Structural: if these shared a type, the escalation route could not
+    tell 'this is risky, ask a person' from 'this is not permitted'."""
+    from replay.executor import PolicyViolation as PV
+    from replay.executor import RiskBlocked
+
+    assert not issubclass(RiskBlocked, PV)
+    assert not issubclass(PV, RiskBlocked)
 
 
 # ---------------------------------------------------------------------------

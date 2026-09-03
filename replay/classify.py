@@ -36,6 +36,9 @@ from capability.schema import Artifact, Outcome
 # Max attempts for the two recoverable universals. Deliberately small: a
 # condition that survives two dismissals or two backoffs is not transient,
 # and retrying indefinitely converts a fast failure into a hung run.
+#
+# The budget applies to SAFE steps only. A step marked risky is never retried
+# by either recovery path -- see risky_not_retried_detection below.
 MAX_RECOVERY_ATTEMPTS = 2
 
 
@@ -130,6 +133,53 @@ def element_unresolvable_detection(element_key: str, detail: str) -> Detection:
         layer="engine",
         classification="hard_failure",
         message=f"Could not locate {element_key!r} on the page. {detail}",
+        escalation_eligible=True,
+    )
+
+
+def risk_blocked_detection(step_id: str, handling: str, detail: str) -> Detection:
+    """A risky step automation refused to perform.
+
+    Escalation-eligible only under `require_confirmation`. Under `block` the
+    answer is no, and offering a human the chance to say yes would make
+    `block` mean `require_confirmation` with extra steps.
+
+    Nothing was performed when this fires -- `check_risk` runs before the
+    action -- so unlike every other hard failure here, the application is in
+    exactly the state the previous step left it in.
+    """
+    return Detection(
+        name="risky_action_blocked",
+        layer="engine",
+        classification="hard_failure",
+        message=(
+            f"Step {step_id} is marked risky and policy is {handling!r}. {detail}."
+        ),
+        escalation_eligible=(handling == "require_confirmation"),
+    )
+
+
+def risky_not_retried_detection(step_id: str, condition: str, detail: str) -> Detection:
+    """A recoverable condition on a risky step, which is NOT retried.
+
+    Retrying means re-running the step, and re-running a step means clicking
+    the control again. On an irreversible action whose result we could not
+    observe, a second click is how one transfer becomes two -- the first may
+    well have posted and only its confirmation been slow. So the retry budget
+    does not apply here at all: the run stops after one attempt and escalates
+    with the page captured, because whether the side effect landed is a
+    question about the account, and only a person looking at it can answer.
+    """
+    return Detection(
+        name="risky_step_not_retried",
+        layer="engine",
+        classification="hard_failure",
+        message=(
+            f"Step {step_id} hit a recoverable condition ({condition}) after acting, "
+            f"but it is marked risky and is never retried automatically: {detail} "
+            "The action may or may not have taken effect -- verify against the "
+            "record before re-running this capability."
+        ),
         escalation_eligible=True,
     )
 

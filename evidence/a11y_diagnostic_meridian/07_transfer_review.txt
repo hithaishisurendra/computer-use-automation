@@ -1,0 +1,59 @@
+STEP: 07_transfer_review
+page.url: https://web-sample.interface-hiring.com/members/100234/transfer/review
+frame count: 1
+NOTE: sensitive values below are masked on write. Node and token counts are measured BEFORE masking, so they reflect what perception actually produces for an LLM.
+==============================================================================
+
+--- FRAME name='' url='https://web-sample.interface-hiring.com/members/100234/transfer/review' ---
+raw node count: 46
+raw estimated tokens (full JSON snapshot): 5923
+filtered node count: 44
+filtered estimated tokens (compact text): 348
+
+interactive controls: 6/6 named ({'platform': 6})
+
+compact rendering:
+document
+  table
+    rowgroup
+      row
+        cell "MERIDIAN CORE Member Services Platform v4.2.1 Cornerstone Financial Systems™"
+          text "Member Services Platform v4.2.1"
+      row
+        cell
+          generic
+            link "Main Menu" [href=/menu]
+            text "·"
+            link "Member Inquiry" [href=/members]
+            text "·"
+            link "System Settings" [href=/settings]
+            text "·"
+            link "Sign Off" [href=/signoff]
+      row
+        cell
+          heading "CONFIRM FUNDS TRANSFER" [level=1]
+          table
+            rowgroup
+              row
+                cell "Member"
+                cell "100234 - <redacted:pii>"
+              row
+                cell "From"
+                cell "100234-S0001-6 ($40.00)"
+              row
+                cell "To"
+                cell "100234-S0001-12 ($50.00)"
+              row
+                cell "Amount"
+                cell "$1.00"
+              row
+                cell "Memo"
+                cell "perception diagnostic"
+          text "This will post immediately and cannot be reversed from this screen."
+          generic
+            button "Post Transfer"
+            link "Cancel" [href=/members/100234/transfer]
+      row
+        cell "OPR TELLER1 | BR MAIN-001 | 09/03/2026 04:48:55 | SID A14F786A"
+      row
+        cell "F3=Sign Off F5=Main Menu F7=Member Inquiry F12=Cancel"

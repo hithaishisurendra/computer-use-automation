@@ -24,7 +24,7 @@ from capability.redaction import Scrubber
 from capability.schema import AuthSpec, Condition, Policy, Target
 from discovery.loop import DEFAULT_PROVIDER, DiscoveryLoop
 from discovery.model import DEFAULT_MODELS, PROVIDERS, load_dotenv
-from discovery.recorder import record
+from discovery.recorder import load_risk_rules, record
 from escalation.operator import ConsoleOperator
 
 # Declared, reviewable, version-controlled. Not assembled from CLI flags:
@@ -32,6 +32,7 @@ from escalation.operator import ConsoleOperator
 # and it would contradict the rule the capability layer already enforces on
 # tenant overlays -- allowlists may only narrow.
 DEFAULT_POLICY_PATH = Path(__file__).resolve().parent / "policy.json"
+DEFAULT_PROFILES_PATH = Path(__file__).resolve().parent / "app_profiles.json"
 
 
 class PolicyWidened(Exception):
@@ -99,6 +100,14 @@ def main() -> None:
         ),
     )
     parser.add_argument("--policy", default=str(DEFAULT_POLICY_PATH))
+    parser.add_argument(
+        "--app-profiles",
+        default=str(DEFAULT_PROFILES_PATH),
+        help=(
+            "Per-app vocabulary for the recorder's risky-step heuristic. "
+            "See discovery/app_profiles.json."
+        ),
+    )
     parser.add_argument("--capability-id", default=None)
     parser.add_argument("--version", default="1.0.0")
     parser.add_argument("--tenant", default="northridge")
@@ -161,6 +170,10 @@ def main() -> None:
         raise SystemExit(1)
 
     capability_id = args.capability_id or _derive_capability_id(args.goal)
+    # Which words mean "commit" is per-app knowledge, so it comes from the app
+    # profile rather than from the recorder. An app with no entry inherits the
+    # default vocabulary.
+    risk_rules = load_risk_rules(target.app, args.app_profiles)
     artifact = record(
         outcome=outcome,
         capability_id=capability_id,
@@ -169,6 +182,8 @@ def main() -> None:
         policy=policy,
         goal=args.goal,
         model=f"{outcome.provider}:{outcome.model}",
+        risk_rules=risk_rules,
+        log=loop.log,
     )
 
     out_path = Path(args.out) if args.out else loop.evidence_dir / "artifact.json"

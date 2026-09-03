@@ -37,7 +37,7 @@ from capability.validate import (
 )
 from perception.tree import snapshot_all_frames, filter_tree, to_compact_text
 from replay import checkpoints, classify
-from replay.executor import Executor, PolicyViolation, check_destination
+from replay.executor import Executor, PolicyViolation, RiskBlocked, check_destination
 from replay.evidence import EvidenceWriter
 from replay.resolver import ElementUnresolvable
 from escalation.session import ControlledSession
@@ -203,6 +203,19 @@ class ReplayEngine:
                 # Policy violations are the one class of error that must not
                 # be softened into a step result -- they abort the whole run.
                 raise
+            except RiskBlocked as exc:
+                # Not a violation: the guardrail did its job. Nothing was
+                # performed, so this leaves through the normal step-failure
+                # path where _run_flow can offer it to a human, rather than
+                # aborting the run the way a real policy violation does.
+                detection = classify.risk_blocked_detection(
+                    step.id, exc.handling, exc.detail
+                )
+                trace.detections.append(detection.as_dict())
+                trace.status = "blocked"
+                trace.duration_ms = (time.perf_counter() - started) * 1000
+                result.trace.append(trace)
+                return "failed", detection, None
             except Exception as exc:
                 # Anything the browser raises that we did not anticipate
                 # still has to leave through the result contract rather than
@@ -234,6 +247,16 @@ class ReplayEngine:
                 result.recoverable_conditions.append(
                     {"step_id": step.id, "attempt": attempt, **detection.as_dict()}
                 )
+                if step.risk == "risky":
+                    # The action already ran; retrying would run it again.
+                    blocked = classify.risky_not_retried_detection(
+                        step.id, detection.name, detection.message
+                    )
+                    trace.detections.append(blocked.as_dict())
+                    trace.status = "failed"
+                    trace.duration_ms = (time.perf_counter() - started) * 1000
+                    result.trace.append(trace)
+                    return "failed", blocked, None
                 if attempt <= classify.MAX_RECOVERY_ATTEMPTS:
                     await self._recover(detection)
                     continue
@@ -285,6 +308,19 @@ class ReplayEngine:
                     result.recoverable_conditions.append(
                         {"step_id": step.id, "attempt": attempt, **timeout_det.as_dict()}
                     )
+                    if step.risk == "risky":
+                        # The dangerous case: the click landed, the
+                        # confirmation did not arrive in time. Whether the
+                        # post went through is unknown, and a retry would
+                        # resolve that ambiguity by posting again.
+                        blocked = classify.risky_not_retried_detection(
+                            step.id, timeout_det.name, timeout_det.message
+                        )
+                        trace.detections.append(blocked.as_dict())
+                        trace.status = "failed"
+                        trace.duration_ms = (time.perf_counter() - started) * 1000
+                        result.trace.append(trace)
+                        return "failed", blocked, None
                     if attempt <= classify.MAX_RECOVERY_ATTEMPTS:
                         trace.detections.append(timeout_det.as_dict())
                         await asyncio.sleep(0.5 * attempt)
@@ -517,7 +553,25 @@ class ReplayEngine:
                 result.classification = "hard_failure"
                 result.failed_step = step.id
                 trace = result.trace[-1] if result.trace else None
-                if detection is not None:
+                blocked_by_risk = (
+                    detection is not None and detection.name == "risky_action_blocked"
+                )
+                if blocked_by_risk:
+                    # Nothing was performed, so "expected the step to complete,
+                    # observed <error>" would be a lie. What the operator needs
+                    # instead is what the step is, why it stopped, and what
+                    # will be checked when they hand control back.
+                    result.message = detection.message
+                    result.expected = (
+                        checkpoints.describe(step.checkpoint)
+                        if step.checkpoint is not None
+                        else "no checkpoint declared -- this step is unverifiable"
+                    )
+                    result.observed = (
+                        "the step was not performed; automation stopped before acting"
+                    )
+                    result.escalation_eligible = detection.escalation_eligible
+                elif detection is not None:
                     result.message = detection.message
                     result.expected = f"step {step.id} to complete"
                     result.observed = detection.message
@@ -531,7 +585,12 @@ class ReplayEngine:
                     )
 
                 if self._may_escalate(result):
-                    resumed = await self._escalate(step, params, result)
+                    resumed = await self._escalate(
+                        step,
+                        params,
+                        result,
+                        classification=("risk_blocked" if blocked_by_risk else "hard_failure"),
+                    )
                     if resumed:
                         # Resume from where it stopped, not from the top.
                         # Re-running completed steps would repeat side
@@ -586,12 +645,23 @@ class ReplayEngine:
         """
         return bool(self.escalate and self.operator and result.escalation_eligible)
 
-    async def _escalate(self, step, params: dict[str, Any], result: ReplayResult) -> bool:
+    async def _escalate(
+        self,
+        step,
+        params: dict[str, Any],
+        result: ReplayResult,
+        classification: str = "hard_failure",
+    ) -> bool:
         """Pause, hand the live session to a human, then resume on the same one.
 
         Returns True when the operator resumed AND the step's checkpoint now
         holds. A resume that leaves the checkpoint still failing is not a
         recovery: the run would carry on from a state it never verified.
+
+        For a risky step this is the whole mechanism rather than a fallback:
+        the operator performs the irreversible action themselves, and the
+        checkpoint is how the system confirms the outcome instead of trusting
+        the report that it happened.
         """
         from escalation.capture import HumanActionCapture, write_activity
         from escalation.request import InterventionRequest, capture_state, escalation_dir, write_request
@@ -601,12 +671,25 @@ class ReplayEngine:
             self.page, self._perceive, directory
         )
 
+        if classification == "risk_blocked":
+            reason = (
+                f"Step {step.id} ({step.action}"
+                + (f" {step.element!r}" if step.element else "")
+                + ") is blocked because it is irreversible and this capability's "
+                f"policy is {self.artifact.policy.risky_action_handling!r}. "
+                "Automation has performed nothing. Perform the step manually in "
+                "this live session if you approve of it, then resume; the run "
+                "will verify the outcome before continuing."
+            )
+        else:
+            reason = result.message or "step failed"
+
         request = InterventionRequest(
             run_id=self.run_id,
             source="replay",
             goal=f"Replay {self.artifact.capability.id}@{self.artifact.capability.version}",
-            reason=result.message or "step failed",
-            classification="hard_failure",
+            reason=reason,
+            classification=classification,
             capability_id=self.artifact.capability.id,
             capability_version=self.artifact.capability.version,
             step_id=step.id,
@@ -659,6 +742,21 @@ class ReplayEngine:
         self.control.assert_same_session()
 
         if step.checkpoint is None:
+            if step.risk == "risky":
+                # Belt to the schema's braces. An irreversible step with no
+                # checkpoint cannot be confirmed, so "the human did it and we
+                # resumed" would be an assumption -- and assuming a transfer
+                # landed is the exact failure this design exists to prevent.
+                # Artifact validation rejects this shape at load time; this
+                # holds the invariant if one reaches the engine another way.
+                result.expected = "a checkpoint proving the risky step landed"
+                result.observed = "the step declares no checkpoint"
+                result.message = (
+                    f"Operator resumed at step {step.id}, but the step is risky and "
+                    "declares no checkpoint, so the outcome cannot be verified. The "
+                    "run stops rather than assume the action took effect."
+                )
+                return False
             return True
 
         check = await checkpoints.evaluate(
