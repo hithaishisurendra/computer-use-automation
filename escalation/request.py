@@ -22,7 +22,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
-from capability.redaction import profile_scrubber
+from capability.sink import RedactionSink
 
 
 @dataclass
@@ -112,11 +112,7 @@ def write_request(
 ) -> Path:
     """Persist the request, scrubbed. Returns the file path."""
     directory = escalation_dir(request.run_id, root)
-    scrubber = profile_scrubber(profile)
-    payload = scrubber.scrub_obj(request.as_dict())
-    path = directory / "request.json"
-    path.write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
-    return path
+    return RedactionSink(profile).write_json(directory / "request.json", request.as_dict())
 
 
 async def capture_state(
@@ -130,7 +126,7 @@ async def capture_state(
     """
     from perception.tree import filter_tree, to_compact_text
 
-    scrubber = profile_scrubber(profile)
+    sink = RedactionSink(profile)
     url = None
     screenshot_path = None
     snapshot_path = None
@@ -150,6 +146,7 @@ async def capture_state(
     try:
         shot = directory / "stuck.png"
         await page.screenshot(path=str(shot), full_page=True)
+        sink.note_unscrubbable(shot, "screenshot: image content cannot be text-scrubbed")
         screenshot_path = str(shot)
     except Exception:
         pass
@@ -161,10 +158,8 @@ async def capture_state(
             compact = to_compact_text(filter_tree(tree))
             if compact.strip():
                 blocks.append(f"--- FRAME {name or '(top)'} ---\n{compact}")
-        snapshot_text = scrubber.scrub("\n\n".join(blocks))
-        target = directory / "stuck_snapshot.txt"
-        target.write_text(snapshot_text, encoding="utf-8")
-        snapshot_path = str(target)
+        snapshot_text = sink.text("\n\n".join(blocks))
+        snapshot_path = str(sink.write_text(directory / "stuck_snapshot.txt", snapshot_text))
     except Exception:
         pass
 

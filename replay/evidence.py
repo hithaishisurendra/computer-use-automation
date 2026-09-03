@@ -23,7 +23,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
-from capability.redaction import Scrubber, profile_scrubber
+from capability.sink import RedactionSink
 from capability.schema import Artifact
 from capability.validate import describe_credentials, redact
 
@@ -38,11 +38,11 @@ class EvidenceWriter:
         # against live data it cannot enumerate, so patterns carry the load;
         # a profile's literals are precision on top. Known literals for this
         # run (its credentials) are registered via register_secrets.
-        self.scrubber = profile_scrubber(profile)
+        self.sink = RedactionSink(profile, artifact)
         # Written before anything else, so evidence records what redaction was
         # actually configured with rather than leaving it to be inferred from
         # what did or did not get masked.
-        self.log("redaction_configured", self.scrubber.sources.describe())
+        self.log("redaction_configured", self.sink.describe())
 
     # -- redaction ----------------------------------------------------------
 
@@ -57,17 +57,12 @@ class EvidenceWriter:
         redaction that only covers declared fields misses exactly the values
         that leak through the surface itself.
         """
-        self.scrubber.register_secrets(values)
+        self.sink.register_secrets(values)
 
-    def _scrub_text(self, text: str) -> str:
-        return self.scrubber.scrub(text)
-
-    def _scrub_obj(self, obj: Any) -> Any:
-        return self.scrubber.scrub_obj(obj)
 
     def redaction_warning(self) -> Optional[str]:
         """Non-None when this writer is scrubbing by shape rules only."""
-        return self.scrubber.sources.warning() if self.scrubber.sources else None
+        return self.sink.warning()
 
     def redact_outputs(self, outputs: dict[str, Any]) -> dict[str, Any]:
         """Mask declared outputs by their sensitivity for logging."""
@@ -81,13 +76,11 @@ class EvidenceWriter:
     # -- writing ------------------------------------------------------------
 
     def log(self, event: str, payload: dict[str, Any]) -> None:
-        record = {
+        self.sink.append_jsonl(self.log_path, {
             "ts": datetime.now(timezone.utc).isoformat(),
             "event": event,
-            **self._scrub_obj(payload),
-        }
-        with self.log_path.open("a", encoding="utf-8") as fh:
-            fh.write(json.dumps(record, default=str) + "\n")
+            **payload,
+        })
 
     def describe_auth(self) -> dict[str, Any]:
         """Only env var names and resolution booleans -- never a value."""
@@ -98,9 +91,7 @@ class EvidenceWriter:
         if payload.get("outputs"):
             payload["outputs"] = self.redact_outputs(payload["outputs"])
         self.log("result", payload)
-        (self.dir / "result.json").write_text(
-            json.dumps(self._scrub_obj(payload), indent=2, default=str), encoding="utf-8"
-        )
+        self.sink.write_json(self.dir / "result.json", payload)
 
     async def capture_failure(self, page, frames: dict[str, Optional[dict]]) -> dict[str, str]:
         """Screenshot plus the compact accessibility snapshot where it stopped."""
@@ -111,6 +102,10 @@ class EvidenceWriter:
         shot = self.dir / "failure.png"
         try:
             await page.screenshot(path=str(shot), full_page=True)
+            # A screenshot of a member record shows everything the page
+            # showed and no text pass can mask it. Recorded as unscrubbable
+            # rather than quietly treated as clean.
+            self.sink.note_unscrubbable(shot, "screenshot: image content cannot be text-scrubbed")
             paths["screenshot"] = str(shot)
         except Exception:
             pass
@@ -119,8 +114,7 @@ class EvidenceWriter:
         for name, tree in frames.items():
             lines.append(f"--- FRAME {name!r} ---")
             lines.append(to_compact_text(filter_tree(tree)) or "(empty)")
-        snapshot = self.dir / "failure_snapshot.txt"
-        snapshot.write_text(self._scrub_text("\n".join(lines)), encoding="utf-8")
+        snapshot = self.sink.write_text(self.dir / "failure_snapshot.txt", "\n".join(lines))
         paths["snapshot"] = str(snapshot)
 
         return paths

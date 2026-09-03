@@ -17,6 +17,8 @@ import sys
 from pathlib import Path
 
 from capability.loader import ArtifactError, load_resolved
+from capability.profile import profile_for
+from capability.sink import RedactionSink, null_sink
 from replay.engine import ReplayEngine
 
 EXIT_CODES = {
@@ -63,7 +65,7 @@ def main() -> None:
             args.capabilities_root, args.capability, args.version, tenant=args.tenant
         )
     except ArtifactError as exc:
-        print(json.dumps({"classification": "hard_failure", "message": str(exc)}, indent=2))
+        print(null_sink().emit({"classification": "hard_failure", "message": str(exc)}))
         raise SystemExit(1)
 
     operator = None
@@ -83,7 +85,10 @@ def main() -> None:
     )
     result = asyncio.run(engine.run(parse_inputs(args.input)))
 
-    print(json.dumps(result.as_dict(), indent=2, default=str))
+    # A payload handed to a caller is not safer than one written to disk.
+    # This printed the raw result until the chokepoint existed, and it is the
+    # shape the capability API's response will take.
+    print(RedactionSink(profile_for(artifact.target), artifact).emit(result.as_dict()))
     raise SystemExit(EXIT_CODES.get(result.classification, 1))
 
 

@@ -579,3 +579,50 @@ pick. Rejected because a literal scope is strictly worse than a parameterised
 one that resolves — recording both means shipping a locator that only works
 for the record it was discovered on, ready to fire the moment the good one
 misses.
+
+---
+
+## One write path, enforced by parsing the codebase
+
+`capability/sink.py` owns every outbound byte: file writes, payloads returned
+to callers, and the predicate that decides whether text may be embedded in an
+artifact. `tests/test_redaction_chokepoint.py` parses every module under
+`capability/`, `replay/`, `discovery/`, `escalation/`, `perception/` and
+`scripts/` and fails if any of them calls `write_text`, `write_bytes`,
+`json.dump`, `open(..., "w")` or `print(json.dumps(...))` outside the sink.
+
+Redaction has never failed in the redaction code. It failed six times at a new
+*surface* — a page dump, a credential rendered into page chrome, a target
+without a fixture module, model prose, a locator scope — and every fix was a
+retrofit at a new call site. Being careful at each call site is what was
+tried, six times. The only thing that changes the trend is making the number
+of places able to emit data stop growing, and that has to be checkable by a
+machine, because "did anyone add a writer" is exactly the question code review
+keeps answering wrong.
+
+Two sources feed it and neither is a pattern list living in the sink: the app
+profile's redaction declaration, and the artifact's own sensitivity taxonomy
+applied by field name. The second is the half patterns can never cover — a
+person's name has no recognisable shape, but the artifact says the output
+holding it is `pii`.
+
+Considered and rejected: a decorator or a lint rule on the write functions.
+Rejected because both are opt-in at the call site, which is the failure mode
+being fixed. Considered and rejected: making `Path.write_text` unavailable by
+convention (a documented rule). Rejected for the same reason — the previous
+six were all rule-following failures, not rule-ignorance failures.
+
+The scan carries no exemption list, deliberately. When it fails, the fix is to
+route the write through the sink, not to add an entry.
+
+**It does not over-redact.** Incident 3 was a pattern broad enough to eat
+`member_savings_balance@1.0.0`, which destroyed the context an operator needed
+to act on an intervention. A sink that masked everything it could not classify
+would be a worse bug than the six it replaces, because it fails in the
+direction nobody checks. Unclassifiable values pass through untouched and the
+sink reports what it was configured with.
+
+Screenshots are declared, not exempted. A screenshot of a member record shows
+everything the page showed and no text pass can mask it, so
+`note_unscrubbable()` records the fact in the evidence manifest rather than
+letting the file look scrubbed.
