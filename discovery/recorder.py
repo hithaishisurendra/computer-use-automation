@@ -603,13 +603,33 @@ def _infer_select_input(value: str, label: str, alias: Optional[str] = None) -> 
     }
 
 
-def _infer_input(value: str, label: str, alias: Optional[str] = None) -> dict[str, Any]:
+def _infer_input(
+    value: str,
+    label: str,
+    alias: Optional[str] = None,
+    is_sensitive: Optional[Callable[[str], bool]] = None,
+) -> dict[str, Any]:
     """Declare a typed input for a literal the model typed.
 
     `alias` overrides the label-derived name where the app profile says the
     label is too generic to name a public contract after.
+
+    Sensitivity is decided by the VALUE, through the same predicate that
+    scrubs evidence, not by the field's label. Everything non-numeric used to
+    be declared `public`, so an email address typed into an update form was
+    declared a public input -- and the only reason it did not reach disk in
+    the clear was that a shape rule happened to catch it. Declaring PII
+    public is the classification failing; the scrubber catching it anyway is
+    luck, and it does not hold for a value no pattern recognises.
+
+    A sensitive value also gets NO example. The alternative observed live was
+    `"example": "<redacted:email>"` -- a masked placeholder that reads like
+    data, tells a caller nothing about the expected shape, and invites
+    somebody to paste it back in. Saying nothing is more honest than saying
+    something masked.
     """
     is_identifier = value.isdigit()
+    sensitive = bool(is_sensitive and is_sensitive(value))
     spec: dict[str, Any] = {
         "name": alias or _parameter_name(label, is_identifier),
         "type": "string",
@@ -624,6 +644,14 @@ def _infer_input(value: str, label: str, alias: Optional[str] = None) -> dict[st
     if is_identifier:
         spec["pattern"] = f"^[0-9]{{{len(value)}}}$"
         spec["sensitivity"] = "identifier"
+    elif sensitive:
+        spec["pattern"] = None
+        spec["sensitivity"] = "pii"
+        spec["example"] = None
+        spec["description"] += (
+            " Personal data: no example is recorded, because the only example "
+            "available is the real value from the run that discovered this."
+        )
     else:
         spec["pattern"] = None
         spec["sensitivity"] = "public"
@@ -669,9 +697,11 @@ def record(
     # goal_reached cycle -- which is the only observation of the page a final
     # post produced.
     after_url: dict[int, Optional[str]] = {}
+    after_obs: dict[int, Optional[str]] = {}
     for i, c in enumerate(outcome.cycles):
         nxt = outcome.cycles[i + 1] if i + 1 < len(outcome.cycles) else None
         after_url[id(c)] = nxt.url if nxt else None
+        after_obs[id(c)] = nxt.observation if nxt else None
 
     # Only the path that worked. Failed and retried cycles are dropped here,
     # which is the whole point of the artifact being separate from the
@@ -684,14 +714,21 @@ def record(
         acted = acted + [blocked]
 
     inputs: dict[str, dict[str, Any]] = {}
+    # The discovered value for each parameter, kept SEPARATELY from the
+    # declared example. A PII input declares no example -- but the recorder
+    # still needs the literal in order to replace it with {{param}} in step
+    # values and scope texts. Conflating the two made withholding an example
+    # break parameterisation entirely.
+    discovered: dict[str, str] = {}
     suspect: list[str] = []
     for cycle in acted:
         if cycle.tool_name == "fill":
             value = cycle.tool_input.get("value", "")
             label = cycle.tool_input.get("name") or "value"
             if value and value in goal:
-                spec = _infer_input(value, label, risk_rules.alias_for(label))
+                spec = _infer_input(value, label, risk_rules.alias_for(label), is_sensitive)
                 inputs[spec["name"]] = spec
+                discovered[spec["name"]] = value
         elif cycle.tool_name == "select":
             # EVERY select becomes a parameter, not only the ones whose
             # options vary per record. Telling those apart needs a heuristic
@@ -710,14 +747,20 @@ def record(
                                        "value": value, "reason": reason})
             spec = _infer_select_input(value, label, risk_rules.alias_for(label))
             inputs[spec["name"]] = spec
+            discovered[spec["name"]] = value
 
-    params = {spec["name"]: spec["example"] for spec in inputs.values()}
+    params = dict(discovered)
 
     elements: dict[str, dict[str, Any]] = {}
     steps: list[dict[str, Any]] = []
     outputs: list[dict[str, Any]] = []
     unrecordable: list[str] = []
-    risk_notes: list[str] = []
+    # (element_key, message). Keyed by element rather than by the step id in
+    # hand, because ids are reassigned later -- _ensure_opening_navigate
+    # prepends a step and _renumber shifts everything after it. Notes built
+    # with the pre-numbering id pointed a reviewer at the wrong step: the
+    # first update recording blamed "s4" for a decision about s5.
+    risk_notes: list[tuple[str, str]] = []
     positional_only: list[str] = []
 
     for position, cycle in enumerate(acted, start=1):
@@ -796,16 +839,32 @@ def record(
             # Two independent signals, either sufficient. The path is
             # observed and catches a commit whose label says nothing; the
             # verb is lexical and catches one before its URL is known.
-            landed_on = risk_rules.commits(after_url.get(id(cycle)))
+            #
+            # BOTH are narrowed to submit-type controls. A link click is a
+            # GET and commits nothing, and an app whose form GET and form
+            # POST share a URL will otherwise flag the navigation to the form
+            # as irreversible: MERIDIAN's update form is served from and
+            # posted to /members/<id>/update, so the "Select" LINK that opens
+            # it matched the commit path and was recorded risky. Replay would
+            # then block before a single field was filled in.
+            can_commit = control_role == "button"
+            landed_on = (
+                risk_rules.commits(after_url.get(id(cycle))) if can_commit else None
+            )
+            if not can_commit and risk_rules.commits(after_url.get(id(cycle))):
+                risk_notes.append((key, (
+                    f"near-miss: {control_name!r} navigated to a committing "
+                    f"endpoint but is a {control_role or 'non-button'}, so it is a GET"
+                )))
             matched = risk_rules.match(control_name)
             if matched and control_role != "button":
                 # Navigation links share the commit vocabulary. Only a
                 # submit-type control can commit, and only <button> and
                 # <input type=submit> carry role "button"; an <a> is "link".
-                risk_notes.append(
-                    f"{step_id} near-miss: {control_name!r} matched {matched!r} but is a "
+                risk_notes.append((key, (
+                    f"near-miss: {control_name!r} matched {matched!r} but is a "
                     f"{control_role or 'non-button'}, not a submit control"
-                )
+                )))
                 emit("risk_classified", {
                     "step_id": step_id, "control": control_name, "role": control_role,
                     "decision": "safe", "near_miss_verb": matched,
@@ -821,16 +880,16 @@ def record(
                     f"{risk_rules.app!r}. This is a heuristic first guess, not a "
                     "determination -- confirm it during the draft -> approved review."
                 )
-                risk_notes.append(f"{step_id} risky: {control_name!r} via {matched!r}")
+                risk_notes.append((key, f"risky: {control_name!r} via {matched!r}"))
                 emit("risk_classified", {
                     "step_id": step_id, "control": control_name,
                     "decision": "risky", "matched_verb": matched, "profile": risk_rules.app,
                 })
             elif near:
-                risk_notes.append(
-                    f"{step_id} near-miss: {control_name!r} contains {near!r}, "
+                risk_notes.append((key, (
+                    f"near-miss: {control_name!r} contains {near!r}, "
                     "which the profile does not treat as a commit"
-                )
+                )))
                 emit("risk_classified", {
                     "step_id": step_id, "control": control_name,
                     "decision": "safe", "near_miss_verb": near, "profile": risk_rules.app,
@@ -849,8 +908,8 @@ def record(
                     f"an endpoint app profile {risk_rules.app!r} declares as committing. "
                     f"Observed, not inferred from the control's name ({control_name!r})."
                 )
-                if f"{step_id} risky" not in " ".join(risk_notes):
-                    risk_notes.append(f"{step_id} risky: landed on {landed_on!r}")
+                if not any(k == key and m.startswith("risky") for k, m in risk_notes):
+                    risk_notes.append((key, f"risky: landed on {landed_on!r}"))
                 emit("risk_classified", {
                     "step_id": step_id, "control": control_name, "decision": "risky",
                     "matched_path": landed_on, "profile": risk_rules.app,
@@ -865,6 +924,11 @@ def record(
         if step_note:
             step["notes"] = step_note
         step["_after_url"] = after_url.get(id(cycle))
+        # What the page was BEFORE this step, so a derived checkpoint can be
+        # checked for actually discriminating rather than merely being true.
+        step["_before_url"] = cycle.url
+        step["_before_obs"] = cycle.observation
+        step["_after_obs"] = after_obs.get(id(cycle))
         if action in ("fill", "select"):
             value = _select_value(cycle) if action == "select" else cycle.tool_input.get("value", "")
             for param, example in params.items():
@@ -904,7 +968,10 @@ def record(
 
     steps = _ensure_opening_navigate(steps, acted, target, default_frame)
     steps = _renumber(steps)
-    steps, checkpoint_problems = _add_checkpoints(steps, elements, params)
+    steps, checkpoint_problems = _add_checkpoints(steps, elements, params, is_sensitive)
+    # Now that ids are final, give each risk note the step it is actually about.
+    final_id = {s["element"]: s["id"] for s in steps if s.get("element")}
+    risk_notes = [f"{final_id.get(key, '?')} {message}" for key, message in risk_notes]
     unrecordable.extend(checkpoint_problems)
 
     used_actions = sorted({s["action"] for s in steps})
@@ -1096,7 +1163,9 @@ def _risk_summary(risk_rules: "RiskRules", notes: list[str]) -> str:
     )
 
 
-def _url_checkpoint(after: Optional[str], params: dict[str, Any]) -> Optional[dict[str, Any]]:
+def _url_checkpoint(
+    after: Optional[str], params: dict[str, Any], before: Optional[str] = None
+) -> Optional[dict[str, Any]]:
     """A checkpoint asserting the flow landed where this action took it.
 
     Used for a step that has no following control to assert -- which is
@@ -1109,11 +1178,22 @@ def _url_checkpoint(after: Optional[str], params: dict[str, Any]) -> Optional[di
     put a live clock and a session id in its status bar, so text observed
     after an action is not reliably the same text on the next run; the path
     is.
+
+    Returns None when the URL did not change, because such a checkpoint
+    DISCRIMINATES NOTHING -- it was already satisfied before the step ran, so
+    it would pass whether or not the click did anything. MERIDIAN's update
+    form is served from and posted to the same path, and the recorded
+    checkpoint for "Save Changes" asserted a URL the page already had. A
+    checkpoint that cannot fail is worse than no checkpoint: the schema
+    accepts it, a reviewer reads it as verification, and it certifies
+    nothing.
     """
     if not after:
         return None
     path = urlparse(after).path
     if not path:
+        return None
+    if before and urlparse(before).path == path:
         return None
 
     # Parameterise whole path segments only. A blunt substring replace would
@@ -1128,10 +1208,45 @@ def _url_checkpoint(after: Optional[str], params: dict[str, Any]) -> Optional[di
     return {"type": "url_matches", "pattern": "/".join(segments) + "$", "timeout_ms": 8000}
 
 
+_HEADING_RE = re.compile(r'heading "([^"]{3,80})"')
+
+
+def _text_checkpoint(
+    before_obs: Optional[str],
+    after_obs: Optional[str],
+    is_sensitive: Optional[Callable[[str], bool]] = None,
+) -> Optional[dict[str, Any]]:
+    """Assert a heading the step PRODUCED, when the URL cannot discriminate.
+
+    Only headings that appear after the step and not before, so the condition
+    is false until the action succeeds -- which is the whole job of a
+    checkpoint and the thing a same-URL post cannot get from its path.
+
+    Headings specifically, not any text. A server-rendered console puts a
+    live clock and a session id in its status bar, so most observed text
+    differs between two loads of the same page; a screen title does not.
+    Anything digit-bearing is refused anyway, since a heading carrying a
+    confirmation number would pin the checkpoint to one run.
+    """
+    if not after_obs:
+        return None
+    before = set(_HEADING_RE.findall(before_obs or ""))
+    for heading in _HEADING_RE.findall(after_obs):
+        if heading in before:
+            continue
+        if any(c.isdigit() for c in heading):
+            continue
+        if is_sensitive is not None and is_sensitive(heading):
+            continue
+        return {"type": "text_present", "text": heading, "timeout_ms": 8000}
+    return None
+
+
 def _add_checkpoints(
     steps: list[dict[str, Any]],
     elements: dict[str, dict[str, Any]],
     params: Optional[dict[str, Any]] = None,
+    is_sensitive: Optional[Callable[[str], bool]] = None,
 ) -> tuple[list[dict[str, Any]], list[str]]:
     """Assert, after each navigating step, that the next step's target exists.
 
@@ -1154,6 +1269,9 @@ def _add_checkpoints(
 
     for i, step in enumerate(steps):
         after = step.pop("_after_url", None)
+        before = step.pop("_before_url", None)
+        before_obs = step.pop("_before_obs", None)
+        after_obs = step.pop("_after_obs", None)
         if step["action"] not in ("navigate", "click"):
             continue
         following = next((s for s in steps[i + 1 :] if s.get("element")), None)
@@ -1166,7 +1284,12 @@ def _add_checkpoints(
             continue
         if step.get("risk") != "risky":
             continue
-        fallback = _url_checkpoint(after, params)
+        # The URL first, since a path is the most stable thing available --
+        # but only when it actually changed. Otherwise a heading the step
+        # produced, which is what a post-to-self leaves behind.
+        fallback = _url_checkpoint(after, params, before) or _text_checkpoint(
+            before_obs, after_obs, is_sensitive
+        )
         if fallback is None:
             problems.append(
                 f"{step['id']}: marked risky but no checkpoint could be derived -- no "
@@ -1181,6 +1304,7 @@ def _add_checkpoints(
     # _ensure_opening_navigate carry no _after_url) are cleaned here so the
     # private key can never survive into the artifact.
     for step in steps:
-        step.pop("_after_url", None)
+        for key in ("_after_url", "_before_url", "_before_obs", "_after_obs"):
+            step.pop(key, None)
 
     return steps, problems

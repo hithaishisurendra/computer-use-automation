@@ -781,3 +781,79 @@ certificate deposit satisfies the artifact's declared contract; only the
 application knows the minimum. `caller_error` is reserved for violations
 detectable before a browser opens, and blurring it would make that promise
 meaningless.
+
+---
+
+## The commit-path signal needed the same narrowing the verb signal had
+
+A click is only a commit candidate when the resolved control's role is
+`button`. This was applied to the verb signal when `Funds Transfer` (a link)
+was wrongly marked risky, and **not** applied to `commit_paths` when that was
+added a session later.
+
+MERIDIAN serves its update form from `/members/<id>/update` and posts it to
+the same path. So the `Select` **link** that opens the form matched a declared
+commit path and was recorded risky — replay would have blocked at step 5,
+before a single field was filled in. A link click is a GET and commits
+nothing.
+
+The lesson is about the fix, not the target: a rule established for one signal
+did not travel to the second signal added later for the same purpose. Two
+mechanisms answering one question need the same qualifications, and nothing
+made that true by construction.
+
+---
+
+## A checkpoint that was already true is refused
+
+`_url_checkpoint` returns None when the URL did not change across the step, and
+falls back to a heading that appeared only afterwards.
+
+The derived checkpoint for `Save Changes` asserted `/members/[^/]+/update$` —
+the path the page already had, because the form posts to itself. It would pass
+whether or not the click did anything. That is worse than no checkpoint: the
+schema accepts it, a reviewer reads it as verification, and it certifies
+nothing.
+
+Considered and rejected: any post-action text as the fallback. Rejected
+because a server-rendered console puts a live clock and a session id in its
+status bar, so most observed text differs between two loads of the same page.
+Headings are used instead, and any heading containing a digit is refused as
+well, since one carrying a confirmation number would pin the checkpoint to a
+single run.
+
+---
+
+## An input's sensitivity is decided by its value, not its label
+
+`_infer_input` runs the candidate through the sink's `is_sensitive` predicate.
+A sensitive value makes the input `pii` and its example is **withheld**.
+
+Everything non-numeric was declared `public`, so an email typed into an update
+form was a public input. It did not reach disk in the clear only because a
+shape rule happened to catch it — luck, not classification, and luck that does
+not hold for a value no pattern recognises.
+
+Considered and rejected: keeping the masked example (`"example":
+"<redacted:email>"`, which is what the first recording produced). Rejected
+because a masked placeholder reads like data, tells a caller nothing about the
+expected shape, and invites someone to paste it back in. Saying nothing is
+more honest than saying something masked.
+
+This forced a separation worth naming: the recorder keeps the discovered value
+internally to substitute `{{param}}` into step values and scope texts, while
+the artifact declares no example. Conflating "what the recorder knows" with
+"what the artifact publishes" broke parameterisation the first time the two
+diverged.
+
+---
+
+## Provenance names the step it is actually about
+
+Risk notes are keyed by element and given their step id after renumbering.
+
+They were built with the step id in hand, and then
+`_ensure_opening_navigate` prepends a step and `_renumber` shifts everything
+after it — so the first update recording blamed `s4` for a decision about
+`s5`. Provenance that points a reviewer at the wrong step is worse than
+provenance that says nothing, because it will be believed.

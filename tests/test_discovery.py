@@ -1549,3 +1549,126 @@ def test_an_extraction_element_is_not_described_by_the_value_it_read():
         load_policy(default_policy_path("meridian"), "https://x.test", None),
         "g", "m", default_frame=None)
     assert "CN480193" not in json.dumps(artifact), "a discovered value reached the artifact"
+
+
+# ---------------------------------------------------------------------------
+# Findings from update_member_info
+#
+# MERIDIAN serves its update form from and posts it to the SAME path,
+# /members/<id>/update. That one property broke two separate mechanisms.
+# ---------------------------------------------------------------------------
+
+
+def test_a_link_that_navigates_to_a_committing_path_is_not_a_commit():
+    """The commit-path signal needed the same submit-type narrowing the verb
+    signal already had. MERIDIAN's "Select" LINK opens the update form at
+    /members/<id>/update -- a GET -- and matched the commit path, so replay
+    would have blocked before a single field was filled in."""
+    from capability.profile import load_profile
+
+    page = node("document", "", [node("table", "", [node("row", "", [
+        node("cell", "", [node("link", "Select", ref="sel")]),
+        node("cell", "", [node("button", "Save Changes", ref="save")])])])])
+
+    def run(ref, name, role):
+        c = make_cycle(1, "click", {"role": role, "name": name}, {"": page}, None)
+        c.acted_node = find(page, ref); c.element_key = f"{ref}_el"
+        outcome = DiscoveryOutcome(
+            status="goal_reached", run_id="d", goal="g",
+            cycles=[c, Cycle(index=2, url="https://x/members/102777/update", observation="",
+                             reasoning="", tool_name="goal_reached", tool_input={},
+                             status="terminal")],
+            steps_attempted=2)
+        return record(
+            outcome, "cap", "1.0.0",
+            build_target("https://x.test", "/menu", "demo", "1.0.0", load_profile("meridian")),
+            load_policy(default_policy_path("meridian"), "https://x.test", None),
+            "g", "m", default_frame=None,
+            risk_rules=risk_rules_from_profile(load_profile("meridian")))
+
+    link = next(s for s in run("sel", "Select", "link")["steps"] if s["action"] == "click")
+    button = next(s for s in run("save", "Save Changes", "button")["steps"] if s["action"] == "click")
+    assert link["risk"] == "safe", "a link click is a GET and commits nothing"
+    assert button["risk"] == "risky"
+
+
+def test_a_url_checkpoint_that_was_already_true_is_refused():
+    """A checkpoint satisfied before the step verifies nothing -- it passes
+    whether or not the click did anything. MERIDIAN's update posts to the URL
+    it was served from, so the derived checkpoint asserted a path the page
+    already had."""
+    from discovery.recorder import _url_checkpoint
+
+    same = "https://x/members/1/update"
+    assert _url_checkpoint(same, {}, before=same) is None
+    changed = _url_checkpoint("https://x/members/1/transfer/post", {},
+                              before="https://x/members/1/transfer")
+    assert changed and changed["type"] == "url_matches"
+
+
+def test_a_heading_the_step_produced_is_the_fallback_checkpoint():
+    """When the URL cannot discriminate, a heading that appeared only after
+    the step can. Headings, not any text: a console's status bar carries a
+    live clock and a session id, a screen title does not."""
+    from discovery.recorder import _text_checkpoint
+
+    before = 'heading "UPDATE MEMBER INFORMATION"\ncell "OPR X | 09/04/2026 06:32:20"'
+    after = 'heading "MEMBER INFORMATION UPDATED"\ncell "OPR X | 09/04/2026 06:32:41"'
+    cp = _text_checkpoint(before, after)
+    assert cp == {"type": "text_present", "text": "MEMBER INFORMATION UPDATED", "timeout_ms": 8000}
+
+    # A heading already present discriminates nothing.
+    assert _text_checkpoint(after, after) is None
+    # And one carrying a value would pin the checkpoint to a single run.
+    assert _text_checkpoint(before, 'heading "CONFIRMATION CN480195"') is None
+
+
+def test_a_pii_value_makes_its_input_pii_and_withholds_the_example():
+    """Sensitivity was decided by shape-of-label, so everything non-numeric
+    was declared `public`. An email typed into an update form was a public
+    input, and the only reason it did not reach disk in the clear is that a
+    shape rule happened to catch it -- luck, not classification."""
+    from capability.profile import load_profile
+    from capability.sink import RedactionSink
+    from discovery.recorder import _infer_input
+
+    is_sensitive = RedactionSink(load_profile("meridian")).is_sensitive
+
+    email = _infer_input("grace.hopper@example.com", "E-mail", None, is_sensitive)
+    assert email["sensitivity"] == "pii"
+    assert "example" not in email, "a masked example reads like data and tells a caller nothing"
+    assert "no example is recorded" in email["description"]
+
+    memo = _infer_input("quarterly rebalance", "Memo", None, is_sensitive)
+    assert memo["sensitivity"] == "public" and memo["example"] == "quarterly rebalance"
+
+
+def test_a_risk_note_names_the_step_it_is_actually_about():
+    """Notes were built with the step id in hand, then _ensure_opening_navigate
+    prepended a step and _renumber shifted everything after it. The first
+    update recording blamed "s4" for a decision about s5 -- provenance
+    pointing a reviewer at the wrong step is worse than saying nothing."""
+    from capability.profile import load_profile
+
+    page = node("document", "", [node("table", "", [node("row", "", [
+        node("cell", "", [node("button", "Save Changes", ref="save")])])])])
+    c = make_cycle(1, "click", {"role": "button", "name": "Save Changes"}, {"": page}, None)
+    c.acted_node = find(page, "save"); c.element_key = "save_changes_button"
+    outcome = DiscoveryOutcome(
+        status="goal_reached", run_id="d", goal="g",
+        cycles=[c, Cycle(index=2, url="https://x/members/1/update", observation="",
+                         reasoning="", tool_name="goal_reached", tool_input={},
+                         status="terminal")],
+        steps_attempted=2)
+    artifact = record(
+        outcome, "cap", "1.0.0",
+        build_target("https://x.test", "/menu", "demo", "1.0.0", load_profile("meridian")),
+        load_policy(default_policy_path("meridian"), "https://x.test", None),
+        "g", "m", default_frame=None,
+        risk_rules=risk_rules_from_profile(load_profile("meridian")))
+
+    risky = [s for s in artifact["steps"] if s["risk"] == "risky"]
+    assert len(risky) == 1
+    # The opening navigate is s1, so the click is s2 -- and the note must say so.
+    assert risky[0]["id"] == "s2"
+    assert f"{risky[0]['id']} risky" in artifact["provenance"]["notes"]

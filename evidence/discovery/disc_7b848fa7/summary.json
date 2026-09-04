@@ -1,0 +1,28 @@
+{
+  "run_id": "disc_7b848fa7",
+  "status": "goal_reached",
+  "goal": "Update member 102777's email address to <redacted:email> and phone to <redacted:phone>, and reach the confirmation screen",
+  "provider": "anthropic",
+  "model": "claude-sonnet-5",
+  "rate_limit_retries": 0,
+  "usage": {
+    "input_tokens": 29824,
+    "output_tokens": 1110,
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 27036,
+    "calls": 9
+  },
+  "cost_usd": 0.076155,
+  "human_interventions": [],
+  "steps_attempted": 9,
+  "outputs": {
+    "email_value": "E-mail"
+  },
+  "summary": "Successfully updated member 102777's email to <redacted:email> and phone to <redacted:phone>, reaching the \"MEMBER INFORMATION UPDATED\" confirmation screen.",
+  "message": null,
+  "duration_ms": 24380.01,
+  "artifact_valid": true,
+  "artifact": "evidence/discovery/disc_7b848fa7/artifact.json",
+  "steps_recorded": 9,
+  "flow_completed": true
+}
