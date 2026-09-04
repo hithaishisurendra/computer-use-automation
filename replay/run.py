@@ -17,8 +17,7 @@ import sys
 from pathlib import Path
 
 from capability.loader import ArtifactError, load_resolved
-from capability.profile import profile_for
-from capability.sink import RedactionSink, null_sink
+from capability.sink import null_sink
 from replay.engine import ReplayEngine
 
 EXIT_CODES = {
@@ -88,7 +87,7 @@ def main() -> None:
     # A payload handed to a caller is not safer than one written to disk.
     # This printed the raw result until the chokepoint existed, and it is the
     # shape the capability API's response will take.
-    print(RedactionSink(profile_for(artifact.target), artifact).emit(result.as_dict()))
+    print(engine.sink.emit(result.as_dict()))
     raise SystemExit(EXIT_CODES.get(result.classification, 1))
 
 

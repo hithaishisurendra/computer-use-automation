@@ -410,11 +410,38 @@ def test_artifact_outcome_detected_when_no_universal_applies(artifact, profile):
     assert detection.classification == "business_outcome"
 
 
-def test_outcome_not_declared_on_the_step_is_not_reported(artifact, profile):
-    """'No records match' is an answer after the search step and a non
-    sequitur after the extract step."""
+def test_an_artifact_outcome_is_only_reported_where_the_step_declares_it(artifact, profile):
+    """Step scoping still governs the ARTIFACT layer: an outcome a flow
+    declares is checked only where the flow said it could occur."""
     page_text = 'cell "No records match your criteria."'
-    assert classify.classify(artifact, [], page_text, "/member/10001", profile) is None
+    detection = classify.detect_artifact_outcomes(artifact, [], page_text, "/member/10001")
+    assert detection is None
+
+
+def test_an_app_level_outcome_is_reported_on_any_step(artifact, profile):
+    """And profile-declared outcomes deliberately are not step-scoped.
+
+    Phase 1 assumed every business outcome was flow-specific, on the grounds
+    that only the flow knows a not-found search is an answer. That is too
+    strong: "No records match" can only mean the search found nothing,
+    whichever step is running when the page says it. Leaving it flow-only is
+    what made a capability recorded from a happy path -- which never observes
+    a not-found -- report "no such member" as a 502.
+    """
+    page_text = 'cell "No records match your criteria."'
+    detection = classify.classify(artifact, [], page_text, "/member/10001", profile)
+    assert detection is not None
+    assert detection.layer == "profile"
+    assert detection.classification == "business_outcome"
+
+
+def test_the_artifact_layer_wins_over_the_app_layer(artifact, profile):
+    """A capability can always be more precise about its own flow than the
+    application is about itself."""
+    page_text = 'cell "No records match your criteria."'
+    detection = classify.classify(
+        artifact, ["member_not_found"], page_text, "/search/results", profile)
+    assert detection.layer == "artifact"
 
 
 def test_unresolvable_element_is_escalation_eligible():

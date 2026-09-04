@@ -1,0 +1,28 @@
+--- FRAME '' ---
+document
+  table
+    rowgroup
+      row
+        cell "MERIDIAN CORE Member Services Platform v4.2.1 Cornerstone Financial Systems™"
+          text "Member Services Platform v4.2.1"
+      row
+        cell
+          generic
+            link "Main Menu" [href=/menu]
+            text "·"
+            link "Member Inquiry" [href=/members]
+            text "·"
+            link "System Settings" [href=/settings]
+            text "·"
+            link "Sign Off" [href=/signoff]
+      row
+        cell
+          heading "FUNDS TRANSFER" [level=1]
+          text "The transaction could not be validated"
+          list
+            listitem "Source share is HOLD and cannot be debited."
+          link "Return to Funds Transfer" [href=/members/100234/transfer]
+      row
+        cell "OPR <redacted:credential> | BR MAIN-001 | 09/04/2026 00:01:24 | SID <redacted:session>"
+      row
+        cell "F3=Sign Off F5=Main Menu F7=Member Inquiry F12=Cancel"

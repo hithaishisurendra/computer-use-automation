@@ -119,5 +119,17 @@
       "password": "CORESERV_PASSWORD"
     }
   },
-  "entry_path": "/search"
+  "entry_path": "/search",
+  "business_outcomes": [
+    {
+      "name": "member_not_found",
+      "text": "No records match",
+      "message": "No member exists with the supplied identifier."
+    },
+    {
+      "name": "permission_denied",
+      "text": "You do not have permission",
+      "message": "The member record exists but is restricted."
+    }
+  ]
 }

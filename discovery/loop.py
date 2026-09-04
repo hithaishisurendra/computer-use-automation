@@ -775,7 +775,8 @@ class DiscoveryLoop:
 
         directory = escalation_dir(self.run_id, self.escalation_root)
         url, screenshot, snapshot_path, snapshot = await capture_state(
-            self.page, self._perceive, directory
+            self.page, self._perceive, directory, sink=self.sink,
+            content_frame=self.profile.content_frame,
         )
         request = InterventionRequest(
             run_id=self.run_id,
@@ -792,7 +793,7 @@ class DiscoveryLoop:
             snapshot=snapshot,
             completed_steps=[f"cycle_{c.index}" for c in self.cycles if c.status == "ok"],
         )
-        request_path = write_request(request, self.escalation_root)
+        request_path = write_request(request, self.escalation_root, sink=self.sink)
         self.log("intervention_raised", {"cycle": cycle.index, "request": str(request_path)})
 
         capture = HumanActionCapture(self.page, self._perceive, self.profile.content_frame)
@@ -804,7 +805,8 @@ class DiscoveryLoop:
             self.control.take_back("operator returned control")
 
         activity = await capture.end(decision)
-        write_activity(self.run_id, activity, self.control.as_dict(), self.escalation_root)
+        write_activity(self.run_id, activity, self.control.as_dict(), self.escalation_root,
+                       sink=self.sink)
         self.human_interventions.append(
             {
                 "cycle": cycle.index,

@@ -29,7 +29,7 @@ from capability.validate import describe_credentials, redact
 
 
 class EvidenceWriter:
-    def __init__(self, directory: Path, artifact: Artifact, profile=None):
+    def __init__(self, directory: Path, artifact: Artifact, profile=None, sink=None):
         self.dir = Path(directory)
         self.dir.mkdir(parents=True, exist_ok=True)
         self.artifact = artifact
@@ -38,7 +38,11 @@ class EvidenceWriter:
         # against live data it cannot enumerate, so patterns carry the load;
         # a profile's literals are precision on top. Known literals for this
         # run (its credentials) are registered via register_secrets.
-        self.sink = RedactionSink(profile, artifact)
+        # ONE sink for the whole run, supplied by the engine. It used to be
+        # constructed here, which meant the credentials registered on it were
+        # invisible to every other writer -- an intervention request could
+        # carry a value the engine itself would have masked.
+        self.sink = sink if sink is not None else RedactionSink(profile, artifact)
         # Written before anything else, so evidence records what redaction was
         # actually configured with rather than leaving it to be inferred from
         # what did or did not get masked.

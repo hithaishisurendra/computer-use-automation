@@ -44,6 +44,15 @@ class ProfileModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class ProfileOutcome(ProfileModel):
+    """An app-level business outcome, recognised from page text."""
+
+    name: str
+    classification: Literal["business_outcome", "recoverable", "hard_failure"] = "business_outcome"
+    text: str = Field(description="Marker text identifying this outcome on the page.")
+    message: str = Field(description="What the caller is told. Written for a caller, not a log.")
+
+
 class ErrorMarkers(ProfileModel):
     """Text that identifies each engine universal on this app.
 
@@ -191,6 +200,20 @@ class AppProfile(ProfileModel):
             "Where a flow starts on this app, post-authentication. The default "
             "for discovery's --entry, which was '/search' -- a CoreServ route "
             "baked into the CLI."
+        ),
+    )
+
+    business_outcomes: list["ProfileOutcome"] = Field(
+        default_factory=list,
+        description=(
+            "Answers this application gives that are legitimate results rather "
+            "than faults, and whose meaning does not depend on which flow asked. "
+            "Phase 1 assumed every business outcome was flow-specific, on the "
+            "grounds that only the flow knows a not-found search is an answer. "
+            "MERIDIAN shows that is too strong: 'No member records matched your "
+            "search.' can only mean the search found nothing, on any flow that "
+            "searches. Flow-specific outcomes still live in the artifact and are "
+            "checked FIRST, so a capability can always be more precise than its app."
         ),
     )
 

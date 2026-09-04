@@ -22,7 +22,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
-from capability.sink import RedactionSink
+from capability.sink import RedactionSink, null_sink
 
 
 @dataclass
@@ -108,15 +108,22 @@ def escalation_dir(run_id: str, root: str | Path = "evidence/escalation") -> Pat
 
 def write_request(
     request: InterventionRequest, root: str | Path = "evidence/escalation",
-    profile=None,
+    sink=None,
 ) -> Path:
-    """Persist the request, scrubbed. Returns the file path."""
+    """Persist the request through the RUN's sink, not a fresh one.
+
+    A fresh sink knows the app profile but not this run's credentials, and an
+    intervention request is a whole-page capture of a screen nobody
+    anticipated -- exactly where a credential the app renders into its own
+    chrome shows up. Demonstrated: with a per-writer sink, a username the
+    engine masked everywhere else survived into request.json.
+    """
     directory = escalation_dir(request.run_id, root)
-    return RedactionSink(profile).write_json(directory / "request.json", request.as_dict())
+    return (sink or null_sink()).write_json(directory / "request.json", request.as_dict())
 
 
 async def capture_state(
-    page, perceive, directory: Path, profile=None, content_frame: Optional[str] = None
+    page, perceive, directory: Path, sink=None, content_frame: Optional[str] = None
 ) -> tuple[Optional[str], Optional[str], Optional[str], Optional[str]]:
     """Screenshot + compact accessibility snapshot of the stuck page.
 
@@ -126,7 +133,7 @@ async def capture_state(
     """
     from perception.tree import filter_tree, to_compact_text
 
-    sink = RedactionSink(profile)
+    sink = sink or null_sink()
     url = None
     screenshot_path = None
     snapshot_path = None

@@ -29,6 +29,7 @@ from typing import Any, Optional
 
 from capability.loader import apply_profile_defaults
 from capability.profile import AppProfile, profile_for
+from capability.sink import RedactionSink
 from capability.schema import Artifact, Step
 from capability.validate import (
     AuthConfigError,
@@ -75,8 +76,13 @@ class ReplayEngine:
         self.artifact = artifact = apply_profile_defaults(artifact, self.profile)
         self.headless = headless
         self.run_id = f"run_{uuid.uuid4().hex[:8]}"
+        # One sink for the run's whole lifetime. Every writer downstream --
+        # evidence, intervention requests, handoff records, and the result
+        # returned to the caller -- shares it, so a credential registered once
+        # is masked everywhere rather than only where it was registered.
+        self.sink = RedactionSink(self.profile, self.artifact)
         self.evidence = EvidenceWriter(
-            Path(evidence_root) / self.run_id, artifact, profile=self.profile
+            Path(evidence_root) / self.run_id, artifact, sink=self.sink
         )
         # Set once the version pattern has matched anything at all. A drift
         # check that never fires is indistinguishable from one with nothing to
@@ -801,7 +807,7 @@ class ReplayEngine:
         directory = escalation_dir(self.run_id, self.escalation_root)
         url, screenshot, snapshot_path, snapshot = await capture_state(
             self.page, self._perceive, directory,
-            profile=self.profile, content_frame=self.profile.content_frame,
+            sink=self.sink, content_frame=self.profile.content_frame,
         )
 
         if classification == "risk_blocked":
@@ -835,7 +841,7 @@ class ReplayEngine:
             inputs_redacted=result.inputs_redacted,
             completed_steps=[t.step_id for t in result.trace if t.status in ("ok", "recovered")],
         )
-        request_path = write_request(request, self.escalation_root, profile=self.profile)
+        request_path = write_request(request, self.escalation_root, sink=self.sink)
         result.evidence["intervention_request"] = str(request_path)
         self.evidence.log("intervention_raised", {"step_id": step.id, "request": str(request_path)})
 
@@ -854,7 +860,7 @@ class ReplayEngine:
         activity = await capture.end(decision)
         handoff_path = write_activity(
             self.run_id, activity, self.control.as_dict(), self.escalation_root,
-            profile=self.profile,
+            sink=self.sink,
         )
         result.evidence["handoff"] = str(handoff_path)
         result.human_interventions.append(
