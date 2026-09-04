@@ -165,6 +165,17 @@
       "name": "supervisor_override_required",
       "text": "is not authorized to perform this function",
       "message": "The signed-on operator lacks the privilege for this function; a supervisor must perform it."
+    },
+    {
+      "name": "validation_rejected",
+      "text": "could not be validated",
+      "message": "The application rejected the request as invalid. The specific field errors are on the page and in this run's evidence snapshot."
     }
+  ],
+  "commit_paths": [
+    "/members/*/transfer/post",
+    "/members/*/open-share/post",
+    "/members/*/hold/post",
+    "/members/*/update"
   ]
 }

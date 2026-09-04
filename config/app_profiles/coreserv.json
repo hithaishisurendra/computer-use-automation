@@ -131,5 +131,6 @@
       "text": "You do not have permission",
       "message": "The member record exists but is restricted."
     }
-  ]
+  ],
+  "commit_paths": []
 }

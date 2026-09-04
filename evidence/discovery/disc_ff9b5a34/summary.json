@@ -1,0 +1,28 @@
+{
+  "run_id": "disc_ff9b5a34",
+  "status": "goal_reached",
+  "goal": "Open a new Money Market share for member 101555 with an initial deposit of 100.00, and reach the confirmation screen",
+  "provider": "anthropic",
+  "model": "claude-sonnet-5",
+  "rate_limit_retries": 0,
+  "usage": {
+    "input_tokens": 36536,
+    "output_tokens": 1280,
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 30020,
+    "calls": 10
+  },
+  "cost_usd": 0.091876,
+  "human_interventions": [],
+  "steps_attempted": 10,
+  "outputs": {
+    "confirmation_number": "CN480193"
+  },
+  "summary": "Successfully opened a new Money Market share for member 101555 (<redacted:pii>) with an initial deposit of $100.00. Confirmation reached: Confirmation #CN480193, New Share ID 101555-MMKT-7, Type: Money Market, Opening Balance: $100.00.",
+  "message": null,
+  "duration_ms": 31782.41,
+  "artifact_valid": true,
+  "artifact": "evidence/discovery/disc_ff9b5a34/artifact.json",
+  "steps_recorded": 10,
+  "flow_completed": true
+}

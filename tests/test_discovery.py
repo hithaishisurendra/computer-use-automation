@@ -1429,3 +1429,123 @@ def test_a_parameterised_scope_wins_over_literal_alternatives():
     scopes = [r["scope"]["contains"] for r in chain if r.get("scope")]
     assert scopes and all("{{member_ref}}" in c for c in scopes)
     assert "Regular Shares" not in json.dumps(chain)
+
+
+# ---------------------------------------------------------------------------
+# Commit detection by observed endpoint
+#
+# The verb list is lexical and it missed. MERIDIAN labels its transfer commit
+# "Post Transfer" (caught) and its share commit "Open Share" (missed), so a
+# whole capability was recorded with its post step marked safe -- a false
+# negative, which is far worse than the "Funds Transfer" false positive.
+# ---------------------------------------------------------------------------
+
+
+def _commit_run(button_name, after_url):
+    page = node("document", "", [node("table", "", [node("row", "", [
+        node("cell", "", [node("button", button_name, ref="go")])])])])
+    c = make_cycle(1, "click", {"role": "button", "name": button_name}, {"": page}, None)
+    c.acted_node = find(page, "go"); c.element_key = "commit_button"
+    outcome = DiscoveryOutcome(
+        status="goal_reached", run_id="d", goal="g",
+        cycles=[c, Cycle(index=2, url=after_url, observation="", reasoning="",
+                         tool_name="goal_reached", tool_input={}, status="terminal")],
+        steps_attempted=2)
+    return record(
+        outcome, "cap", "1.0.0",
+        build_target("https://x.test", "/menu", "demo", "1.0.0", load_profile("meridian")),
+        load_policy(default_policy_path("meridian"), "https://x.test", None),
+        "g", "m", default_frame=None,
+        risk_rules=risk_rules_from_profile(load_profile("meridian")))
+
+
+def test_a_commit_the_verb_list_misses_is_caught_by_where_it_landed():
+    """"Open Share" contains no post-like verb. The click landing on
+    .../open-share/post is what identifies it."""
+    artifact = _commit_run("Open Share", "https://x.test/members/101555/open-share/post")
+    click = next(s for s in artifact["steps"] if s["action"] == "click")
+    assert click["risk"] == "risky"
+    assert "landed on" in click["notes"]
+    assert "open-share/post" in click["notes"]
+
+
+def test_a_commit_the_verb_list_catches_is_still_caught():
+    artifact = _commit_run("Post Transfer", "https://x.test/members/1/transfer/post")
+    assert next(s for s in artifact["steps"] if s["action"] == "click")["risk"] == "risky"
+
+
+def test_a_click_that_lands_on_a_review_screen_is_not_a_commit():
+    """Review precedes post. Marking it risky would block the step that
+    exists precisely so a person can look before committing."""
+    artifact = _commit_run("Continue", "https://x.test/members/1/open-share/review")
+    assert next(s for s in artifact["steps"] if s["action"] == "click")["risk"] == "safe"
+
+
+def test_commit_paths_are_declared_per_app_not_hardcoded():
+    from capability.profile import load_profile
+
+    meridian = risk_rules_from_profile(load_profile("meridian"))
+    assert meridian.commits("https://x/members/1/transfer/post")
+    assert meridian.commits("https://x/members/1/open-share/post")
+    assert meridian.commits("https://x/members/1") is None
+    # CoreServ declares none: it has no such endpoints, and inventing some
+    # would mark its safe flows risky.
+    assert risk_rules_from_profile(load_profile("coreserv")).commit_paths == ()
+
+
+def test_an_output_is_declared_once_even_if_extracted_twice():
+    """Observed live: the model extracted confirmation_number twice, once
+    from the label cell and once from the value cell. The artifact declared
+    the same output twice and described the second one by the value it had
+    read -- putting a discovered value into the public contract."""
+    page = node("document", "", [node("table", "", [node("row", "", [
+        node("cell", "Confirmation"), node("cell", "CN480192", ref="v")])])])
+    cycles = []
+    for i, name in enumerate(["Confirmation", "CN480192"], start=1):
+        c = make_cycle(i, "extract",
+                       {"role": "cell", "name": name, "row_contains": "Confirmation",
+                        "column_header": "Confirmation",
+                        "output_name": "confirmation_number", "output_type": "string"},
+                       {"": page}, None, extracted="CN480192")
+        c.acted_node = find(page, "v"); c.element_key = "confirmation_number_source"
+        cycles.append(c)
+    cycles.append(Cycle(index=3, url="/x", observation="", reasoning="",
+                        tool_name="goal_reached", tool_input={}, status="terminal"))
+    outcome = DiscoveryOutcome(status="goal_reached", run_id="d", goal="g",
+                               cycles=cycles, steps_attempted=3)
+    artifact = record(
+        outcome, "cap", "1.0.0",
+        build_target("https://x.test", "/menu", "demo", "1.0.0", load_profile("meridian")),
+        load_policy(default_policy_path("meridian"), "https://x.test", None),
+        "g", "m", default_frame=None)
+
+    names = [o["name"] for o in artifact["outputs"]]
+    assert names == ["confirmation_number"], names
+    assert len([s for s in artifact["steps"] if s["action"] == "extract"]) == 1
+    assert "CN480192" not in json.dumps(artifact["outputs"])
+
+
+def test_an_extraction_element_is_not_described_by_the_value_it_read():
+    """An extraction target's accessible name IS the value. Observed:
+    `"description": "cell CN480193"` put a discovered confirmation number in
+    the artifact -- the same reasoning that suppresses name-based rungs for
+    extractions, applied to the prose."""
+    page = node("document", "", [node("table", "", [node("row", "", [
+        node("cell", "Confirmation"), node("cell", "CN480193", ref="v")])])])
+    c = make_cycle(1, "extract",
+                   {"role": "cell", "name": "CN480193", "row_contains": "Confirmation",
+                    "column_header": "Confirmation",
+                    "output_name": "confirmation_number", "output_type": "string"},
+                   {"": page}, None, extracted="CN480193")
+    c.acted_node = find(page, "v"); c.element_key = "confirmation_number_source"
+    outcome = DiscoveryOutcome(
+        status="goal_reached", run_id="d", goal="g",
+        cycles=[c, Cycle(index=2, url="/x", observation="", reasoning="",
+                         tool_name="goal_reached", tool_input={}, status="terminal")],
+        steps_attempted=2)
+    artifact = record(
+        outcome, "cap", "1.0.0",
+        build_target("https://x.test", "/menu", "demo", "1.0.0", load_profile("meridian")),
+        load_policy(default_policy_path("meridian"), "https://x.test", None),
+        "g", "m", default_frame=None)
+    assert "CN480193" not in json.dumps(artifact), "a discovered value reached the artifact"

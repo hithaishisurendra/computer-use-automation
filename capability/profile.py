@@ -244,6 +244,21 @@ class AppProfile(ProfileModel):
         ),
     )
 
+    commit_paths: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Glob patterns for endpoints that commit. A click that LANDS on one "
+            "of these is irreversible whatever its label said.\n\n"
+            "The verb list is lexical and it misses: MERIDIAN labels its transfer "
+            "commit 'Post Transfer' (caught) and its share commit 'Open Share' "
+            "(missed), so an entire capability recorded with its post step marked "
+            "safe. A false negative here is far worse than the 'Funds Transfer' "
+            "false positive -- it means replay performs an irreversible action "
+            "unattended. Where the click ENDED UP is observed rather than guessed, "
+            "and the recorder already captures it for checkpoints."
+        ),
+    )
+
     risk_verbs: list[str] = Field(default_factory=list)
     near_miss_verbs: list[str] = Field(default_factory=list)
 
