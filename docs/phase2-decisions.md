@@ -716,3 +716,68 @@ Considered and rejected: treating these as engine universals alongside session
 expiry. Rejected because a universal is a fault and these are answers — they
 belong on the business side of the result contract, and collapsing the two
 would put "no such member" in the same bucket as "the app returned a 500".
+
+---
+
+## A commit is identified by where the click lands, not by what it is called
+
+Profiles declare `commit_paths` — globs for endpoints that commit — and a
+click that lands on one is recorded `risky` whatever its label said. The verb
+list stays as a second, independent signal.
+
+The verb list missed. MERIDIAN labels its transfer commit `Post Transfer`
+(caught by `Post`) and its share commit `Open Share` (matching nothing), so
+`member_open_new_share` was recorded with its post step marked **safe** and
+would have opened a share unattended on replay. A false negative here is far
+worse than the `Funds Transfer` false positive: one blocks a step that did not
+need blocking, the other performs an irreversible action nobody approved.
+
+Where the click ended up is *observed*, not inferred from prose, and the
+recorder already captures it for checkpoints. `/members/*/open-share/post` is
+a fact about the application, so it lives with the application's other facts.
+
+Considered and rejected: adding `Open` to the verb list. Rejected as
+whack-a-mole — it fixes this button and not the next one, and the class of
+error is "the label does not say what the button does", which no vocabulary
+closes. Considered and rejected: replacing the verb list with commit paths.
+Rejected because the two fire at different times — the path is only knowable
+*after* the click, so the verb is what could ever gate a click before it runs.
+
+---
+
+## Discovered values must not reach the artifact's prose
+
+An extraction target's accessible name **is** the value being read, and the
+recorder used it for both the output description and the element description.
+Observed: `"description": "cell CN480193"` and `"Value read from CN480192."` —
+a confirmation number from one run, written into a capability's public
+contract. Descriptions now come from the column header or row scope.
+
+Same reasoning that suppresses name-based *rungs* for extraction targets,
+applied to prose. The locator rule was in place and the prose was not, which
+is the same shape as every redaction incident: the rule was right and the new
+surface had not been covered.
+
+Also fixed alongside: an output extracted twice was declared twice. The model
+read `confirmation_number` from the label cell and again from the value cell,
+and the recorder appended two identical output specs.
+
+---
+
+## Validation rejections are answers, not failures
+
+MERIDIAN's `"could not be validated"` is declared as an app-level business
+outcome.
+
+Replaying `open_new_share` with a $250 certificate deposit reported
+`hard_failure: Could not locate 'continue_button'`. Perfectly true and
+completely useless: the button was absent because the page was a validation
+error saying *"Certificates require a minimum opening deposit of $500.00."*
+The caller needs the rule they broke, not a missing-element trace.
+
+Considered and rejected: classifying it `caller_error`. Tempting — the caller
+did supply a bad value — but the system cannot know that in advance. A $250
+certificate deposit satisfies the artifact's declared contract; only the
+application knows the minimum. `caller_error` is reserved for violations
+detectable before a browser opens, and blurring it would make that promise
+meaningless.

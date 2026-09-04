@@ -1,0 +1,442 @@
+{
+  "schema_version": "1.0",
+  "capability": {
+    "id": "member_open_new_share",
+    "version": "1.0.0",
+    "name": "Open a new Money Market share for member 101555 with an initial deposit of 10...",
+    "description": "Open a new Money Market share for member 101555 with an initial deposit of 100.00, and reach the confirmation screen",
+    "status": "draft"
+  },
+  "target": {
+    "surface": "web",
+    "app": "meridian",
+    "app_version": "4.2.1",
+    "tenant": "demo",
+    "base_url": "https://web-sample.interface-hiring.com",
+    "entry_path": "/menu",
+    "auth": {
+      "mode": "form_login",
+      "path": "/signon",
+      "credentials_ref": {
+        "username": "MERIDIAN_OPERATOR",
+        "password": "MERIDIAN_PASSWORD"
+      },
+      "parameters": {
+        "branch": "MAIN-001"
+      },
+      "elements": {},
+      "success_check": {
+        "type": "url_matches",
+        "pattern": "/menu"
+      }
+    }
+  },
+  "inputs": [
+    {
+      "name": "member_ref",
+      "type": "string",
+      "required": true,
+      "description": "The identifier used to locate the record, entered into 'Value'.",
+      "example": "101555",
+      "pattern": "^[0-9]{6}$",
+      "sensitivity": "identifier"
+    },
+    {
+      "name": "share_type",
+      "type": "string",
+      "required": true,
+      "description": "Option selected in 'Share Type'.",
+      "sensitivity": "public",
+      "example": "MMKT"
+    },
+    {
+      "name": "initial_deposit",
+      "type": "string",
+      "required": true,
+      "description": "Value supplied for 'Initial Deposit'.",
+      "example": "100.00",
+      "sensitivity": "public"
+    }
+  ],
+  "outputs": [
+    {
+      "name": "confirmation_number",
+      "type": "string",
+      "required": true,
+      "description": "Value read from the page.",
+      "sensitivity": "public"
+    }
+  ],
+  "elements": {
+    "open_new_share_link": {
+      "description": "link Open New Share",
+      "frame": null,
+      "chain": [
+        {
+          "strategy": "role_name",
+          "role": "link",
+          "name": "Open New Share",
+          "confidence": "high"
+        },
+        {
+          "strategy": "role_ordinal",
+          "role": "link",
+          "index": 0,
+          "scope": {
+            "role": "row",
+            "contains": "3."
+          },
+          "confidence": "low",
+          "brittle": true,
+          "notes": "Positional, but scoped to its own row: if that row goes this fails rather than selecting whatever moved into the position."
+        }
+      ],
+      "notes": "Chain built by probing which strategies uniquely resolved this element during discovery."
+    },
+    "value_field": {
+      "description": "textbox Value",
+      "frame": null,
+      "chain": [
+        {
+          "strategy": "role_name",
+          "role": "textbox",
+          "name": "Value",
+          "confidence": "high"
+        },
+        {
+          "strategy": "role_ordinal",
+          "role": "textbox",
+          "index": 0,
+          "scope": {
+            "role": "row",
+            "contains": "Value"
+          },
+          "confidence": "low",
+          "brittle": true,
+          "notes": "Positional, but scoped to its own row: if that row goes this fails rather than selecting whatever moved into the position."
+        }
+      ],
+      "notes": "Chain built by probing which strategies uniquely resolved this element during discovery."
+    },
+    "search_button": {
+      "description": "button Search",
+      "frame": null,
+      "chain": [
+        {
+          "strategy": "role_name",
+          "role": "button",
+          "name": "Search",
+          "confidence": "high"
+        },
+        {
+          "strategy": "role_ordinal",
+          "role": "button",
+          "index": 0,
+          "scope": {
+            "role": "row",
+            "contains": "Value"
+          },
+          "confidence": "low",
+          "brittle": true,
+          "notes": "Positional, but scoped to its own row: if that row goes this fails rather than selecting whatever moved into the position."
+        }
+      ],
+      "notes": "Chain built by probing which strategies uniquely resolved this element during discovery."
+    },
+    "select_link": {
+      "description": "link Select",
+      "frame": null,
+      "chain": [
+        {
+          "strategy": "role_name",
+          "role": "link",
+          "name": "Select",
+          "confidence": "high"
+        },
+        {
+          "strategy": "role_ordinal",
+          "role": "link",
+          "index": 0,
+          "scope": {
+            "role": "row",
+            "contains": "{{member_ref}}"
+          },
+          "confidence": "low",
+          "brittle": true,
+          "notes": "Positional, but scoped to its own row: if that row goes this fails rather than selecting whatever moved into the position."
+        }
+      ],
+      "notes": "Chain built by probing which strategies uniquely resolved this element during discovery."
+    },
+    "share_type_select": {
+      "description": "combobox Share Type",
+      "frame": null,
+      "chain": [
+        {
+          "strategy": "role_name",
+          "role": "combobox",
+          "name": "Share Type",
+          "confidence": "high"
+        },
+        {
+          "strategy": "role_ordinal",
+          "role": "combobox",
+          "index": 0,
+          "scope": {
+            "role": "row",
+            "contains": "* Share Type"
+          },
+          "confidence": "low",
+          "brittle": true,
+          "notes": "Positional, but scoped to its own row: if that row goes this fails rather than selecting whatever moved into the position."
+        },
+        {
+          "strategy": "role_ordinal",
+          "role": "combobox",
+          "index": 0,
+          "scope": {
+            "role": "row",
+            "contains": "S0001 - Regular Shares"
+          },
+          "confidence": "low",
+          "brittle": true,
+          "notes": "Positional, but scoped to its own row: if that row goes this fails rather than selecting whatever moved into the position."
+        }
+      ],
+      "notes": "Chain built by probing which strategies uniquely resolved this element during discovery."
+    },
+    "initial_deposit_field": {
+      "description": "textbox Initial Deposit",
+      "frame": null,
+      "chain": [
+        {
+          "strategy": "role_name",
+          "role": "textbox",
+          "name": "Initial Deposit",
+          "confidence": "high"
+        },
+        {
+          "strategy": "role_ordinal",
+          "role": "textbox",
+          "index": 0,
+          "scope": {
+            "role": "row",
+            "contains": "* Initial Deposit"
+          },
+          "confidence": "low",
+          "brittle": true,
+          "notes": "Positional, but scoped to its own row: if that row goes this fails rather than selecting whatever moved into the position."
+        },
+        {
+          "strategy": "role_ordinal",
+          "role": "textbox",
+          "index": 0,
+          "scope": {
+            "role": "row",
+            "contains": "$"
+          },
+          "confidence": "low",
+          "brittle": true,
+          "notes": "Positional, but scoped to its own row: if that row goes this fails rather than selecting whatever moved into the position."
+        }
+      ],
+      "notes": "Chain built by probing which strategies uniquely resolved this element during discovery."
+    },
+    "continue_button": {
+      "description": "button Continue",
+      "frame": null,
+      "chain": [
+        {
+          "strategy": "role_name",
+          "role": "button",
+          "name": "Continue",
+          "confidence": "high"
+        }
+      ],
+      "notes": "Chain built by probing which strategies uniquely resolved this element during discovery."
+    },
+    "open_share_button": {
+      "description": "button Open Share",
+      "frame": null,
+      "chain": [
+        {
+          "strategy": "role_name",
+          "role": "button",
+          "name": "Open Share",
+          "confidence": "high"
+        }
+      ],
+      "notes": "Chain built by probing which strategies uniquely resolved this element during discovery."
+    },
+    "confirmation_number_source": {
+      "description": "cell the page",
+      "frame": null,
+      "chain": [
+        {
+          "strategy": "cell_in_row",
+          "scope": {
+            "role": "row",
+            "cell_equals": "Confirmation"
+          },
+          "column_index": 1,
+          "confidence": "medium"
+        },
+        {
+          "strategy": "cell_in_row",
+          "scope": {
+            "role": "row",
+            "contains": "Confirmation"
+          },
+          "column_index": 1,
+          "confidence": "low"
+        },
+        {
+          "strategy": "role_ordinal",
+          "role": "cell",
+          "index": 1,
+          "scope": {
+            "role": "row",
+            "contains": "Confirmation"
+          },
+          "confidence": "low",
+          "brittle": true,
+          "notes": "Positional, but scoped to its own row: if that row goes this fails rather than selecting whatever moved into the position."
+        }
+      ],
+      "notes": "Chain built by probing which strategies uniquely resolved this element during discovery."
+    }
+  },
+  "steps": [
+    {
+      "id": "s1",
+      "action": "navigate",
+      "path": "/menu",
+      "frame": null,
+      "risk": "safe",
+      "notes": "Added at record time: the session was already at /menu when the first action ran, so no navigation was observed. Recorded explicitly so the flow declares where it starts instead of inheriting it from wherever the surface happened to open.",
+      "checkpoint": {
+        "type": "element_present",
+        "element": "open_new_share_link",
+        "timeout_ms": 8000
+      }
+    },
+    {
+      "id": "s2",
+      "action": "click",
+      "element": "open_new_share_link",
+      "risk": "safe",
+      "checkpoint": {
+        "type": "element_present",
+        "element": "value_field",
+        "timeout_ms": 8000
+      }
+    },
+    {
+      "id": "s3",
+      "action": "fill",
+      "element": "value_field",
+      "risk": "safe",
+      "value": "{{member_ref}}"
+    },
+    {
+      "id": "s4",
+      "action": "click",
+      "element": "search_button",
+      "risk": "safe",
+      "checkpoint": {
+        "type": "element_present",
+        "element": "select_link",
+        "timeout_ms": 8000
+      }
+    },
+    {
+      "id": "s5",
+      "action": "click",
+      "element": "select_link",
+      "risk": "safe",
+      "checkpoint": {
+        "type": "element_present",
+        "element": "share_type_select",
+        "timeout_ms": 8000
+      }
+    },
+    {
+      "id": "s6",
+      "action": "select",
+      "element": "share_type_select",
+      "risk": "safe",
+      "value": "{{share_type}}"
+    },
+    {
+      "id": "s7",
+      "action": "fill",
+      "element": "initial_deposit_field",
+      "risk": "safe",
+      "value": "{{initial_deposit}}"
+    },
+    {
+      "id": "s8",
+      "action": "click",
+      "element": "continue_button",
+      "risk": "safe",
+      "checkpoint": {
+        "type": "element_present",
+        "element": "open_share_button",
+        "timeout_ms": 8000
+      }
+    },
+    {
+      "id": "s9",
+      "action": "click",
+      "element": "open_share_button",
+      "risk": "risky",
+      "notes": "Marked risky by the recorder: this click landed on '/members/*/open-share/post', an endpoint app profile 'meridian' declares as committing. Observed, not inferred from the control's name ('Open Share').",
+      "checkpoint": {
+        "type": "element_present",
+        "element": "confirmation_number_source",
+        "timeout_ms": 8000
+      }
+    },
+    {
+      "id": "s10",
+      "action": "extract",
+      "element": "confirmation_number_source",
+      "risk": "safe",
+      "into": "confirmation_number"
+    }
+  ],
+  "outcomes": [],
+  "policy": {
+    "allowed_origins": [
+      "https://web-sample.interface-hiring.com"
+    ],
+    "allowed_paths": [
+      "/signon",
+      "/menu",
+      "/members",
+      "/members/*"
+    ],
+    "allowed_actions": [
+      "click",
+      "extract",
+      "fill",
+      "navigate",
+      "select"
+    ],
+    "risky_action_handling": "require_confirmation",
+    "max_steps": 25,
+    "timeout_ms": 300000
+  },
+  "provenance": {
+    "source": "discovery",
+    "discovered_at": "2026-09-04T06:07:15.270191Z",
+    "goal": "Open a new Money Market share for member 101555 with an initial deposit of 100.00, and reach the confirmation screen",
+    "model": "anthropic:claude-sonnet-5",
+    "discovery_run_id": "disc_1ae335c4",
+    "steps_attempted": 10,
+    "steps_recorded": 10,
+    "human_interventions": 0,
+    "flow_completed": true,
+    "notes": "Emitted by discovery/recorder.py. Locator chains were built by probing which strategies uniquely resolved each element at the moment it was acted on; ambiguous strategies were discarded rather than recorded. outcomes[] is empty because a happy-path run observes no business outcomes. Risk heuristic (app profile 'meridian'; a first guess for review, not a determination): s7 near-miss: 'Continue' contains 'Continue', which the profile does not treat as a commit; s8 risky: landed on '/members/*/open-share/post'."
+  }
+}

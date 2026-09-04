@@ -58,6 +58,24 @@ class RiskRules:
     post_like_verbs: tuple[str, ...] = ()
     near_miss_verbs: tuple[str, ...] = ()
     parameter_aliases: tuple[tuple[str, str], ...] = ()
+    commit_paths: tuple[str, ...] = ()
+
+    def commits(self, url: Optional[str]) -> Optional[str]:
+        """The commit pattern this URL matches, if any.
+
+        Observed rather than guessed: this is where the click actually
+        landed, so a commit button named anything at all is still caught.
+        """
+        import fnmatch
+        from urllib.parse import urlparse
+
+        if not url:
+            return None
+        path = urlparse(url).path
+        for pattern in self.commit_paths:
+            if fnmatch.fnmatch(path, pattern):
+                return pattern
+        return None
 
     def alias_for(self, label: str) -> Optional[str]:
         for candidate, name in self.parameter_aliases:
@@ -98,6 +116,7 @@ def risk_rules_from_profile(profile) -> RiskRules:
         post_like_verbs=tuple(profile.risk_verbs),
         near_miss_verbs=tuple(profile.near_miss_verbs),
         parameter_aliases=tuple(profile.parameter_aliases.items()),
+        commit_paths=tuple(profile.commit_paths),
     )
 
 
@@ -747,10 +766,19 @@ def record(
             continue
 
         key = cycle.element_key or f"element_{position}"
+        # An extraction target's accessible name IS the value being read, so
+        # describing it by that name puts a discovered value in the artifact
+        # -- observed as `"description": "cell CN480193"`. Same reasoning that
+        # suppresses name-based RUNGS for extractions, applied to the prose.
+        described_by = (
+            cycle.tool_input.get("column_header")
+            or cycle.tool_input.get("row_contains")
+            or "the page"
+        ) if action == "extract" else (cycle.tool_input.get("name") or "")
         elements[key] = {
             "description": (
                 f"{cycle.tool_input.get('role') or 'element'} "
-                f"{cycle.tool_input.get('name') or ''}".strip()
+                f"{described_by}".strip()
             ),
             "frame": frame,
             "chain": chain,
@@ -765,6 +793,10 @@ def record(
         step_note: Optional[str] = None
         if action == "click":
             control_role = (node.get("role") or cycle.tool_input.get("role") or "").strip().lower()
+            # Two independent signals, either sufficient. The path is
+            # observed and catches a commit whose label says nothing; the
+            # verb is lexical and catches one before its URL is known.
+            landed_on = risk_rules.commits(after_url.get(id(cycle)))
             matched = risk_rules.match(control_name)
             if matched and control_role != "button":
                 # Navigation links share the commit vocabulary. Only a
@@ -804,6 +836,26 @@ def record(
                     "decision": "safe", "near_miss_verb": near, "profile": risk_rules.app,
                 })
 
+            # The observed signal wins over the lexical one either way. A
+            # click that LANDED on a committing endpoint is irreversible
+            # whatever its label said -- MERIDIAN calls one commit "Post
+            # Transfer" (the verb catches it) and another "Open Share" (the
+            # verb misses entirely, and an entire capability was recorded
+            # with its post step marked safe).
+            if landed_on:
+                risk = "risky"
+                step_note = (
+                    f"Marked risky by the recorder: this click landed on {landed_on!r}, "
+                    f"an endpoint app profile {risk_rules.app!r} declares as committing. "
+                    f"Observed, not inferred from the control's name ({control_name!r})."
+                )
+                if f"{step_id} risky" not in " ".join(risk_notes):
+                    risk_notes.append(f"{step_id} risky: landed on {landed_on!r}")
+                emit("risk_classified", {
+                    "step_id": step_id, "control": control_name, "decision": "risky",
+                    "matched_path": landed_on, "profile": risk_rules.app,
+                })
+
         step: dict[str, Any] = {
             "id": step_id,
             "action": action,
@@ -821,16 +873,30 @@ def record(
                     break
             step["value"] = value
         if action == "extract":
-            output_name = _output_name(
-                cycle.tool_input["output_name"], {o["name"] for o in outputs}
-            )
+            declared = {o["name"] for o in outputs}
+            output_name = _output_name(cycle.tool_input["output_name"], declared)
+            if output_name in declared:
+                # The model extracted the same output twice -- observed live,
+                # once from the label cell and once from the value cell. One
+                # declaration, one step: a second write into the same output
+                # adds nothing and the duplicate declaration is invalid.
+                unrecordable.append(
+                    f"{step_id}: dropped a second extract into {output_name!r}, "
+                    "which is already produced by an earlier step"
+                )
+                continue
             step["into"] = output_name
+            source = (cycle.tool_input.get("column_header")
+                      or cycle.tool_input.get("row_contains") or "the page")
             outputs.append(
                 {
                     "name": output_name,
                     "type": cycle.tool_input.get("output_type", "string"),
                     "required": True,
-                    "description": f"Value read from {cycle.tool_input.get('name') or 'the page'}.",
+                    # Never the model's `name`: on a second extract that is the
+                    # VALUE it read, which would put a discovered value in the
+                    # contract ("Value read from CN480192.").
+                    "description": f"Value read from {source}.",
                     "sensitivity": "public",
                 }
             )
