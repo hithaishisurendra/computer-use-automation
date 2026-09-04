@@ -117,6 +117,8 @@ class Cycle:
     element_key: Optional[str] = None
     resolution: Optional[dict[str, Any]] = None
     extracted: Optional[str] = None
+    # For `select`: the option's value attribute as the browser reports it.
+    selected_value: Optional[str] = None
     frames_before: Optional[dict[str, Any]] = None
     # The exact node acted on, as an object inside `frames_before`. Held by
     # identity rather than by id string so the recorder can probe locator
@@ -138,6 +140,7 @@ class Cycle:
             "element_key": self.element_key,
             "resolution": self.resolution,
             "extracted": self.extracted,
+            "selected_value": self.selected_value,
             "duration_ms": round(self.duration_ms, 2),
             "observation": self.observation,
         }
@@ -400,6 +403,12 @@ class DiscoveryLoop:
 
         if outcome.resolution:
             cycle.resolution = outcome.resolution.as_dict()
+        if action == "select":
+            cycle.selected_value = outcome.selected_value
+            return (
+                f"Selected {outcome.selected_value or tool_input.get('value')!r} "
+                f"in {tool_input.get('name')!r}."
+            )
         if action == "extract":
             cycle.extracted = outcome.extracted
             return f"Extracted {tool_input['output_name']} = {outcome.extracted!r}"
@@ -417,14 +426,30 @@ class DiscoveryLoop:
         if action != "click":
             return "safe"
         name = ""
+        role = ""
         if resolution is not None and resolution.resolved and resolution.node:
             name = (resolution.node.get("name") or "").strip()
+            role = (resolution.node.get("role") or "").strip().lower()
         name = name or (tool_input.get("name") or "").strip()
+        role = role or (tool_input.get("role") or "").strip().lower()
+
         matched = self.risk_rules.match(name)
-        if matched:
-            self.log("risk_blocked_candidate", {"control": name, "matched_verb": matched})
-            return "risky"
-        return "safe"
+        if not matched:
+            return "safe"
+        # Only a submit-type control can commit. Navigation links share the
+        # commit vocabulary -- MERIDIAN's member record has a link named
+        # "Funds Transfer" that merely opens the form, and the first live
+        # recording marked it risky. The distinction is the role: a <button>
+        # or <input type=submit> is role "button"; an <a> is role "link".
+        if role != "button":
+            self.log("risk_classified", {
+                "control": name, "role": role, "decision": "safe",
+                "near_miss_verb": matched,
+                "why": "matched a commit verb but is not a submit-type control",
+            })
+            return "safe"
+        self.log("risk_blocked_candidate", {"control": name, "matched_verb": matched})
+        return "risky"
 
     # -- authentication (never reaches the model) ---------------------------
 

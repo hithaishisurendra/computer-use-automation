@@ -74,15 +74,7 @@
       "sensitivity": "public"
     }
   ],
-  "outputs": [
-    {
-      "name": "confirmation_number",
-      "type": "string",
-      "required": true,
-      "description": "Value read from CN480181.",
-      "sensitivity": "public"
-    }
-  ],
+  "outputs": [],
   "elements": {
     "funds_transfer_link": {
       "description": "link Funds Transfer",
@@ -293,39 +285,6 @@
         }
       ],
       "notes": "Chain built by probing which strategies uniquely resolved this element during discovery."
-    },
-    "confirmation_number_source": {
-      "description": "cell CN480181",
-      "frame": null,
-      "chain": [
-        {
-          "strategy": "cell_in_row",
-          "scope": {
-            "role": "row",
-            "cell_equals": "Confirmation"
-          },
-          "column_index": 1,
-          "confidence": "medium"
-        },
-        {
-          "strategy": "cell_in_row",
-          "scope": {
-            "role": "row",
-            "contains": "Confirmation"
-          },
-          "column_index": 1,
-          "confidence": "low"
-        },
-        {
-          "strategy": "role_ordinal",
-          "role": "cell",
-          "index": 4,
-          "confidence": "low",
-          "brittle": true,
-          "notes": "Positional fallback; recorded only because it resolved uniquely."
-        }
-      ],
-      "notes": "Chain built by probing which strategies uniquely resolved this element during discovery."
     }
   },
   "steps": [
@@ -426,19 +385,7 @@
       "action": "click",
       "element": "post_transfer_button",
       "risk": "risky",
-      "notes": "Marked risky by the recorder: the control name 'Post Transfer' matched the post-like verb 'Post' in app profile 'meridian'. This is a heuristic first guess, not a determination -- confirm it during the draft -> approved review.",
-      "checkpoint": {
-        "type": "element_present",
-        "element": "confirmation_number_source",
-        "timeout_ms": 8000
-      }
-    },
-    {
-      "id": "s12",
-      "action": "extract",
-      "element": "confirmation_number_source",
-      "risk": "safe",
-      "into": "confirmation_number"
+      "notes": "Marked risky by the recorder: the control name 'Post Transfer' matched the post-like verb 'Post' in app profile 'meridian'. This is a heuristic first guess, not a determination -- confirm it during the draft -> approved review."
     }
   ],
   "outcomes": [],
@@ -454,7 +401,6 @@
     ],
     "allowed_actions": [
       "click",
-      "extract",
       "fill",
       "navigate",
       "select"
@@ -465,14 +411,13 @@
   },
   "provenance": {
     "source": "discovery",
-    "discovered_at": "2026-09-03T22:56:46.517561Z",
+    "discovered_at": "2026-09-03T22:54:02.887199Z",
     "goal": "Transfer 5.00 from member 100234's share 100234-S0001-12 to their share 100234-S0001-13, with the memo 'quarterly rebalance', and reach the confirmation screen",
     "model": "anthropic:claude-sonnet-5",
-    "discovery_run_id": "disc_48031612",
-    "steps_attempted": 12,
-    "steps_recorded": 12,
+    "discovery_run_id": "disc_5d1ab764",
+    "steps_attempted": 10,
+    "steps_recorded": 11,
     "human_interventions": 0,
-    "flow_completed": true,
-    "notes": "Emitted by discovery/recorder.py. Locator chains were built by probing which strategies uniquely resolved each element at the moment it was acted on; ambiguous strategies were discarded rather than recorded. outcomes[] is empty because a happy-path run observes no business outcomes. Risk heuristic (app profile 'meridian'; a first guess for review, not a determination): s1 near-miss: 'Funds Transfer' matched 'Transfer' but is a link, not a submit control; s9 near-miss: 'Continue' contains 'Continue', which the profile does not treat as a commit; s10 risky: 'Post Transfer' via 'Post'."
+    "notes": "Emitted by discovery/recorder.py. Locator chains were built by probing which strategies uniquely resolved each element at the moment it was acted on; ambiguous strategies were discarded rather than recorded. outcomes[] is empty because a happy-path run observes no business outcomes. THE FLOW WAS NOT COMPLETED. Discovery stopped at the last step because it is irreversible and this run's policy requires a person to perform it. That step is recorded and was NEVER EXECUTED, so nothing after it was observed: no confirmation screen, no outputs, and its checkpoint is the best guess available rather than something the run verified. Approving this artifact means approving a step no one has seen succeed. Risk heuristic (app profile 'meridian'; a first guess for review, not a determination): s1 near-miss: 'Funds Transfer' matched 'Transfer' but is a link, not a submit control; s9 near-miss: 'Continue' contains 'Continue', which the profile does not treat as a commit; s10 risky: 'Post Transfer' via 'Post'. Unrecordable: s11: marked risky but no checkpoint could be derived -- no following control to assert and no post-action URL was observed. The artifact will fail validation, which is the correct outcome: an unverifiable irreversible step must not be recorded as if it were fine."
   }
 }

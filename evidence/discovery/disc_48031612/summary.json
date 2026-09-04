@@ -1,0 +1,28 @@
+{
+  "run_id": "disc_48031612",
+  "status": "goal_reached",
+  "goal": "Transfer 5.00 from member 100234's share 100234-S0001-12 to their share 100234-S0001-13, with the memo 'quarterly rebalance', and reach the confirmation screen",
+  "provider": "anthropic",
+  "model": "claude-sonnet-5",
+  "rate_limit_retries": 0,
+  "usage": {
+    "input_tokens": 92585,
+    "output_tokens": 1753,
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 36336,
+    "calls": 12
+  },
+  "cost_usd": 0.209967,
+  "human_interventions": [],
+  "steps_attempted": 12,
+  "outputs": {
+    "confirmation_number": "CN480181"
+  },
+  "summary": "Successfully transferred $5.00 from member 100234's share 100234-S0001-12 to share 100234-S0001-13 with memo 'quarterly rebalance'. Transfer confirmed with Confirmation #CN480181, posted 09/03/2026 22:56:40. New balances: 100234-S0001-12 = $50.00, 100234-S0001-13 = $14.00.",
+  "message": null,
+  "duration_ms": 31323.57,
+  "artifact_valid": true,
+  "artifact": "evidence/discovery/disc_48031612/artifact.json",
+  "steps_recorded": 12,
+  "flow_completed": true
+}

@@ -477,6 +477,16 @@ class Provenance(StrictModel):
     steps_attempted: int = Field(ge=0)
     steps_recorded: int = Field(ge=0)
     human_interventions: int = Field(default=0, ge=0)
+    flow_completed: bool = Field(
+        default=True,
+        description=(
+            "False when discovery stopped before the end of the flow -- in practice, "
+            "when the risk gate blocked an irreversible step. Such an artifact records "
+            "a real partial flow and a step nobody performed, so nothing after that "
+            "step was observed. It is a record for a human to finish, not something "
+            "to run: replay refuses it outright."
+        ),
+    )
     notes: Optional[str] = None
 
 
@@ -616,7 +626,7 @@ class Artifact(StrictModel):
                 errors.append(f"{where}: references unknown element {step.element!r}")
             if step.into and step.into not in output_names:
                 errors.append(f"{where}: extracts into undeclared output {step.into!r}")
-            if step.risk == "risky" and step.checkpoint is None:
+            if step.risk == "risky" and step.checkpoint is None and self.provenance.flow_completed:
                 # An irreversible step with no checkpoint is unverifiable, and
                 # the escalation model depends on verification: a human
                 # performs the action and the checkpoint is what confirms it
@@ -628,7 +638,11 @@ class Artifact(StrictModel):
                 errors.append(
                     f"{where}: a step marked risk='risky' must declare a checkpoint. "
                     "An irreversible action with no checkpoint cannot be verified, so "
-                    "the run could not tell whether it took effect."
+                    "the run could not tell whether it took effect. (An artifact with "
+                    "provenance.flow_completed=false is exempt: its risky step was "
+                    "blocked and never performed, so what success looks like was never "
+                    "observed -- and inventing a checkpoint would claim a verification "
+                    "nobody did. Replay refuses such an artifact instead.)"
                 )
             check_template(step.value, f"{where} value")
             # The bug this closes: a path could name an input that does not

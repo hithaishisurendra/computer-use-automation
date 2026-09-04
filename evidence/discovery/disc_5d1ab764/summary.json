@@ -1,0 +1,27 @@
+{
+  "run_id": "disc_5d1ab764",
+  "status": "risk_blocked",
+  "goal": "Transfer 5.00 from member 100234's share 100234-S0001-12 to their share 100234-S0001-13, with the memo 'quarterly rebalance', and reach the confirmation screen",
+  "provider": "anthropic",
+  "model": "claude-sonnet-5",
+  "rate_limit_retries": 0,
+  "usage": {
+    "input_tokens": 63503,
+    "output_tokens": 1798,
+    "cache_creation_input_tokens": 3028,
+    "cache_read_input_tokens": 27252,
+    "calls": 10
+  },
+  "cost_usd": 0.158006,
+  "human_interventions": [],
+  "steps_attempted": 10,
+  "outputs": {},
+  "summary": null,
+  "message": "risky step 'd10' blocked (policy: require_confirmation): the step is irreversible and policy requires a person to perform it; automation stopped before acting",
+  "duration_ms": 24960.91,
+  "artifact_valid": false,
+  "validation_error": "evidence/discovery/disc_5d1ab764/artifact.json: artifact failed validation (1 error(s)):\n  - <root>: Value error, step 's11': a step marked risk='risky' must declare a checkpoint. An irreversible action with no checkpoint cannot be verified, so the run could not tell whether it took effect.",
+  "artifact": "evidence/discovery/disc_5d1ab764/artifact.json",
+  "steps_recorded": 11,
+  "flow_completed": false
+}

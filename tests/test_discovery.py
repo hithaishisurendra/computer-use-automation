@@ -20,7 +20,7 @@ from capability.loader import load_artifact
 from capability.profile import load_profile
 from discovery.loop import Cycle, DiscoveryOutcome, _element_from_tool_input, _element_key
 from discovery.prompts import ACTION_TOOLS, TERMINAL_TOOLS, TOOLS, build_system_prompt
-from discovery.recorder import build_chain, record
+from discovery.recorder import build_chain, record, risk_rules_from_profile
 from discovery.run import (
     DEFAULT_POLICY_PATH,
     PolicyWidened,
@@ -1099,8 +1099,31 @@ def test_a_step_discovery_performs_is_a_step_the_artifact_calls_safe():
 
     for name, expected in [("Post Transfer", "risky"), ("Search", "safe"),
                            ("Select", "safe"), ("Save Changes", "risky")]:
-        assert loop._classify_risk("click", {"name": name}, None) == expected
-        assert loop._classify_risk("fill", {"name": name}, None) == "safe"
+        acted = {"name": name, "role": "button"}
+        assert loop._classify_risk("click", acted, None) == expected
+        assert loop._classify_risk("fill", acted, None) == "safe"
+
+
+def test_only_a_submit_type_control_can_be_risky():
+    """Navigation links share the commit vocabulary. MERIDIAN's member record
+    has a LINK named "Funds Transfer" that merely opens the form, and the
+    first live recording marked it risky."""
+    from capability.profile import load_profile
+    from discovery.loop import DiscoveryLoop
+    from discovery.recorder import risk_rules_from_profile
+
+    loop = DiscoveryLoop.__new__(DiscoveryLoop)
+    loop.risk_rules = risk_rules_from_profile(load_profile("meridian"))
+    logged = []
+    loop.log = lambda e, p: logged.append((e, p))
+
+    assert loop._classify_risk("click", {"name": "Post Transfer", "role": "button"}, None) == "risky"
+    assert loop._classify_risk("click", {"name": "Funds Transfer", "role": "link"}, None) == "safe"
+
+    # The decision stays visible: a link that matched is logged as a near-miss,
+    # not silently dropped.
+    near = [p for e, p in logged if p.get("near_miss_verb") == "Transfer"]
+    assert near and near[0]["role"] == "link"
 
 
 def test_a_risk_blocked_run_is_recordable_but_not_successful():
@@ -1150,3 +1173,120 @@ def test_the_blocked_step_is_recorded_but_marked_never_executed(results_tree):
 
 def test_a_completed_run_says_nothing_about_being_incomplete(recorded):
     assert "NOT COMPLETED" not in recorded["provenance"]["notes"]
+
+
+# ---------------------------------------------------------------------------
+# Select values: the recording that invalidated its own locator
+#
+# The first funds-transfer recording stored the option LABEL --
+# "100234-S0001-6 - Regular Shares ($40.00)" -- which embeds the balance at
+# record time. The same run debited that share, so the artifact was stale
+# before it was committed. Same class as the phase-1 circular locator.
+# ---------------------------------------------------------------------------
+
+
+def _transfer_run(selected_from="100234-S0001-6", selected_to="100234-S0001-12",
+                  label_from="100234-S0001-6 - Regular Shares ($40.00)",
+                  label_to="100234-S0001-12 - Regular Shares ($50.00)"):
+    page = node("document", "", [node("table", "", [node("row", "", [
+        node("cell", "", [node("combobox", "From Share", ref="from")]),
+        node("cell", "", [node("combobox", "To Share", ref="to")]),
+        node("cell", "", [node("textbox", "Amount", ref="amt")]),
+        node("cell", "", [node("button", "Post Transfer", ref="post")]),
+    ])])])
+    cycles = []
+    for idx, (ref, key, name, label, selected) in enumerate([
+        ("from", "from_share_select", "From Share", label_from, selected_from),
+        ("to", "to_share_select", "To Share", label_to, selected_to),
+    ], start=1):
+        c = make_cycle(idx, "select",
+                       {"role": "combobox", "name": name, "value": label}, {"": page}, None)
+        c.acted_node = find(page, ref)
+        c.element_key = key
+        c.selected_value = selected
+        cycles.append(c)
+    amt = make_cycle(3, "fill", {"role": "textbox", "name": "Amount", "value": "5.00"},
+                     {"": page}, None)
+    amt.acted_node = find(page, "amt"); amt.element_key = "amount_field"
+    cycles.append(amt)
+    cycles.append(Cycle(index=4, url="/members/100234/transfer/post", observation="",
+                        reasoning="", tool_name="goal_reached", tool_input={}, status="terminal"))
+
+    outcome = DiscoveryOutcome(
+        status="goal_reached", run_id="d",
+        goal="Transfer 5.00 from member 100234's shares", cycles=cycles, steps_attempted=4)
+    events = []
+    artifact = record(
+        outcome, "cap", "1.0.0",
+        build_target("https://x.test", "/menu", "demo", "1.0.0", load_profile("meridian")),
+        load_policy(default_policy_path("meridian"), "https://x.test", None),
+        outcome.goal, "m", default_frame=None,
+        risk_rules=risk_rules_from_profile(load_profile("meridian")),
+        log=lambda e, p: events.append((e, p)))
+    return artifact, events
+
+
+def test_a_select_records_the_option_value_not_the_label():
+    artifact, _ = _transfer_run()
+    selects = {s["element"]: s["value"] for s in artifact["steps"] if s["action"] == "select"}
+    for value in selects.values():
+        assert "$" not in value and "Regular Shares" not in value
+
+
+def test_from_share_and_to_share_become_declared_inputs():
+    artifact, _ = _transfer_run()
+    names = {i["name"] for i in artifact["inputs"]}
+    assert {"from_share", "to_share"} <= names
+
+    by_name = {i["name"]: i for i in artifact["inputs"]}
+    assert by_name["from_share"]["example"] == "100234-S0001-6"
+    # A share id carries the member number, so it is masked in logs.
+    assert by_name["from_share"]["sensitivity"] == "identifier"
+    # And the steps reference them rather than a literal.
+    values = {s["value"] for s in artifact["steps"] if s["action"] == "select"}
+    assert values == {"{{from_share}}", "{{to_share}}"}
+
+
+def test_a_fixed_vocabulary_select_is_a_parameter_too():
+    """Share type and reason code do not vary per member, but they are exactly
+    what a caller varies. Telling them apart from member-scoped selects needs
+    a heuristic that works for share ids and nothing else."""
+    page = node("document", "", [node("table", "", [node("row", "", [
+        node("cell", "", [node("combobox", "Reason Code", ref="r")])])])])
+    c = make_cycle(1, "select", {"role": "combobox", "name": "Reason Code",
+                                 "value": "FRAUD - Suspected fraud"}, {"": page}, None)
+    c.acted_node = find(page, "r"); c.element_key = "reason_select"; c.selected_value = "FRAUD"
+    outcome = DiscoveryOutcome(status="goal_reached", run_id="d", goal="Place a hold",
+                               cycles=[c, Cycle(index=2, url="/x", observation="", reasoning="",
+                                                tool_name="goal_reached", tool_input={},
+                                                status="terminal")], steps_attempted=2)
+    artifact = record(
+        outcome, "cap", "1.0.0",
+        build_target("https://x.test", "/menu", "demo", "1.0.0", load_profile("meridian")),
+        load_policy(default_policy_path("meridian"), "https://x.test", None),
+        outcome.goal, "m", default_frame=None)
+    by_name = {i["name"]: i for i in artifact["inputs"]}
+    assert by_name["reason_code"]["example"] == "FRAUD"
+    assert by_name["reason_code"]["sensitivity"] == "public"
+
+
+def test_a_select_value_containing_currency_is_flagged():
+    """The safety net for when the browser read-back is unavailable and the
+    label leaks through anyway."""
+    from discovery.recorder import suspect_value
+
+    assert suspect_value("select", "100234-S0001-6 - Regular Shares ($40.00)")
+    assert suspect_value("select", "100234-S0001-6") is None
+    # A typed amount is caller intent, not page data.
+    assert suspect_value("fill", "5.00") is None
+
+    artifact, events = _transfer_run(selected_from=None, selected_to=None)
+    notes = artifact["provenance"]["notes"]
+    assert "SUSPECT RECORDED VALUES" in notes
+    assert "$40.00" in notes
+    assert any(e == "suspect_value" for e, _ in events)
+
+
+def test_a_clean_recording_carries_no_suspect_warning():
+    artifact, _ = _transfer_run()
+    assert "SUSPECT" not in artifact["provenance"]["notes"]

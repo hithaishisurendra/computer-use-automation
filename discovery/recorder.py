@@ -339,6 +339,39 @@ def _output_name(raw: str, taken: set[str]) -> str:
     return candidate
 
 
+# A currency amount inside a recorded value is the signature of display text
+# that leaked in where a stable identifier belonged. MERIDIAN renders share
+# options as "100234-S0001-6 - Regular Shares ($40.00)", so recording the
+# label embeds a balance -- and the very run that records it may change that
+# balance, which is how a capability invalidates its own locator on the way
+# out. Matches "$1,234.56", "1,234.56" and "$40.00".
+_CURRENCY_RE = re.compile(r"\$\s?\d[\d,]*(?:\.\d{2})?|\b\d{1,3}(?:,\d{3})+(?:\.\d{2})?\b")
+
+
+def suspect_value(action: str, value: str) -> Optional[str]:
+    """Why a recorded value looks like observed page data rather than intent.
+
+    Same reasoning as suppressing name-based rungs for extraction targets: a
+    locator or a value derived from what the page currently displays is
+    circular, and it resolves during discovery precisely because the page
+    still shows what discovery saw.
+
+    Scoped to `select` on purpose. A fill value containing currency is
+    normal -- an amount of "5.00" is exactly what the caller typed. A select
+    value containing currency cannot be caller intent, because the caller did
+    not compose it: the page did.
+    """
+    if action != "select" or not value:
+        return None
+    match = _CURRENCY_RE.search(value)
+    if not match:
+        return None
+    return (
+        f"contains the currency amount {match.group(0)!r}, which is live page data "
+        "from the option's display label rather than a stable identifier"
+    )
+
+
 def _parameterise(text: Optional[str], params: dict[str, Any]) -> Optional[str]:
     """Replace a discovered literal inside a scope with its {{param}}.
 
@@ -404,6 +437,54 @@ def _parameter_name(label: str, is_identifier: bool) -> str:
     entity = [p for p in parts if p not in _IDENTIFIER_TOKENS]
     stem = "_".join(entity) if entity else "_".join(parts)
     return f"{stem}_ref" if stem else "param_ref"
+
+
+def _select_value(cycle: Cycle) -> str:
+    """The option a select step should record.
+
+    The browser's read-back of the element after selecting, which is the
+    option's `value` attribute. Falls back to whatever the model passed only
+    when that read-back is unavailable -- and the model passes whichever of
+    value or label it saw in the snapshot, which for a legacy console is
+    usually the label.
+    """
+    if cycle.selected_value:
+        return cycle.selected_value
+    return cycle.tool_input.get("value", "") or ""
+
+
+# A value that starts with a digit and is otherwise identifier-shaped: an
+# account or share number. Excludes decimals, so a currency amount typed into
+# a field is not mistaken for an identifier.
+_IDENTIFIER_SHAPE = re.compile(r"^[0-9][0-9A-Za-z_\-]*$")
+
+
+def _infer_select_input(value: str, label: str, alias: Optional[str] = None) -> dict[str, Any]:
+    """Declare a typed input for an option the model chose.
+
+    Named from the field's label without the `_ref` suffix that identifier
+    text fields get. That convention exists because tenants relabel identifier
+    *fields* ("Member ID" vs "Account Number") while meaning the same entity;
+    a select's label names its role in the flow ("From Share"), which is
+    stable, so `from_share` is both accurate and what a caller would guess.
+
+    No regex pattern: the shape of a share id is a per-tenant fact, and a
+    pattern learned from one member's shares would reject another tenant's.
+    """
+    identifier = bool(_IDENTIFIER_SHAPE.match(value or ""))
+    return {
+        "name": alias or (_slug(label) or "option"),
+        "type": "string",
+        "required": True,
+        "description": (
+            f"Option selected in {label!r}. Must be valid for the record this "
+            "capability is invoked against."
+            if identifier
+            else f"Option selected in {label!r}."
+        ),
+        "sensitivity": "identifier" if identifier else "public",
+        "example": value,
+    }
 
 
 def _infer_input(value: str, label: str, alias: Optional[str] = None) -> dict[str, Any]:
@@ -486,6 +567,7 @@ def record(
         acted = acted + [blocked]
 
     inputs: dict[str, dict[str, Any]] = {}
+    suspect: list[str] = []
     for cycle in acted:
         if cycle.tool_name == "fill":
             value = cycle.tool_input.get("value", "")
@@ -493,6 +575,24 @@ def record(
             if value and value in goal:
                 spec = _infer_input(value, label, risk_rules.alias_for(label))
                 inputs[spec["name"]] = spec
+        elif cycle.tool_name == "select":
+            # EVERY select becomes a parameter, not only the ones whose
+            # options vary per record. Telling those apart needs a heuristic
+            # ("does the value contain the member id?") that works for share
+            # ids and nothing else, and the fixed-vocabulary selects -- share
+            # type, reason code -- are exactly what a caller varies anyway.
+            # Over-parameterising costs a required input: visible and safe.
+            # Under-parameterising bakes in a value that silently does the
+            # wrong thing.
+            value = _select_value(cycle)
+            label = cycle.tool_input.get("name") or "option"
+            reason = suspect_value("select", value)
+            if reason:
+                suspect.append(f"select {label!r}: recorded value {value!r} {reason}")
+                emit("suspect_value", {"action": "select", "label": label,
+                                       "value": value, "reason": reason})
+            spec = _infer_select_input(value, label, risk_rules.alias_for(label))
+            inputs[spec["name"]] = spec
 
     params = {spec["name"]: spec["example"] for spec in inputs.values()}
 
@@ -555,7 +655,22 @@ def record(
         risk = "safe"
         step_note: Optional[str] = None
         if action == "click":
+            control_role = (node.get("role") or cycle.tool_input.get("role") or "").strip().lower()
             matched = risk_rules.match(control_name)
+            if matched and control_role != "button":
+                # Navigation links share the commit vocabulary. Only a
+                # submit-type control can commit, and only <button> and
+                # <input type=submit> carry role "button"; an <a> is "link".
+                risk_notes.append(
+                    f"{step_id} near-miss: {control_name!r} matched {matched!r} but is a "
+                    f"{control_role or 'non-button'}, not a submit control"
+                )
+                emit("risk_classified", {
+                    "step_id": step_id, "control": control_name, "role": control_role,
+                    "decision": "safe", "near_miss_verb": matched,
+                    "why": "matched a commit verb but is not a submit-type control",
+                })
+                matched = None
             near = None if matched else risk_rules.near_miss(control_name)
             if matched:
                 risk = "risky"
@@ -590,7 +705,7 @@ def record(
             step["notes"] = step_note
         step["_after_url"] = after_url.get(id(cycle))
         if action in ("fill", "select"):
-            value = cycle.tool_input.get("value", "")
+            value = _select_value(cycle) if action == "select" else cycle.tool_input.get("value", "")
             for param, example in params.items():
                 if str(example) == str(value):
                     value = f"{{{{{param}}}}}"
@@ -654,6 +769,13 @@ def record(
         "policy": {
             **policy.model_dump(mode="json"),
             "allowed_actions": used_actions,
+            # Never inherited from the discovery run. Recording an
+            # irreversible capability is an attended act by an engineer who
+            # may deliberately relax the gate to walk the flow once; replay is
+            # unattended production. The emitted artifact always takes the
+            # conservative posture, so a relaxed recording session cannot
+            # produce a capability that posts without a human.
+            "risky_action_handling": "require_confirmation",
         },
         "provenance": {
             "source": "discovery",
@@ -664,12 +786,19 @@ def record(
             "steps_attempted": outcome.steps_attempted,
             "steps_recorded": len(steps),
             "human_interventions": 0,
+            "flow_completed": blocked is None,
             "notes": (
                 "Emitted by discovery/recorder.py. Locator chains were built by probing "
                 "which strategies uniquely resolved each element at the moment it was acted "
                 "on; ambiguous strategies were discarded rather than recorded. "
                 "outcomes[] is empty because a happy-path run observes no business outcomes."
                 + incomplete_note
+                + (
+                    " SUSPECT RECORDED VALUES -- these look like live page data rather "
+                    "than caller intent and will go stale: " + "; ".join(suspect) + "."
+                    if suspect
+                    else ""
+                )
                 + _risk_summary(risk_rules, risk_notes)
                 + (f" Unrecordable: {'; '.join(unrecordable)}" if unrecordable else "")
             ),
