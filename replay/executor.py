@@ -220,7 +220,12 @@ class Executor:
         risk_note = check_risk(self.artifact, step)
 
         if step.action == "navigate":
-            target = self.artifact.target.base_url.rstrip("/") + step.path
+            # The path carries caller data exactly as a fill value does. It
+            # was the one such field never substituted, so a parameterised
+            # path was requested literally -- and the policy check below
+            # validated the literal, which is why nothing caught it.
+            path = resolver.substitute(step.path, params)
+            target = self.artifact.target.base_url.rstrip("/") + path
             check_destination(self.artifact, target, step.id)
             if step.frame:
                 # Frameset app: load into the content region. A top-level

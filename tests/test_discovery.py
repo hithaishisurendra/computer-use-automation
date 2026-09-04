@@ -17,10 +17,17 @@ from pathlib import Path
 import pytest
 
 from capability.loader import load_artifact
+from capability.profile import load_profile
 from discovery.loop import Cycle, DiscoveryOutcome, _element_from_tool_input, _element_key
 from discovery.prompts import ACTION_TOOLS, TERMINAL_TOOLS, TOOLS, build_system_prompt
 from discovery.recorder import build_chain, record
-from discovery.run import DEFAULT_POLICY_PATH, PolicyWidened, build_target, load_policy
+from discovery.run import (
+    DEFAULT_POLICY_PATH,
+    PolicyWidened,
+    build_target,
+    default_policy_path,
+    load_policy,
+)
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -334,7 +341,7 @@ def recorded(results_tree, accounts_tree):
         outcome,
         "member_savings_balance_discovered",
         "1.0.0",
-        build_target("http://localhost:8800", "/search", "northridge", "4.2.1"),
+        build_target("http://localhost:8800", "/search", "northridge", "4.2.1", load_profile("coreserv")),
         load_policy(DEFAULT_POLICY_PATH, "http://localhost:8800", None),
         outcome.goal,
         "claude-sonnet-5",
@@ -472,7 +479,7 @@ def _click_run(control_name, results_tree, next_url="/members/100234/transfer/po
     )
     artifact = record(
         outcome, "cap", "1.0.0",
-        build_target("http://localhost:8800", "/start", "northridge", "4.2.1"),
+        build_target("http://localhost:8800", "/start", "northridge", "4.2.1", load_profile("coreserv")),
         load_policy(DEFAULT_POLICY_PATH, "http://localhost:8800", None),
         outcome.goal, "claude-sonnet-5",
         risk_rules=risk_rules or DEFAULT_RISK_RULES,
@@ -570,7 +577,7 @@ def test_the_terminal_checkpoint_is_parameterised(results_tree):
     )
     artifact = record(
         outcome, "cap", "1.0.0",
-        build_target("http://localhost:8800", "/start", "northridge", "4.2.1"),
+        build_target("http://localhost:8800", "/start", "northridge", "4.2.1", load_profile("coreserv")),
         load_policy(DEFAULT_POLICY_PATH, "http://localhost:8800", None),
         outcome.goal, "m",
     )
@@ -902,7 +909,7 @@ def _record_without_navigate(results_tree, accounts_tree, entry="/search"):
         outcome,
         "member_savings_balance",
         "1.0.0",
-        build_target("http://localhost:8800", entry, "northridge", "4.2.1"),
+        build_target("http://localhost:8800", entry, "northridge", "4.2.1", load_profile("coreserv")),
         load_policy(DEFAULT_POLICY_PATH, "http://localhost:8800", None),
         outcome.goal,
         "gemini:gemini-3.5-flash",
@@ -968,3 +975,90 @@ def test_artifact_with_added_navigate_still_loads(results_tree, accounts_tree, t
     loaded = load_artifact(path)
     assert loaded.steps[0].action == "navigate"
     assert "navigate" in loaded.policy.allowed_actions
+
+
+# ---------------------------------------------------------------------------
+# Findings from the first MERIDIAN recording
+# ---------------------------------------------------------------------------
+
+
+def test_chains_are_built_against_the_frameless_document_tree():
+    """The bug that made the first MERIDIAN recording emit one step and no
+    elements: snapshots are keyed by frame NAME, the main frame's name is the
+    empty string, and an element declaring no frame is None -- so the
+    recorder's `.get(None)` missed and every chain was probed against a tree
+    of None."""
+    page = node("document", "", [node("table", "", [node("row", "", [
+        node("cell", "", [node("button", "Search", ref="b")])])])])
+    cycles = [
+        make_cycle(1, "click", {"role": "button", "name": "Search"}, {"": page}, None),
+        Cycle(index=2, url="/members", observation="", reasoning="",
+              tool_name="goal_reached", tool_input={}, status="terminal"),
+    ]
+    cycles[0].acted_node = find(page, "b")
+    cycles[0].element_key = "search_button"
+    outcome = DiscoveryOutcome(status="goal_reached", run_id="d", goal="g",
+                               cycles=cycles, steps_attempted=2)
+    artifact = record(
+        outcome, "cap", "1.0.0",
+        build_target("https://x.test", "/menu", "demo", "1.0.0", load_profile("meridian")),
+        load_policy(default_policy_path("meridian"), "https://x.test", None),
+        "g", "m", default_frame=None,
+    )
+    assert artifact["elements"], "no element was recordable; the tree lookup missed"
+    assert artifact["elements"]["search_button"]["frame"] is None
+    assert "Unrecordable" not in artifact["provenance"]["notes"]
+
+
+def test_a_row_scope_is_parameterised_inside_a_compound_identifier():
+    """A share id of 100234-S0001 has to become {{member_ref}}-S0001 or the
+    capability only ever works for the member it was discovered on. Whole
+    string comparison would have left it literal."""
+    from discovery.recorder import _parameterise
+
+    assert _parameterise("100234-S0001", {"member_ref": "100234"}) == "{{member_ref}}-S0001"
+    assert _parameterise("Regular Shares", {"member_ref": "100234"}) is None
+
+
+def test_an_extraction_is_never_scoped_on_the_value_it_reads():
+    """Observed live: after an ambiguous scope failed, the model retried with
+    row_contains set to the balance itself. That resolves during discovery and
+    is circular -- it finds the balance only while the balance is unchanged."""
+    row = node("row", "", [node("cell", "100234-S0001"), node("cell", "$2,499.00", ref="bal")])
+    tree = node("table", "", [node("rowgroup", "", [
+        node("row", "", [node("cell", "Share ID"), node("cell", "Balance")]), row])])
+    target = find(tree, "bal")
+    chain = build_chain(tree, target, {"row_contains": "2,499.00", "column_header": "Balance"},
+                        {"member_ref": "100234"}, is_extraction=True)
+    for rung in chain:
+        scope = rung.get("scope") or {}
+        assert "2,499.00" not in str(scope.get("contains") or "")
+        assert "2,499.00" not in str(scope.get("cell_equals") or "")
+
+
+def test_an_output_is_not_named_after_the_record_it_was_discovered_on():
+    """balance_100234_s0001 reads as a different output for every member, and
+    an output name is the contract a calling agent binds to."""
+    from discovery.recorder import _output_name
+
+    assert _output_name("balance_100234_s0001", set()) == "balance"
+    assert _output_name("share_balance", set()) == "share_balance"
+    # A collision would lose a value, so the model's name survives instead.
+    assert _output_name("balance_100234", {"balance"}) == "balance_100234"
+
+
+def test_an_ambiguous_target_is_reported_as_ambiguous_not_missing():
+    """The two arrive as one exception, and the advice differs completely. A
+    model told to 'target something that is actually present' re-sends the
+    same ambiguous target, because from where it sits the target is correct."""
+    from discovery.loop import _unresolvable_advice
+    from replay.resolver import ElementUnresolvable, Resolution, RungAttempt
+
+    ambiguous = Resolution(element_key="x", resolved=False, attempts=[
+        RungAttempt(0, "cell_in_row", "high", False, 9, "ambiguous")])
+    advice = _unresolvable_advice(ElementUnresolvable(ambiguous))
+    assert "AMBIGUOUS" in advice and "9" in advice and "Narrow it" in advice
+
+    missing = Resolution(element_key="x", resolved=False, attempts=[
+        RungAttempt(0, "role_name", "high", False, 0, "no_match")])
+    assert "AMBIGUOUS" not in _unresolvable_advice(ElementUnresolvable(missing))

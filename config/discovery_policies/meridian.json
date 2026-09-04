@@ -1,0 +1,43 @@
+{
+  "_comment": [
+    "The policy discovery runs under against MERIDIAN CORE. Declared here as",
+    "reviewable data, not assembled from CLI flags: an allowlist a caller can",
+    "extend is not an allowlist. --allow-path may only NARROW this set.",
+    "",
+    "This file is deliberately separate from config/app_profiles/meridian.json.",
+    "A profile describes what the application IS; a policy declares what the",
+    "agent may DO to it. Collapsing the two would bury a safety decision inside",
+    "a description.",
+    "",
+    "allowed_paths covers sign-on, the menu, member inquiry and the member",
+    "record. Deliberately ABSENT:",
+    "  /settings          the fault-injection console -- the agent must not be",
+    "                     able to change the application's own error behaviour",
+    "  .../transfer/post  and every other post endpoint. Note that fnmatch's *",
+    "                     crosses /, so a bare /members/* would have permitted",
+    "                     every irreversible endpoint under it. The paths below",
+    "                     are written to end where the flow ends.",
+    "",
+    "allowed_actions omits nothing the vocabulary offers except that the",
+    "recorder narrows the emitted artifact to the actions actually used."
+  ],
+  "allowed_origins": ["https://web-sample.interface-hiring.com"],
+  "allowed_paths": [
+    "/signon",
+    "/menu",
+    "/members",
+    "/members/*"
+  ],
+  "allowed_actions": [
+    "navigate",
+    "click",
+    "fill",
+    "select",
+    "check",
+    "extract",
+    "wait_for"
+  ],
+  "risky_action_handling": "require_confirmation",
+  "max_steps": 25,
+  "timeout_ms": 300000
+}

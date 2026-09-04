@@ -1,15 +1,18 @@
 {
   "name": "coreserv",
   "description": "CoreServ 4.2.x, the frameset-based credit-union servicing console this repo ships as a proxy target. Every value here was a constant in engine code before profiles existed.",
-
   "content_frame": "content",
-
   "error_markers": {
-    "session_expired": ["Your session has ended."],
-    "server_error": ["An unexpected error occurred."],
-    "maintenance": ["System Maintenance"]
+    "session_expired": [
+      "Your session has ended."
+    ],
+    "server_error": [
+      "An unexpected error occurred."
+    ],
+    "maintenance": [
+      "System Maintenance"
+    ]
   },
-
   "recovery": {
     "maintenance_interstitial": {
       "kind": "dismiss_control",
@@ -22,49 +25,99 @@
       "notes": "Nothing app-specific to do: wait longer and re-run the step."
     }
   },
-
   "version_pattern": "CoreServ\\s+(\\d+\\.\\d+\\.\\d+)",
-
-  "risk_verbs": ["Post", "Confirm", "Transfer", "Save", "Delete"],
-  "near_miss_verbs": [
-    "Submit", "Apply", "Send", "Update", "Continue", "Accept",
-    "Approve", "Authorize", "Remove", "Void", "Reverse", "OK"
+  "risk_verbs": [
+    "Post",
+    "Confirm",
+    "Transfer",
+    "Save",
+    "Delete"
   ],
-
+  "near_miss_verbs": [
+    "Submit",
+    "Apply",
+    "Send",
+    "Update",
+    "Continue",
+    "Accept",
+    "Approve",
+    "Authorize",
+    "Remove",
+    "Void",
+    "Reverse",
+    "OK"
+  ],
   "chrome_literals": [],
-
   "redaction": {
     "fixture_module": "coreserv.data",
     "patterns": []
   },
-
   "auth_defaults": {
     "elements": {
       "_auth_username": {
         "description": "Operator name field on the CoreServ login form",
         "frame": null,
         "chain": [
-          {"strategy": "role_name", "role": "textbox", "name": "Username", "confidence": "high"},
-          {"strategy": "role_ordinal", "role": "textbox", "index": 0, "confidence": "low", "brittle": true,
-           "notes": "First textbox on the login page. The login form is unlabelled in the accessibility tree on some builds, so position is the fallback."}
+          {
+            "strategy": "role_name",
+            "role": "textbox",
+            "name": "Username",
+            "confidence": "high"
+          },
+          {
+            "strategy": "role_ordinal",
+            "role": "textbox",
+            "index": 0,
+            "confidence": "low",
+            "brittle": true,
+            "notes": "First textbox on the login page. The login form is unlabelled in the accessibility tree on some builds, so position is the fallback."
+          }
         ]
       },
       "_auth_password": {
         "description": "Password field on the CoreServ login form",
         "frame": null,
         "chain": [
-          {"strategy": "role_name", "role": "textbox", "name": "Password", "confidence": "high"},
-          {"strategy": "role_ordinal", "role": "textbox", "index": 1, "confidence": "low", "brittle": true,
-           "notes": "Second textbox on the login page."}
+          {
+            "strategy": "role_name",
+            "role": "textbox",
+            "name": "Password",
+            "confidence": "high"
+          },
+          {
+            "strategy": "role_ordinal",
+            "role": "textbox",
+            "index": 1,
+            "confidence": "low",
+            "brittle": true,
+            "notes": "Second textbox on the login page."
+          }
         ]
       },
       "_auth_submit": {
         "description": "Login button",
         "frame": null,
-        "chain": [{"strategy": "role_name", "role": "button", "name": "Login", "confidence": "high"}]
+        "chain": [
+          {
+            "strategy": "role_name",
+            "role": "button",
+            "name": "Login",
+            "confidence": "high"
+          }
+        ]
       }
     },
-    "fields": {"username": "_auth_username", "password": "_auth_password"},
-    "submit": "_auth_submit"
-  }
+    "fields": {
+      "username": "_auth_username",
+      "password": "_auth_password"
+    },
+    "submit": "_auth_submit",
+    "path": "/",
+    "success_pattern": "/home|/search",
+    "credentials_ref": {
+      "username": "CORESERV_USERNAME",
+      "password": "CORESERV_PASSWORD"
+    }
+  },
+  "entry_path": "/search"
 }

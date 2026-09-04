@@ -559,3 +559,208 @@ def test_engine_code_contains_no_app_specific_selectors():
                 if token in code:
                     offenders.append(f"{source.relative_to(REPO_ROOT)}:{lineno}: {code.strip()}")
     assert not offenders, "app-shaped selector in replay/:\n" + "\n".join(offenders)
+
+
+# ---------------------------------------------------------------------------
+# Templated fields
+#
+# Step.path was the field that carried caller data and was never substituted,
+# so an artifact could declare navigate /members/{{member_ref}}, pass
+# validation, and request that string literally. The audit found four more in
+# the same state. These assert every one of them both substitutes and
+# validates, because the defect was the inconsistency, not the one field.
+# ---------------------------------------------------------------------------
+
+TEMPLATED_ARTIFACT = {
+    "schema_version": "1.0",
+    "capability": {"id": "t", "version": "1.0.0", "name": "t", "description": "t"},
+    "target": {"surface": "web", "app": "meridian", "app_version": "4.2.1", "tenant": "t",
+               "base_url": "https://web-sample.interface-hiring.com", "entry_path": "/menu"},
+    "inputs": [{"name": "member_ref", "type": "string", "required": True,
+                "description": "member number", "sensitivity": "identifier", "example": "100234"}],
+    "outputs": [],
+    "elements": {"h": {"description": "heading", "frame": None,
+                       "chain": [{"strategy": "role_name", "role": "heading",
+                                  "name": "MEMBER RECORD", "confidence": "high"}]}},
+    "steps": [{"id": "s1", "action": "navigate", "path": "/members/{{member_ref}}", "risk": "safe"}],
+    "outcomes": [],
+    "policy": {"allowed_paths": ["/members/*"], "allowed_actions": ["navigate"],
+               "risky_action_handling": "flag", "max_steps": 25, "timeout_ms": 120000},
+    "provenance": {"source": "hand_written", "discovered_at": "2026-09-03T00:00:00Z",
+                   "goal": "t", "steps_attempted": 1, "steps_recorded": 1},
+}
+
+
+def _write(tmp_path, data):
+    path = tmp_path / "a.json"
+    path.write_text(json.dumps(data))
+    return path
+
+
+def test_a_parameterised_path_substitutes_before_navigating(tmp_path):
+    """The bug: this navigated to the literal '/members/{{member_ref}}'."""
+    from capability.schema import Artifact
+    from replay import resolver
+
+    artifact = Artifact.model_validate(TEMPLATED_ARTIFACT)
+    resolved = resolver.substitute(artifact.steps[0].path, {"member_ref": "100234"})
+    assert resolved == "/members/100234"
+
+
+def test_a_path_referencing_an_undeclared_input_fails_at_load(tmp_path):
+    data = json.loads(json.dumps(TEMPLATED_ARTIFACT))
+    data["steps"][0]["path"] = "/members/{{no_such_input}}"
+    with pytest.raises(ArtifactError) as exc:
+        load_artifact(_write(tmp_path, data))
+    assert "no_such_input" in str(exc.value)
+    assert "path" in str(exc.value)
+
+
+def test_existing_artifacts_with_literal_paths_are_unaffected():
+    """Both committed artifacts navigate to literal paths; substitution over a
+    string with no template is the identity."""
+    from replay import resolver
+
+    for cid in ("member_savings_balance", "member_savings_balance_discovered"):
+        artifact = load_resolved(CAPABILITIES, cid, "1.0.0")
+        for step in artifact.steps:
+            if step.action == "navigate":
+                assert resolver.substitute(step.path, {}) == step.path
+
+
+@pytest.mark.parametrize("mutate,needle", [
+    (lambda d: d["steps"][0].__setitem__("path", "/members/{{nope}}"), "path"),
+    (lambda d: d["steps"][0].__setitem__(
+        "checkpoint", {"type": "text_present", "text": "Member {{nope}}"}), "text"),
+    (lambda d: d["steps"][0].__setitem__(
+        "checkpoint", {"type": "url_matches", "pattern": "/members/{{nope}}$"}), "pattern"),
+    (lambda d: d["elements"]["h"]["chain"][0].__setitem__("name", "Member {{nope}}"), "rung name"),
+])
+def test_every_templated_field_is_validated_against_declared_inputs(tmp_path, mutate, needle):
+    data = json.loads(json.dumps(TEMPLATED_ARTIFACT))
+    mutate(data)
+    with pytest.raises(ArtifactError) as exc:
+        load_artifact(_write(tmp_path, data))
+    assert "nope" in str(exc.value) and needle in str(exc.value)
+
+
+def test_checkpoint_text_and_pattern_substitute_at_evaluation():
+    from replay import checkpoints
+    from capability.schema import Artifact, Condition
+
+    artifact = Artifact.model_validate(TEMPLATED_ARTIFACT)
+    params = {"member_ref": "100234"}
+    frames = {"": node("document")}
+
+    text = Condition(type="text_present", text="Member {{member_ref}}")
+    assert checkpoints.evaluate_once(
+        text, artifact, frames, "MEMBER RECORD Member 100234", "/", params
+    ).satisfied
+    assert not checkpoints.evaluate_once(
+        text, artifact, frames, "MEMBER RECORD Member 999999", "/", params
+    ).satisfied
+
+    url = Condition(type="url_matches", pattern="/members/{{member_ref}}$")
+    assert checkpoints.evaluate_once(
+        url, artifact, frames, "", "/members/100234", params
+    ).satisfied
+
+
+def test_a_value_substituted_into_a_regex_is_escaped():
+    """A caller-supplied value is data, not pattern syntax."""
+    from replay import resolver
+
+    assert resolver.substitute_regex("/x/{{p}}$", {"p": "a.b"}) == "/x/a\\.b$"
+    assert re.search(resolver.substitute_regex("/x/{{p}}$", {"p": "a.b"}), "/x/a.b")
+    assert not re.search(resolver.substitute_regex("/x/{{p}}$", {"p": "a.b"}), "/x/axb")
+
+
+def test_outcome_detection_substitutes_too():
+    from capability.schema import Artifact
+    from replay import classify
+
+    data = json.loads(json.dumps(TEMPLATED_ARTIFACT))
+    data["outcomes"] = [{"name": "no_shares", "classification": "business_outcome",
+                         "detect": {"type": "text_present", "text": "No shares for {{member_ref}}"},
+                         "terminal": True, "message": "The member has no shares."}]
+    data["steps"][0]["outcomes"] = ["no_shares"]
+    artifact = Artifact.model_validate(data)
+
+    hit = classify.detect_artifact_outcomes(
+        artifact, ["no_shares"], "No shares for 100234", "/", {"member_ref": "100234"})
+    assert hit is not None and hit.name == "no_shares"
+    miss = classify.detect_artifact_outcomes(
+        artifact, ["no_shares"], "No shares for 999999", "/", {"member_ref": "100234"})
+    assert miss is None
+
+
+def test_scope_name_and_rung_name_substitute():
+    from capability.schema import LocatorRung, Scope
+
+    tree = node("table", "", [
+        node("row", "Member 100234", [node("link", "Open 100234", ref="want")]),
+        node("row", "Member 999999", [node("link", "Open 999999", ref="other")]),
+    ])
+    rung = LocatorRung(strategy="role_name", role="link", name="Open {{member_ref}}",
+                       confidence="high")
+    matches = resolver.match_rung(tree, rung, {"member_ref": "100234"})
+    assert len(matches) == 1 and matches[0]["ref"] == "want"
+
+    scoped = LocatorRung(strategy="role_name_scoped", role="link", name="Open 100234",
+                         scope=Scope(role="row", name="Member {{member_ref}}"),
+                         confidence="high")
+    assert len(resolver.match_rung(tree, scoped, {"member_ref": "100234"})) == 1
+
+
+# ---------------------------------------------------------------------------
+# Discovery config comes from the profile
+# ---------------------------------------------------------------------------
+
+
+def test_discovery_target_is_built_from_the_profile_not_from_cli_defaults():
+    from discovery.run import build_target
+
+    meridian = build_target("https://web-sample.interface-hiring.com", None, "demo",
+                            "4.2.1", load_profile("meridian"))
+    assert meridian.entry_path == "/menu"
+    assert meridian.auth.path == "/signon"
+    assert meridian.auth.success_check.pattern == "/menu"
+    assert meridian.auth.parameters == {"branch": "MAIN-001"}
+    assert set(meridian.auth.credentials_ref) == {"username", "password"}
+
+    coreserv = build_target("http://localhost:8800", None, "northridge", "4.2.1",
+                            load_profile("coreserv"))
+    assert coreserv.entry_path == "/search"
+    assert coreserv.auth.success_check.pattern == "/home|/search"
+
+
+def test_each_app_has_its_own_discovery_policy():
+    """The allowlist stays a separate file from the profile: a profile says
+    what the app is, a policy says what the agent may do to it."""
+    from discovery.run import default_policy_path, load_policy
+
+    md = load_policy(default_policy_path("meridian"),
+                     "https://web-sample.interface-hiring.com", None)
+    assert "/settings" not in md.allowed_paths, "the fault console must stay off the allowlist"
+    assert md.allowed_origins == ["https://web-sample.interface-hiring.com"]
+
+    cs = load_policy(default_policy_path("coreserv"), "http://localhost:8800", None)
+    assert "/_faults" not in cs.allowed_paths
+
+
+def test_a_name_written_the_other_way_round_is_still_masked():
+    """Consoles render names surname-first; prose does not. A discovery run's
+    own summary said "member 100234 (Ada Lovelace)" and the scrubber, holding
+    only the comma form, let it into evidence. The model's prose restates
+    values in shapes nobody enumerated, so it is a redaction channel."""
+    scrubber = profile_scrubber(load_profile("meridian"))
+    assert "Ada Lovelace" not in scrubber.scrub("member 100234 (Ada Lovelace) is 20")
+    assert "Lovelace, Ada" not in scrubber.scrub('cell "Lovelace, Ada"')
+
+
+def test_name_variants_only_flips_a_comma_form():
+    from capability.redaction import name_variants
+
+    assert name_variants("Lovelace, Ada") == ["Ada Lovelace"]
+    assert name_variants("22 Harbor Lane, Arlington") == ["Arlington 22 Harbor Lane"]
+    assert name_variants("no comma here") == []

@@ -153,6 +153,23 @@ class AuthDefaults(ProfileModel):
         description="Credential/parameter name -> element key in `elements`.",
     )
     submit: Optional[str] = Field(default=None, description="Element key of the submit control.")
+    path: str = Field(default="/", description="Where this app's sign-on form lives.")
+    success_pattern: str = Field(
+        default="/",
+        description=(
+            "URL pattern proving sign-on worked. Was a CLI default of "
+            "'/home|/search' -- CoreServ's post-login landing pages, hardcoded "
+            "one layer above the constants the profile already removed."
+        ),
+    )
+    credentials_ref: dict[str, str] = Field(
+        default_factory=dict,
+        description="Credential role -> environment variable NAME. Never a value.",
+    )
+    parameters: dict[str, str] = Field(
+        default_factory=dict,
+        description="Non-secret sign-on values, e.g. a branch code.",
+    )
 
 
 class AppProfile(ProfileModel):
@@ -168,6 +185,15 @@ class AppProfile(ProfileModel):
         ),
     )
 
+    entry_path: Optional[str] = Field(
+        default=None,
+        description=(
+            "Where a flow starts on this app, post-authentication. The default "
+            "for discovery's --entry, which was '/search' -- a CoreServ route "
+            "baked into the CLI."
+        ),
+    )
+
     error_markers: ErrorMarkers = Field(default_factory=ErrorMarkers)
     recovery: dict[str, RecoveryAction] = Field(default_factory=dict)
 
@@ -177,6 +203,21 @@ class AppProfile(ProfileModel):
             "Regex with one capture group reading the app version off the page. "
             "Null declares that this app shows no version, which switches drift "
             "detection off explicitly instead of by accident."
+        ),
+    )
+
+    parameter_aliases: dict[str, str] = Field(
+        default_factory=dict,
+        description=(
+            "Field label -> parameter name, for labels too generic to name a "
+            "capability's public contract after. The recorder names a parameter "
+            "from the label of the field a value was typed into, which works "
+            "while apps label fields for what they hold. MERIDIAN's member "
+            "search is labelled 'Value' -- correct on screen, beside a 'Search "
+            "by' selector, and useless as a parameter name: it would put "
+            "`value_ref` in the contract every calling agent reads. Which "
+            "entity a generically-labelled field identifies is knowledge about "
+            "the app, so it is declared with the app's other knowledge."
         ),
     )
 
