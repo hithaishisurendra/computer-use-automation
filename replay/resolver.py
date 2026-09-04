@@ -370,9 +370,32 @@ def _match_cell_in_row(
     return found
 
 
-def _match_role_ordinal(root: Optional[dict], rung: LocatorRung) -> list[dict]:
+def _match_role_ordinal(
+    root: Optional[dict], rung: LocatorRung, params: dict[str, Any]
+) -> list[dict]:
+    """Nth node of a role, counted within a container when one is declared.
+
+    Scoped is the form worth having. Counting across the whole document means
+    any control inserted anywhere earlier shifts the index -- and the rung
+    still resolves, silently, to whatever now sits in that position. Counting
+    within "the row labelled Amount" breaks when that row goes, which is a
+    failure a run reports rather than acts on.
+
+    An ambiguous container is a miss, for the same reason an ambiguous rung
+    is: two candidate containers means the scope has not identified one.
+    """
     wanted_role = (rung.role or "").strip().lower()
-    candidates = [n for n in iter_nodes(root) if _role_of(n) == wanted_role]
+    search_root = root
+    if rung.scope is not None:
+        containers = find_scopes(root, rung.scope, params)
+        if len(containers) != 1:
+            return []
+        search_root = containers[0]
+
+    candidates = [
+        n for n in iter_nodes(search_root)
+        if n is not search_root and _role_of(n) == wanted_role
+    ]
     if 0 <= rung.index < len(candidates):
         return [candidates[rung.index]]
     return []
@@ -386,7 +409,7 @@ def match_rung(root: Optional[dict], rung: LocatorRung, params: dict[str, Any]) 
     if rung.strategy == "cell_in_row":
         return _match_cell_in_row(root, rung, params)
     if rung.strategy == "role_ordinal":
-        return _match_role_ordinal(root, rung)
+        return _match_role_ordinal(root, rung, params)
     raise ValueError(f"unknown locator strategy {rung.strategy!r}")
 
 

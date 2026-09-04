@@ -313,6 +313,12 @@ class LocatorRung(StrictModel):
                     "strategy 'role_ordinal' must be marked brittle: true -- positional "
                     "targeting is a last resort and replay needs to be able to flag it"
                 )
+            # `scope` is optional but strongly preferred. An UNSCOPED ordinal
+            # counts position across the whole document, so any control added
+            # anywhere before the target shifts it -- and it still resolves,
+            # to a stranger. Scoped to a container, the same rung breaks
+            # loudly when the container goes, instead of quietly hitting the
+            # wrong control.
         return self
 
 

@@ -516,3 +516,66 @@ Considered and rejected: letting the artifact inherit the recording policy.
 Rejected because a relaxed recording session would then emit a capability that
 posts unattended in production — one engineer's convenience becoming everyone
 else's default.
+
+---
+
+## Positional rungs are scoped to a container, and never appended
+
+`role_ordinal` may carry a `scope`. The recorder records scoped ordinals and
+does **not** append a document-wide one to a chain that already has a
+non-positional rung.
+
+The recorded transfer chains ended in document-wide ordinals — `link index 5`,
+`textbox index 0`. They resolved uniquely, which is what made them dangerous:
+after a layout change they still resolve, to a stranger, and the run reports
+success. A trailing ordinal only ever fires when the rungs above it failed —
+exactly when position is least trustworthy — so it contributes nothing on a
+healthy page and misfires on a changed one.
+
+It also contradicted the resolver's own rule. Ambiguity is a miss rather than
+pick-the-first because "picking [0] would be a guess dressed up as a
+resolution"; a document-wide ordinal is that same guess, pre-registered at
+record time.
+
+The failure modes are asymmetric in the direction that matters. An exhausted
+chain gives `element_unresolvable` → hard failure → escalation-eligible → a
+human looks. A wrongly-resolved chain gives a successful run with wrong side
+effects, and on a risky step that is the wrong transaction posted. A stalled
+job is bounded; a wrong post is not.
+
+Considered and rejected: dropping document-wide ordinals entirely. Rejected
+because when nothing else resolves, the choice is not "safe artifact" versus
+"dangerous artifact" — it is "flawed recording" versus "no recording", and the
+safe-looking option just moves the failure somewhere nobody sees it. So a
+document-wide ordinal survives as a *sole* rung, with a shouting note on the
+element and a `POSITIONALLY IDENTIFIED ELEMENTS` line in provenance.
+
+Also rejected: scoping to the enclosing table rather than the row. Tables here
+carry no accessible name, so the scope would have to be keyed on the table's
+whole text — broader than the document ordinal it replaces, and no more
+stable.
+
+---
+
+## A locator scope is never keyed on personal data
+
+Scope texts are filtered through the app profile's own redaction declaration,
+and a parameterised scope suppresses literal alternatives from the same row.
+
+The first tightened recording scoped the results-row locator on
+`"Lovelace, Ada"` — a member's name, in an artifact bound for a public repo.
+The cells that identify a record are the cells that carry its personal data,
+so "prefer the parameterised scope" and "keep names out of locators" turn out
+to be the same rule. Reusing the scrubber's declaration means there is one
+idea of what counts as personal, not a second one quietly diverging inside the
+recorder.
+
+Considered and rejected: a dedicated PII regex in the recorder. Rejected
+because it is a sixth place to get redaction wrong, and the profile already
+declares this per app.
+
+Considered and rejected: recording every candidate scope and letting replay
+pick. Rejected because a literal scope is strictly worse than a parameterised
+one that resolves — recording both means shipping a locator that only works
+for the record it was discovered on, ready to fire the moment the good one
+misses.

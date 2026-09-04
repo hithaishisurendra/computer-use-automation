@@ -21,6 +21,7 @@ from capability.profile import load_profile
 from discovery.loop import Cycle, DiscoveryOutcome, _element_from_tool_input, _element_key
 from discovery.prompts import ACTION_TOOLS, TERMINAL_TOOLS, TOOLS, build_system_prompt
 from discovery.recorder import build_chain, record, risk_rules_from_profile
+from replay import resolver
 from discovery.run import (
     DEFAULT_POLICY_PATH,
     PolicyWidened,
@@ -1290,3 +1291,139 @@ def test_a_select_value_containing_currency_is_flagged():
 def test_a_clean_recording_carries_no_suspect_warning():
     artifact, _ = _transfer_run()
     assert "SUSPECT" not in artifact["provenance"]["notes"]
+
+
+# ---------------------------------------------------------------------------
+# Positional rungs
+#
+# The recorded transfer chains ended in document-wide ordinals (link index 5,
+# textbox index 0). They resolve uniquely today, which is what makes them
+# dangerous: after a layout change they still resolve, just to a stranger.
+# ---------------------------------------------------------------------------
+
+
+def _form_tree():
+    return node("document", "", [node("table", "", [
+        node("row", "", [node("cell", "From Share"),
+                         node("cell", "", [node("combobox", "From Share", ref="from")])]),
+        node("row", "", [node("cell", "Amount"),
+                         node("cell", "", [node("textbox", "", ref="amt")])]),
+    ])])
+
+
+def test_a_good_chain_never_gets_a_document_wide_ordinal_appended():
+    """It would only ever fire when the rung above it failed -- which is
+    exactly when position is least trustworthy."""
+    tree = _form_tree()
+    chain = build_chain(tree, find(tree, "from"),
+                        {"role": "combobox", "name": "From Share"}, {})
+    assert chain[0]["strategy"] == "role_name"
+    unscoped = [r for r in chain
+                if r["strategy"] == "role_ordinal" and not r.get("scope")]
+    assert not unscoped, f"document-wide ordinal appended: {unscoped}"
+
+
+def test_a_positional_rung_is_scoped_to_its_container_when_one_exists():
+    """Scoped positional fails loudly when the container goes, instead of
+    quietly selecting whatever moved into the position."""
+    tree = _form_tree()
+    chain = build_chain(tree, find(tree, "amt"), {"role": "textbox"}, {})
+    ordinals = [r for r in chain if r["strategy"] == "role_ordinal"]
+    assert ordinals, "a nameless control needs some positional rung"
+    assert ordinals[0]["scope"] == {"role": "row", "contains": "Amount"}
+    assert ordinals[0]["brittle"] is True
+
+
+def test_a_scoped_ordinal_survives_an_insertion_that_breaks_a_document_wide_one():
+    """The concrete failure the change exists to prevent."""
+    from capability.schema import LocatorRung, Scope
+
+    tree = _form_tree()
+    scoped = LocatorRung(strategy="role_ordinal", role="combobox", index=0, brittle=True,
+                         confidence="low", scope=Scope(role="row", contains="From Share"))
+    flat = LocatorRung(strategy="role_ordinal", role="combobox", index=0, brittle=True,
+                       confidence="low")
+    assert resolver.match_rung(tree, scoped, {})[0]["ref"] == "from"
+    assert resolver.match_rung(tree, flat, {})[0]["ref"] == "from"
+
+    tree["children"][0]["children"].insert(
+        0, node("row", "", [node("cell", "", [node("combobox", "Stranger", ref="stranger")])]))
+    assert resolver.match_rung(tree, scoped, {})[0]["ref"] == "from"
+    assert resolver.match_rung(tree, flat, {})[0]["ref"] == "stranger"
+
+
+def test_an_ambiguous_container_makes_a_scoped_ordinal_miss():
+    from capability.schema import LocatorRung, Scope
+
+    tree = node("document", "", [
+        node("row", "", [node("cell", "Amount"), node("cell", "", [node("textbox", "", ref="a")])]),
+        node("row", "", [node("cell", "Amount"), node("cell", "", [node("textbox", "", ref="b")])]),
+    ])
+    rung = LocatorRung(strategy="role_ordinal", role="textbox", index=0, brittle=True,
+                       confidence="low", scope=Scope(role="row", contains="Amount"))
+    assert resolver.match_rung(tree, rung, {}) == []
+
+
+def test_a_document_wide_ordinal_survives_as_a_sole_rung_and_is_flagged():
+    """The alternative is no recording at all, which is not safer -- it just
+    moves the failure to somewhere nobody sees it."""
+    tree = node("document", "", [node("generic", "", [node("textbox", "", ref="lonely")])])
+    chain = build_chain(tree, find(tree, "lonely"), {"role": "textbox"}, {})
+    assert len(chain) == 1
+    assert chain[0]["strategy"] == "role_ordinal" and not chain[0].get("scope")
+    assert "DOCUMENT-WIDE POSITIONAL" in chain[0]["notes"]
+    assert "ONLY RUNG" in chain[0]["notes"]
+
+
+def test_a_positional_only_element_is_surfaced_in_provenance():
+    page = node("document", "", [node("generic", "", [node("textbox", "", ref="lonely")])])
+    c = make_cycle(1, "fill", {"role": "textbox", "value": "x"}, {"": page}, None)
+    c.acted_node = find(page, "lonely"); c.element_key = "lonely_field"
+    outcome = DiscoveryOutcome(
+        status="goal_reached", run_id="d", goal="g",
+        cycles=[c, Cycle(index=2, url="/x", observation="", reasoning="",
+                         tool_name="goal_reached", tool_input={}, status="terminal")],
+        steps_attempted=2)
+    events = []
+    artifact = record(
+        outcome, "cap", "1.0.0",
+        build_target("https://x.test", "/menu", "demo", "1.0.0", load_profile("meridian")),
+        load_policy(default_policy_path("meridian"), "https://x.test", None),
+        "g", "m", default_frame=None, log=lambda e, p: events.append((e, p)))
+    assert "POSITIONALLY IDENTIFIED ELEMENTS" in artifact["provenance"]["notes"]
+    assert any(e == "positional_only_element" for e, _ in events)
+
+
+def test_a_locator_scope_is_never_keyed_on_personal_data():
+    """The first tightened recording scoped a locator on "Lovelace, Ada" -- a
+    member's name, in an artifact bound for a repo. The cells that carry a
+    record's identity are the ones that carry its personal data, so the two
+    filters are the same filter."""
+    from capability.profile import load_profile
+    from discovery.run import _sensitivity_predicate
+
+    is_sensitive = _sensitivity_predicate(load_profile("meridian"))
+    tree = node("document", "", [node("row", "", [
+        node("cell", "100234"), node("cell", "Lovelace, Ada"),
+        node("cell", "", [node("link", "Select", ref="sel")])])])
+
+    chain = build_chain(tree, find(tree, "sel"), {"role": "link", "name": "Select"},
+                        {"member_ref": "100234"}, is_sensitive=is_sensitive)
+    blob = json.dumps(chain)
+    assert "Lovelace" not in blob
+    # And the surviving scope is the parameterised one, not a literal.
+    scopes = [r["scope"]["contains"] for r in chain if r.get("scope")]
+    assert all("{{member_ref}}" in c for c in scopes), scopes
+
+
+def test_a_parameterised_scope_wins_over_literal_alternatives():
+    """A scope keyed on a parameter generalises; a literal from one run does
+    not, so recording both means recording a strictly worse locator."""
+    tree = node("document", "", [node("row", "", [
+        node("cell", "100234"), node("cell", "Regular Shares"),
+        node("cell", "", [node("link", "Select", ref="sel")])])])
+    chain = build_chain(tree, find(tree, "sel"), {"role": "link", "name": "Select"},
+                        {"member_ref": "100234"})
+    scopes = [r["scope"]["contains"] for r in chain if r.get("scope")]
+    assert scopes and all("{{member_ref}}" in c for c in scopes)
+    assert "Regular Shares" not in json.dumps(chain)
