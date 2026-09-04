@@ -22,7 +22,7 @@ from typing import Optional
 
 from capability.loader import ArtifactError, load_artifact, widening_paths
 from capability.profile import ProfileError, load_profile
-from capability.redaction import Scrubber
+from capability.sink import null_sink
 from capability.schema import AuthSpec, Condition, Policy, Target
 from discovery.loop import DEFAULT_PROVIDER, DiscoveryLoop
 from discovery.model import DEFAULT_MODELS, PROVIDERS, load_dotenv
@@ -178,12 +178,12 @@ def main() -> None:
             args.policy or default_policy_path(args.app), args.target, args.allow_path
         )
     except PolicyWidened as exc:
-        print(json.dumps({"status": "policy_error", "message": str(exc)}, indent=2))
+        print(null_sink().emit({"status": "policy_error", "message": str(exc)}))
         raise SystemExit(2)
     try:
         profile = load_profile(args.app)
     except ProfileError as exc:
-        print(json.dumps({"status": "profile_error", "message": str(exc)}, indent=2))
+        print(null_sink().emit({"status": "profile_error", "message": str(exc)}))
         raise SystemExit(2)
 
     target = build_target(args.target, args.entry, args.tenant, args.app_version, profile)
@@ -202,6 +202,7 @@ def main() -> None:
         **({"max_wall_clock_s": args.max_seconds} if args.max_seconds else {}),
     )
     outcome = asyncio.run(loop.run())
+    sink = loop.sink
 
     summary = {
         "run_id": outcome.run_id,
@@ -223,7 +224,7 @@ def main() -> None:
     if not outcome.recordable:
         summary["artifact"] = None
         _write_summary(loop, summary)
-        print(json.dumps(summary, indent=2))
+        print(sink.emit(summary))
         raise SystemExit(1)
 
     capability_id = args.capability_id or _derive_capability_id(args.goal)
@@ -245,12 +246,14 @@ def main() -> None:
         # A locator must never be keyed on personal data. The app profile
         # already declares what counts, so the same declaration that scrubs
         # evidence also keeps names and addresses out of recorded chains.
-        is_sensitive=_sensitivity_predicate(profile),
+        is_sensitive=sink.is_sensitive,
     )
 
+    # The artifact is a surface too: locator scopes, step notes and
+    # provenance carry text observed on the page. Incident (6) was a member's
+    # name inside a locator scope, and it reached disk through this line.
     out_path = Path(args.out) if args.out else loop.evidence_dir / "artifact.json"
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_text(json.dumps(artifact, indent=2), encoding="utf-8")
+    sink.write_json(out_path, artifact)
 
     # Load it back. If discovery cannot produce something the loader accepts,
     # the recorder is wrong -- not the artifact, which is why this fails the
@@ -267,7 +270,7 @@ def main() -> None:
     summary["flow_completed"] = outcome.succeeded
     _write_summary(loop, summary)
 
-    print(json.dumps(summary, indent=2))
+    print(sink.emit(summary))
     # A risk block exits non-zero even though it emitted a usable artifact.
     # The run did not accomplish the goal, and a caller scripting discovery
     # should not read "artifact written" as "flow proven".
@@ -307,21 +310,8 @@ def _derive_capability_id(goal: str) -> str:
     return "_".join(keep) or "discovered_capability"
 
 
-def _sensitivity_predicate(profile):
-    """True when scrubbing a string changes it -- i.e. the profile calls it
-    sensitive. Reuses the redaction declaration rather than adding a second,
-    quietly divergent idea of what is personal."""
-    from capability.redaction import profile_scrubber
-
-    scrubber = profile_scrubber(profile)
-    return lambda text: bool(text) and scrubber.scrub(text) != text
-
-
 def _write_summary(loop: DiscoveryLoop, summary: dict) -> None:
-    scrubbed = Scrubber().scrub_obj(summary)
-    (loop.evidence_dir / "summary.json").write_text(
-        json.dumps(scrubbed, indent=2), encoding="utf-8"
-    )
+    loop.sink.write_json(loop.evidence_dir / "summary.json", summary)
 
 
 if __name__ == "__main__":

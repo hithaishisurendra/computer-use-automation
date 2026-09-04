@@ -29,7 +29,8 @@ from playwright.async_api import async_playwright, Frame, Page
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from capability.redaction import seed_data_scrubber
+from capability.profile import load_profile
+from capability.sink import RedactionSink
 from perception.tree import (
     count_nodes,
     estimate_tokens,
@@ -48,7 +49,7 @@ EVIDENCE_DIR = Path(__file__).resolve().parent.parent / "evidence" / "a11y_diagn
 # as a declared field, and nothing sensitivity-driven would catch them.
 # Scrubbing at the single point where text is written is what makes that
 # structural rather than something each dump site has to remember.
-SCRUBBER = seed_data_scrubber()
+SINK = RedactionSink(load_profile("coreserv"))
 
 
 async def dump_step(page: Page, step: str) -> None:
@@ -93,8 +94,7 @@ async def dump_step(page: Page, step: str) -> None:
         lines.append(compact if compact else "(empty after filtering)")
 
     EVIDENCE_DIR.mkdir(parents=True, exist_ok=True)
-    out_path = EVIDENCE_DIR / f"{step}.txt"
-    out_path.write_text(SCRUBBER.scrub("\n".join(lines)), encoding="utf-8")
+    out_path = SINK.write_text(EVIDENCE_DIR / f"{step}.txt", "\n".join(lines))
     print(f"[{step}] wrote {out_path}")
 
 

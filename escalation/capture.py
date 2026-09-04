@@ -33,7 +33,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
-from capability.redaction import profile_scrubber
+from capability.sink import RedactionSink
 
 
 def _control_lines(snapshot: str) -> set[str]:
@@ -149,12 +149,7 @@ def write_activity(
     profile=None,
 ) -> Path:
     """Persist the handoff record, scrubbed."""
-    directory = Path(root) / run_id
-    directory.mkdir(parents=True, exist_ok=True)
-    scrubber = profile_scrubber(profile)
-    payload = scrubber.scrub_obj(
-        {"human_activity": activity.as_dict(), "control": session_state}
+    return RedactionSink(profile).write_json(
+        Path(root) / run_id / "handoff.json",
+        {"human_activity": activity.as_dict(), "control": session_state},
     )
-    path = directory / "handoff.json"
-    path.write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
-    return path

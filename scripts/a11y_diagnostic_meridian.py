@@ -44,7 +44,8 @@ from playwright.async_api import async_playwright, Page
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from capability.redaction import Scrubber
+from capability.profile import load_profile
+from capability.sink import RedactionSink
 from perception.labeling import AUGMENTABLE_ROLES
 from perception.tree import (
     INTERACTIVE_ROLES,
@@ -59,27 +60,11 @@ from perception.tree import (
 BASE_URL = "https://web-sample.interface-hiring.com"
 EVIDENCE_DIR = Path(__file__).resolve().parent.parent / "evidence" / "a11y_diagnostic_meridian"
 
-# MERIDIAN's demo members carry fake but PII-shaped values. The pattern rules
-# in Scrubber catch email and 3-3-4 phone; the seed literals below cover the
-# rest (names, street addresses, the short 555-0142 phone form) the way
-# seed_data_scrubber() does for CoreServ -- registered from what the walk
-# actually renders rather than imported from a data module this target has no
-# equivalent of.
-SEED_PII = [
-    "Lovelace, Ada", "Hopper, Grace", "Johnson, Katherine",
-    "Turing, Alan", "Noether, Emmy",
-    "22 Harbor Lane, Arlington",
-    "jane@example.com",
-]
-
-
-def build_scrubber() -> Scrubber:
-    s = Scrubber()
-    s.register_pii(SEED_PII)
-    return s
-
-
-SCRUBBER = build_scrubber()
+# Everything this walk writes goes through the one write path, built from
+# MERIDIAN's own profile. The literals it needs -- names, the street address,
+# the short phone format -- are declared there, beside every other fact about
+# the app, rather than duplicated in this script.
+SINK = RedactionSink(load_profile("meridian"))
 
 # Findings accumulate here and are written as one machine-readable file at the
 # end, so the report is derived from measurements rather than from prose.
@@ -182,7 +167,7 @@ async def dump_step(page: Page, step: str) -> dict[str, Any]:
         lines += ["", "compact rendering:", compact or "(empty after filtering)"]
 
     EVIDENCE_DIR.mkdir(parents=True, exist_ok=True)
-    (EVIDENCE_DIR / f"{step}.txt").write_text(SCRUBBER.scrub("\n".join(lines)), encoding="utf-8")
+    SINK.write_text(EVIDENCE_DIR / f"{step}.txt", "\n".join(lines))
     FINDINGS["steps"][step] = step_record
     print(f"[{step}] wrote {EVIDENCE_DIR / (step + '.txt')}")
     return step_record
@@ -246,8 +231,8 @@ async def probe_live_clock(page: Page) -> dict[str, Any]:
     a, b = status_lines(first), status_lines(second)
     return {
         "status_bar_in_filtered_tree": bool(a),
-        "first_observation": SCRUBBER.scrub("; ".join(a)),
-        "second_observation": SCRUBBER.scrub("; ".join(b)),
+        "first_observation": SINK.text("; ".join(a)),
+        "second_observation": SINK.text("; ".join(b)),
         "changed_between_loads": a != b,
         "whole_filtered_tree_identical": first == second,
     }
@@ -360,9 +345,7 @@ async def run(base_url: str, headed: bool, operator: str, password: str) -> None
         FINDINGS["probes"]["hidden_token_review"] = await probe_hidden_token(page)
 
         EVIDENCE_DIR.mkdir(parents=True, exist_ok=True)
-        (EVIDENCE_DIR / "findings.json").write_text(
-            SCRUBBER.scrub(json.dumps(FINDINGS, indent=2, default=str)), encoding="utf-8"
-        )
+        SINK.write_json(EVIDENCE_DIR / "findings.json", FINDINGS)
         print(f"wrote {EVIDENCE_DIR / 'findings.json'}")
 
         await browser.close()

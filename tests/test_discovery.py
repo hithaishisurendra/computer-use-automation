@@ -1400,9 +1400,11 @@ def test_a_locator_scope_is_never_keyed_on_personal_data():
     record's identity are the ones that carry its personal data, so the two
     filters are the same filter."""
     from capability.profile import load_profile
-    from discovery.run import _sensitivity_predicate
+    from capability.sink import RedactionSink
 
-    is_sensitive = _sensitivity_predicate(load_profile("meridian"))
+    # The same predicate the recorder gets: one idea of what is personal,
+    # owned by the chokepoint, not a second one living in the recorder.
+    is_sensitive = RedactionSink(load_profile("meridian")).is_sensitive
     tree = node("document", "", [node("row", "", [
         node("cell", "100234"), node("cell", "Lovelace, Ada"),
         node("cell", "", [node("link", "Select", ref="sel")])])])

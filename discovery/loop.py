@@ -48,7 +48,8 @@ from pathlib import Path
 from typing import Any, Optional
 
 from capability.profile import profile_for
-from capability.redaction import Scrubber, profile_scrubber
+from capability.redaction import Scrubber
+from capability.sink import RedactionSink
 from capability.schema import Element, LocatorRung, Policy, Scope, Step, Target
 from capability.validate import AuthConfigError, resolve_credentials
 from discovery.model import (
@@ -299,7 +300,7 @@ class DiscoveryLoop:
         from discovery.recorder import risk_rules_from_profile
 
         self.risk_rules = risk_rules_from_profile(self.profile)
-        self.disk_scrubber = profile_scrubber(self.profile)
+        self.sink = RedactionSink(self.profile)
         self.model_scrubber = Scrubber()
         self.log_path = self.evidence_dir / "cycles.jsonl"
         self.cycles: list[Cycle] = []
@@ -307,9 +308,7 @@ class DiscoveryLoop:
     # -- evidence -----------------------------------------------------------
 
     def log(self, event: str, payload: dict[str, Any]) -> None:
-        record = {"event": event, **self.disk_scrubber.scrub_obj(payload)}
-        with self.log_path.open("a", encoding="utf-8") as fh:
-            fh.write(json.dumps(record, default=str) + "\n")
+        self.sink.append_jsonl(self.log_path, {"event": event, **payload})
 
     # -- perception ---------------------------------------------------------
 
@@ -459,7 +458,7 @@ class DiscoveryLoop:
             return
         credentials = resolve_credentials_for(self.target)
         self.model_scrubber.register_secrets(credentials.values())
-        self.disk_scrubber.register_secrets(credentials.values())
+        self.sink.register_secrets(credentials.values())
 
         url = self.target.base_url.rstrip("/") + auth.path
         check_destination(self.artifact, url)
