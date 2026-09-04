@@ -626,3 +626,93 @@ Screenshots are declared, not exempted. A screenshot of a member record shows
 everything the page showed and no text pass can mask it, so
 `note_unscrubbable()` records the fact in the evidence manifest rather than
 letting the file look scrubbed.
+
+---
+
+## One sink per run, not one per writer
+
+The engine constructs a single `RedactionSink` and every writer downstream
+shares it: evidence, intervention requests, handoff records, and the result
+returned to the caller.
+
+Four writers each built their own. Correct in isolation, and a real leak
+together: `register_secrets` landed on the engine's instance alone, so
+`write_request` had a sink that knew the app profile but not this run's
+credentials. Demonstrated before fixing — an operator name the engine masked
+everywhere else survived verbatim into `request.json`. That is the worst place
+for it: an intervention request is a whole-page capture of a screen nobody
+anticipated, which is exactly where an app that prints the signed-on operator
+into its own chrome puts one.
+
+Considered and rejected: registering secrets on a module-level singleton.
+Rejected because a run's credentials are run-scoped, and a process-wide
+registry would carry one run's secrets into another's evidence — trading a
+leak for a worse one.
+
+A writer given no sink falls back to `null_sink()`, which still applies shape
+rules and reports itself degraded. A missing sink must never mean "write it
+raw".
+
+---
+
+## The capability API is a wrapper, not a second engine
+
+`POST /capabilities/{id}/{version}/invoke` runs `ReplayEngine`. `api/` imports
+no Playwright, no perception, no resolver, no executor — asserted by a test,
+because a surface that quietly grew its own way to drive a page would be the
+easiest possible place for the guardrails to go missing.
+
+Two things this surface adds rather than inherits.
+
+**An API invocation is unattended by construction.** There is no operator
+behind an HTTP request, so `escalate=False` and a risky step returns **202
+escalation_required** with the step, what its checkpoint will verify, and how
+to resume. 202 because the work was accepted and stopped, which is neither
+success nor failure; offering escalation over HTTP would be a lie the audit
+trail keeps.
+
+**Status codes carry the result contract.** `success` and `business_outcome`
+are both 200 — the caller asked a question and got an answer — and non-2xx is
+reserved for cases where the system could not answer. `caller_error` is 400
+before a browser opens; `auth_failure` and `hard_failure` are 502, because
+neither is the caller's fault.
+
+Considered and rejected: a tool/function-calling interface instead of HTTP.
+Rejected because the chatbot and dashboard both need to reach it and an HTTP
+surface serves both, where an in-process tool list would need a second
+adapter. The catalogue is deliberately separate from the endpoints so a tool
+list can be generated from the same description.
+
+Run history is in-memory. A database here would be the scaling infrastructure
+the brief explicitly does not reward.
+
+---
+
+## Some business outcomes belong to the app, not the flow
+
+Profiles declare `business_outcomes`, checked after the artifact's own and
+after engine universals.
+
+Phase 1 put every business outcome in the artifact, reasoning that only the
+flow knows a not-found search is an answer rather than a fault. Building the
+API showed that is too strong. A capability recorded from a happy-path run has
+`outcomes: []` — discovery never observes a not-found — so asking the API for
+a member who does not exist returned **502 hard_failure** with "checkpoint not
+met". That is precisely the mistake the brief calls the most common design
+error: conflating a legitimate answer with a crash.
+
+"No member records matched your search." can only mean the search found
+nothing, whichever step is running when the page says it. That is a fact about
+the application, and the application's profile is where facts about the
+application live. The recorder cannot invent these from a successful run, and
+requiring a human to hand-write them into every artifact is the duplication
+profiles exist to remove.
+
+Ordering is most-specific-first: engine universals, then the artifact's own
+outcomes (still step-scoped), then the app's. A capability can always be more
+precise about its own flow than the application is about itself.
+
+Considered and rejected: treating these as engine universals alongside session
+expiry. Rejected because a universal is a fault and these are answers — they
+belong on the business side of the result contract, and collapsing the two
+would put "no such member" in the same bucket as "the app returned a 500".

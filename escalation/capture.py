@@ -33,7 +33,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
-from capability.sink import RedactionSink
+from capability.sink import null_sink
 
 
 def _control_lines(snapshot: str) -> set[str]:
@@ -146,10 +146,10 @@ class HumanActionCapture:
 
 def write_activity(
     run_id: str, activity: HumanActivity, session_state: dict[str, Any], root: str | Path,
-    profile=None,
+    sink=None,
 ) -> Path:
     """Persist the handoff record, scrubbed."""
-    return RedactionSink(profile).write_json(
+    return (sink or null_sink()).write_json(
         Path(root) / run_id / "handoff.json",
         {"human_activity": activity.as_dict(), "control": session_state},
     )

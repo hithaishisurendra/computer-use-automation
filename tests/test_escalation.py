@@ -202,6 +202,7 @@ def test_request_is_written_through_the_profile_scrubber(tmp_path):
     come from the app profile now rather than from a CoreServ import inside
     the redaction module."""
     from capability.profile import load_profile
+    from capability.sink import RedactionSink
     from coreserv.data import MEMBERS
 
     member = MEMBERS[0]
@@ -216,7 +217,7 @@ def test_request_is_written_through_the_profile_scrubber(tmp_path):
             f'cell "{member["address"]}" cell "{member["accounts"][0]["account_number"]}"'
         ),
     )
-    path = write_request(leaky, tmp_path, profile=load_profile("coreserv"))
+    path = write_request(leaky, tmp_path, sink=RedactionSink(load_profile("coreserv")))
     written = path.read_text(encoding="utf-8")
 
     assert member["ssn"] not in written
@@ -639,3 +640,50 @@ def test_control_is_released_when_the_run_ends(faults, creds, tmp_path):
 
     assert result.classification == "success"
     assert result.control["owner"] == "released"
+
+
+def test_one_sink_carries_this_run_s_secrets_into_every_writer(tmp_path):
+    """The leak this consolidation closed, demonstrated end to end.
+
+    register_secrets used to land on the engine's EvidenceWriter alone, and
+    write_request built its own sink -- which knew the app profile but not
+    this run's credentials. An app that renders the signed-on operator into
+    its own chrome (CoreServ prints "User: <operator>") therefore put a
+    credential into request.json that the engine masked everywhere else.
+    """
+    from capability.profile import load_profile
+    from capability.sink import RedactionSink
+    from replay.evidence import EvidenceWriter
+
+    artifact = load_artifact(BASE_PATH)
+    sink = RedactionSink(load_profile("coreserv"), artifact)
+    sink.register_secrets(["s3cretoperator"])
+
+    leaky_page = 'cell "User: s3cretoperator" cell "Member Search"'
+
+    # 1. evidence
+    evidence = EvidenceWriter(tmp_path / "run", artifact, sink=sink)
+    evidence.log("observation", {"page": leaky_page})
+    assert "s3cretoperator" not in (tmp_path / "run" / "steps.jsonl").read_text()
+
+    # 2. the intervention request
+    request = InterventionRequest(
+        run_id="run_shared", source="replay", goal="g", reason="r",
+        classification="hard_failure", snapshot=leaky_page)
+    written = write_request(request, tmp_path / "esc", sink=sink).read_text()
+    assert "s3cretoperator" not in written
+
+    # 3. the result returned to the caller
+    assert "s3cretoperator" not in sink.emit({"observed": leaky_page})
+
+
+def test_a_writer_given_no_sink_is_degraded_rather_than_permissive(tmp_path):
+    """A missing sink must not mean 'write it raw'."""
+    from capability.sink import null_sink
+
+    request = InterventionRequest(
+        run_id="run_bare", source="replay", goal="g", reason="r",
+        classification="hard_failure", snapshot='cell "ada@example.com"')
+    written = write_request(request, tmp_path).read_text()
+    assert "ada@example.com" not in written        # shape rules still apply
+    assert null_sink().degraded is True            # and it says it is degraded

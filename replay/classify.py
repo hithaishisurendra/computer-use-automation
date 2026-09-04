@@ -274,6 +274,27 @@ def _detect_matches(
     return False
 
 
+def detect_profile_outcomes(profile, page_text: str) -> Optional[Detection]:
+    """Answers the application gives that any flow may receive.
+
+    Without this a capability recorded from a happy-path run has `outcomes:
+    []` -- discovery never saw a not-found -- so "no such member" arrived as
+    a checkpoint failure and a 502. That is the exact mistake the brief calls
+    the most common design error: conflating a legitimate answer with a
+    crash. The recorder cannot invent these from a successful run, and the
+    app already knows them.
+    """
+    for outcome in getattr(profile, "business_outcomes", []) or []:
+        if outcome.text in page_text:
+            return Detection(
+                name=outcome.name,
+                layer="profile",
+                classification=outcome.classification,
+                message=outcome.message,
+            )
+    return None
+
+
 def classify(
     artifact: Artifact,
     step_outcome_names: list[str],
@@ -290,4 +311,9 @@ def classify(
     universal = detect_engine_universals(page_text, profile)
     if universal is not None:
         return universal
-    return detect_artifact_outcomes(artifact, step_outcome_names, page_text, url, params)
+    declared = detect_artifact_outcomes(artifact, step_outcome_names, page_text, url, params)
+    if declared is not None:
+        return declared
+    # App-level outcomes last, so a capability can always be more precise
+    # about its own flow than the application is about itself.
+    return detect_profile_outcomes(profile, page_text)

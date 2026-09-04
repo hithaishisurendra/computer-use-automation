@@ -144,5 +144,27 @@
   "entry_path": "/menu",
   "parameter_aliases": {
     "Value": "member_ref"
-  }
+  },
+  "business_outcomes": [
+    {
+      "name": "member_not_found",
+      "text": "No member records matched your search.",
+      "message": "No member exists with the supplied identifier."
+    },
+    {
+      "name": "insufficient_funds",
+      "text": "Insufficient available balance in the source share.",
+      "message": "The source share does not hold enough to cover the transfer."
+    },
+    {
+      "name": "share_on_hold",
+      "text": "Source share is HOLD and cannot be debited.",
+      "message": "The source share is on hold and cannot be debited."
+    },
+    {
+      "name": "supervisor_override_required",
+      "text": "is not authorized to perform this function",
+      "message": "The signed-on operator lacks the privilege for this function; a supervisor must perform it."
+    }
+  ]
 }
