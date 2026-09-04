@@ -1,0 +1,100 @@
+STEP: 06_transfer_form
+page.url: https://web-sample.interface-hiring.com/members/100234/transfer
+frame count: 1
+NOTE: sensitive values below are masked on write. Node and token counts are measured BEFORE masking, so they reflect what perception actually produces for an LLM.
+==============================================================================
+
+--- FRAME name='' url='https://web-sample.interface-hiring.com/members/100234/transfer' ---
+raw node count: 88
+raw estimated tokens (full JSON snapshot): 13304
+filtered node count: 85
+filtered estimated tokens (compact text): 1069
+
+interactive controls: 48/48 named ({'platform': 44, 'preceding_td': 4})
+
+compact rendering:
+document
+  table
+    rowgroup
+      row
+        cell "MERIDIAN CORE Member Services Platform v4.2.1 Cornerstone Financial Systems™"
+          text "Member Services Platform v4.2.1"
+      row
+        cell
+          generic
+            link "Main Menu" [href=/menu]
+            text "·"
+            link "Member Inquiry" [href=/members]
+            text "·"
+            link "System Settings" [href=/settings]
+            text "·"
+            link "Sign Off" [href=/signoff]
+      row
+        cell
+          heading "FUNDS TRANSFER" [level=1]
+          text "Member 100234 - <redacted:pii>"
+          table
+            rowgroup
+              row
+                cell "* From Share"
+                cell "100234-S0001 - Regular Shares ($2,499.00)"
+                  combobox "From Share" [name_source=preceding_td]
+                    option "100234-S0001 - Regular Shares ($2,499.00)" [selected=True]
+                    option "100234-S0070 - Share Draft (Checking) ($1,240.55)"
+                    option "100234-MMKT-3 - Money Market ($11.00)"
+                    option "100234-MMKT-4 - Money Market ($25.00)"
+                    option "100234-S0001-5 - Regular Shares ($23.00)"
+                    option "100234-S0001-6 - Regular Shares ($40.00)"
+                    option "100234-MMKT-7 - Money Market ($30.00)"
+                    option "100234-MMKT-8 - Money Market ($15.00)"
+                    option "100234-MMKT-9 - Money Market ($201.00)"
+                    option "100234-MMKT-10 - Money Market ($20.00)"
+                    option "100234-MMKT-11 - Money Market ($21.00)"
+                    option "100234-S0001-12 - Regular Shares ($50.00)"
+                    option "100234-S0001-13 - Regular Shares ($10.00)"
+                    option "100234-S0001-14 - Regular Shares ($100.00)"
+                    option "100234-CERT-15 - Certificate ($500.00)"
+                    option "100234-MMKT-16 - Money Market ($25.00)"
+                    option "100234-S0070-17 - Share Draft (Checking) ($50.00)"
+                    option "100234-S0001-18 - Regular Shares ($11.00)"
+                    option "100234-S0001-19 - Regular Shares ($99.00)"
+              row
+                cell "* To Share"
+                cell "100234-S0001 - Regular Shares ($2,499.00)"
+                  combobox "To Share" [name_source=preceding_td]
+                    option "100234-S0001 - Regular Shares ($2,499.00)" [selected=True]
+                    option "100234-S0070 - Share Draft (Checking) ($1,240.55)"
+                    option "100234-MMKT-3 - Money Market ($11.00)"
+                    option "100234-MMKT-4 - Money Market ($25.00)"
+                    option "100234-S0001-5 - Regular Shares ($23.00)"
+                    option "100234-S0001-6 - Regular Shares ($40.00)"
+                    option "100234-MMKT-7 - Money Market ($30.00)"
+                    option "100234-MMKT-8 - Money Market ($15.00)"
+                    option "100234-MMKT-9 - Money Market ($201.00)"
+                    option "100234-MMKT-10 - Money Market ($20.00)"
+                    option "100234-MMKT-11 - Money Market ($21.00)"
+                    option "100234-S0001-12 - Regular Shares ($50.00)"
+                    option "100234-S0001-13 - Regular Shares ($10.00)"
+                    option "100234-S0001-14 - Regular Shares ($100.00)"
+                    option "100234-CERT-15 - Certificate ($500.00)"
+                    option "100234-MMKT-16 - Money Market ($25.00)"
+                    option "100234-S0070-17 - Share Draft (Checking) ($50.00)"
+                    option "100234-S0001-18 - Regular Shares ($11.00)"
+                    option "100234-S0001-19 - Regular Shares ($99.00)"
+              row
+                cell "* Amount"
+                cell "$"
+                  text "$"
+                  textbox "Amount" [name_source=preceding_td]
+              row
+                cell "Memo"
+                cell
+                  textbox "Memo" [name_source=preceding_td]
+              row
+                cell
+                  button "Continue"
+                  link "Cancel" [href=/members/100234]
+      row
+        cell "OPR TELLER1 | BR MAIN-001 | 09/03/2026 04:48:54 | SID A14F786A"
+      row
+        cell "F3=Sign Off F5=Main Menu F7=Member Inquiry F12=Cancel"

@@ -132,6 +132,32 @@ def test_extract_into_undeclared_output_is_rejected(tmp_path, base_data):
     assert "not_an_output" in str(exc.value)
 
 
+def test_risky_step_without_a_checkpoint_is_rejected(tmp_path, base_data):
+    """An irreversible action with no checkpoint is unverifiable, and the
+    escalation model depends on verification: a human performs the step and
+    the checkpoint is what confirms it landed. Caught at load time so it fails
+    before a browser opens, rather than mid-run after a person has acted."""
+    step = base_data["steps"][4]          # s5, an extract with no checkpoint
+    step["risk"] = "risky"
+    with pytest.raises(ArtifactError) as exc:
+        load_artifact(write(tmp_path, base_data))
+    message = str(exc.value)
+    assert "s5" in message
+    assert "checkpoint" in message
+    assert "cannot be verified" in message
+
+
+def test_risky_step_with_a_checkpoint_loads(tmp_path, base_data):
+    """The rule is about verifiability, not about forbidding risky steps."""
+    step = base_data["steps"][4]
+    step["risk"] = "risky"
+    step["checkpoint"] = {
+        "type": "text_present", "text": "Transfer posted", "timeout_ms": 5000,
+    }
+    artifact = load_artifact(write(tmp_path, base_data))
+    assert artifact.steps[4].risk == "risky"
+
+
 def test_template_param_with_no_matching_input_is_rejected(tmp_path, base_data):
     base_data["steps"][1]["value"] = "{{nonexistent_param}}"
     with pytest.raises(ArtifactError) as exc:

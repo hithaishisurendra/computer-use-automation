@@ -20,20 +20,92 @@ reusable capability rather than a macro recording:
    input, so the capability is callable with a different member rather than
    hardcoded to the one it was discovered with.
 
+4. **Irreversible-looking steps are marked risky.** A click whose resolved
+   control name matches a post-like verb from the app profile is recorded as
+   `risk: "risky"`, which makes replay refuse to perform it unattended. This
+   is a first guess, not a determination -- verb matching cannot reliably
+   detect irreversibility in a legacy UI -- so every decision AND every
+   near-miss is written into the artifact and the evidence log, where the
+   draft -> approved review can see what the heuristic weighed.
+
 Everything is emitted as `status: "draft"`. Discovery does not get to approve
 its own output.
 """
 
 from __future__ import annotations
 
+import json
 import re
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from pathlib import Path
 from urllib.parse import urlparse
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 from capability.schema import SCHEMA_VERSION
 from discovery.loop import Cycle, DiscoveryOutcome
 from replay import resolver
+
+DEFAULT_PROFILES_PATH = Path(__file__).resolve().parent / "app_profiles.json"
+
+
+@dataclass(frozen=True)
+class RiskRules:
+    """Per-app vocabulary for the risky-step heuristic.
+
+    Loaded from discovery/app_profiles.json rather than hardcoded here: which
+    words mean "commit" is knowledge about a target, not about recording.
+    """
+
+    app: str = "default"
+    post_like_verbs: tuple[str, ...] = ()
+    near_miss_verbs: tuple[str, ...] = ()
+
+    def match(self, control_name: str) -> Optional[str]:
+        """The post-like verb this control name matches, if any."""
+        return _first_word_match(control_name, self.post_like_verbs)
+
+    def near_miss(self, control_name: str) -> Optional[str]:
+        """A verb that was considered and deliberately not treated as risky."""
+        return _first_word_match(control_name, self.near_miss_verbs)
+
+
+def _first_word_match(text: str, verbs: tuple[str, ...]) -> Optional[str]:
+    """Whole-word, case-insensitive. Word boundaries matter: a substring test
+    would match 'Post' inside 'Postal Address' and 'Save' inside 'Saved
+    Searches', neither of which is a commit."""
+    haystack = text or ""
+    for verb in verbs:
+        if re.search(rf"\b{re.escape(verb)}\b", haystack, re.IGNORECASE):
+            return verb
+    return None
+
+
+def load_risk_rules(
+    app: str, path: str | Path = DEFAULT_PROFILES_PATH
+) -> RiskRules:
+    """Read the app's risk vocabulary, falling back to the default profile.
+
+    An app with no entry is not an error -- it means the default vocabulary
+    applies, which is the expected case for a target nobody has specialised
+    yet. Keys beginning with '_' are commentary.
+    """
+    data = json.loads(Path(path).read_text(encoding="utf-8"))
+    base = data.get("default") or {}
+    profile = {k: v for k, v in (data.get(app) or {}).items() if not k.startswith("_")}
+    merged = {**base, **profile}
+    return RiskRules(
+        app=app if app in data else "default",
+        post_like_verbs=tuple(merged.get("post_like_verbs") or ()),
+        near_miss_verbs=tuple(merged.get("near_miss_verbs") or ()),
+    )
+
+
+DEFAULT_RISK_RULES = RiskRules(
+    post_like_verbs=("Post", "Confirm", "Transfer", "Save", "Delete"),
+    near_miss_verbs=("Submit", "Apply", "Send", "Update", "Continue", "Accept",
+                     "Approve", "Authorize", "Remove", "Void", "Reverse", "OK"),
+)
 
 # Strategy order: most robust first. role_name is preferred when it is
 # unambiguous because it survives the row a record happens to occupy;
@@ -309,10 +381,31 @@ def record(
     policy: Any,
     goal: str,
     model: str,
+    risk_rules: "RiskRules" = DEFAULT_RISK_RULES,
+    log: Optional[Callable[[str, dict[str, Any]], None]] = None,
 ) -> dict[str, Any]:
-    """Build the artifact dict from a successful discovery run."""
+    """Build the artifact dict from a successful discovery run.
+
+    `risk_rules` is the app profile's commit vocabulary (see load_risk_rules).
+    `log` is the discovery loop's evidence logger, if one is available; every
+    risk decision and every near-miss goes through it so the heuristic's
+    reasoning is in the run's evidence, not only in the artifact.
+    """
     if not outcome.succeeded:
         raise ValueError(f"cannot record an artifact from a {outcome.status!r} run")
+
+    def emit(event: str, payload: dict[str, Any]) -> None:
+        if log is not None:
+            log(event, payload)
+
+    # The page state that followed each action, used to give a terminal risky
+    # click a checkpoint. Read off the NEXT cycle's observation, including the
+    # goal_reached cycle -- which is the only observation of the page a final
+    # post produced.
+    after_url: dict[int, Optional[str]] = {}
+    for i, c in enumerate(outcome.cycles):
+        nxt = outcome.cycles[i + 1] if i + 1 < len(outcome.cycles) else None
+        after_url[id(c)] = nxt.url if nxt else None
 
     # Only the path that worked. Failed and retried cycles are dropped here,
     # which is the whole point of the artifact being separate from the
@@ -334,6 +427,7 @@ def record(
     steps: list[dict[str, Any]] = []
     outputs: list[dict[str, Any]] = []
     unrecordable: list[str] = []
+    risk_notes: list[str] = []
 
     for position, cycle in enumerate(acted, start=1):
         step_id = f"s{position}"
@@ -376,12 +470,47 @@ def record(
             "notes": "Chain built by probing which strategies uniquely resolved this element during discovery.",
         }
 
+        # Risk classification. Only clicks: a fill or a select changes a form,
+        # the click is what sends it. The resolved control's own accessible
+        # name is authoritative over what the model said it was targeting.
+        control_name = (node.get("name") or cycle.tool_input.get("name") or "").strip()
+        risk = "safe"
+        step_note: Optional[str] = None
+        if action == "click":
+            matched = risk_rules.match(control_name)
+            near = None if matched else risk_rules.near_miss(control_name)
+            if matched:
+                risk = "risky"
+                step_note = (
+                    f"Marked risky by the recorder: the control name {control_name!r} "
+                    f"matched the post-like verb {matched!r} in app profile "
+                    f"{risk_rules.app!r}. This is a heuristic first guess, not a "
+                    "determination -- confirm it during the draft -> approved review."
+                )
+                risk_notes.append(f"{step_id} risky: {control_name!r} via {matched!r}")
+                emit("risk_classified", {
+                    "step_id": step_id, "control": control_name,
+                    "decision": "risky", "matched_verb": matched, "profile": risk_rules.app,
+                })
+            elif near:
+                risk_notes.append(
+                    f"{step_id} near-miss: {control_name!r} contains {near!r}, "
+                    "which the profile does not treat as a commit"
+                )
+                emit("risk_classified", {
+                    "step_id": step_id, "control": control_name,
+                    "decision": "safe", "near_miss_verb": near, "profile": risk_rules.app,
+                })
+
         step: dict[str, Any] = {
             "id": step_id,
             "action": action,
             "element": key,
-            "risk": "safe",
+            "risk": risk,
         }
+        if step_note:
+            step["notes"] = step_note
+        step["_after_url"] = after_url.get(id(cycle))
         if action in ("fill", "select"):
             value = cycle.tool_input.get("value", "")
             for param, example in params.items():
@@ -405,7 +534,8 @@ def record(
 
     steps = _ensure_opening_navigate(steps, acted, target)
     steps = _renumber(steps)
-    steps = _add_checkpoints(steps, elements)
+    steps, checkpoint_problems = _add_checkpoints(steps, elements, params)
+    unrecordable.extend(checkpoint_problems)
 
     used_actions = sorted({s["action"] for s in steps})
     artifact = {
@@ -448,6 +578,7 @@ def record(
                 "which strategies uniquely resolved each element at the moment it was acted "
                 "on; ambiguous strategies were discarded rather than recorded. "
                 "outcomes[] is empty because a happy-path run observes no business outcomes."
+                + _risk_summary(risk_rules, risk_notes)
                 + (f" Unrecordable: {'; '.join(unrecordable)}" if unrecordable else "")
             ),
         },
@@ -542,25 +673,110 @@ def _renumber(steps: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return steps
 
 
+def _risk_summary(risk_rules: "RiskRules", notes: list[str]) -> str:
+    """What the risk heuristic decided, in the artifact a reviewer reads.
+
+    Written even when nothing matched, so "the heuristic found nothing" is
+    distinguishable from "the heuristic did not run".
+    """
+    profile = f"app profile {risk_rules.app!r}"
+    if not notes:
+        return (
+            f" Risk heuristic ({profile}): no clicked control matched or neared a "
+            "post-like verb."
+        )
+    return (
+        f" Risk heuristic ({profile}; a first guess for review, not a determination): "
+        + "; ".join(notes)
+        + "."
+    )
+
+
+def _url_checkpoint(after: Optional[str], params: dict[str, Any]) -> Optional[dict[str, Any]]:
+    """A checkpoint asserting the flow landed where this action took it.
+
+    Used for a step that has no following control to assert -- which is
+    exactly the shape of a terminal post: click, confirmation screen, done.
+    The URL is what discovery actually observed afterwards, and it is
+    parameterised so the checkpoint travels to the next member the capability
+    is invoked for rather than pinning the one it was discovered on.
+
+    URL rather than page text on purpose. A server-rendered console tends to
+    put a live clock and a session id in its status bar, so text observed
+    after an action is not reliably the same text on the next run; the path
+    is.
+    """
+    if not after:
+        return None
+    path = urlparse(after).path
+    if not path:
+        return None
+
+    # Parameterise whole path segments only. A blunt substring replace would
+    # rewrite any occurrence of the value -- a two-character example would
+    # perforate half the path -- so a segment is substituted only when it IS
+    # the discovered value, not when it merely contains it.
+    examples = {str(v) for v in params.values() if v not in (None, "")}
+    segments = [
+        "[^/]+" if segment in examples else re.escape(segment)
+        for segment in path.split("/")
+    ]
+    return {"type": "url_matches", "pattern": "/".join(segments) + "$", "timeout_ms": 8000}
+
+
 def _add_checkpoints(
-    steps: list[dict[str, Any]], elements: dict[str, dict[str, Any]]
-) -> list[dict[str, Any]]:
+    steps: list[dict[str, Any]],
+    elements: dict[str, dict[str, Any]],
+    params: Optional[dict[str, Any]] = None,
+) -> tuple[list[dict[str, Any]], list[str]]:
     """Assert, after each navigating step, that the next step's target exists.
 
     A click that silently does nothing is the most common failure in UI
     automation, and this is the strongest checkpoint discovery can justify
     from what it actually observed: the run did reach a state where the next
     control was present.
+
+    A step marked risky must end up with a checkpoint or the artifact will not
+    load -- the schema rejects an unverifiable irreversible step, because the
+    escalation model depends on being able to confirm that a human's manual
+    action landed. The rule above cannot supply one for a terminal post, which
+    by definition has no following control, so such a step falls back to the
+    URL the action was observed to produce. Returns any step it still could
+    not give one, so the caller can report it rather than emit an artifact
+    that fails validation for reasons nobody wrote down.
     """
+    params = params or {}
+    problems: list[str] = []
+
     for i, step in enumerate(steps):
+        after = step.pop("_after_url", None)
         if step["action"] not in ("navigate", "click"):
             continue
         following = next((s for s in steps[i + 1 :] if s.get("element")), None)
-        if following is None:
+        if following is not None:
+            step["checkpoint"] = {
+                "type": "element_present",
+                "element": following["element"],
+                "timeout_ms": 8000,
+            }
             continue
-        step["checkpoint"] = {
-            "type": "element_present",
-            "element": following["element"],
-            "timeout_ms": 8000,
-        }
-    return steps
+        if step.get("risk") != "risky":
+            continue
+        fallback = _url_checkpoint(after, params)
+        if fallback is None:
+            problems.append(
+                f"{step['id']}: marked risky but no checkpoint could be derived -- no "
+                "following control to assert and no post-action URL was observed. The "
+                "artifact will fail validation, which is the correct outcome: an "
+                "unverifiable irreversible step must not be recorded as if it were fine."
+            )
+            continue
+        step["checkpoint"] = fallback
+
+    # Steps that never reached the loop body's pop (navigate steps added by
+    # _ensure_opening_navigate carry no _after_url) are cleaned here so the
+    # private key can never survive into the artifact.
+    for step in steps:
+        step.pop("_after_url", None)
+
+    return steps, problems

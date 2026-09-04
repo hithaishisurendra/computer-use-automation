@@ -230,6 +230,132 @@ def test_request_renders_for_a_human(request_obj):
 
 
 # ---------------------------------------------------------------------------
+# Risky steps reach a human
+#
+# The claim: "requires confirmation" means a person performs the irreversible
+# action themselves, in this same live session, and the checkpoint is what
+# confirms it landed. Automation never performs it, before or after approval.
+# ---------------------------------------------------------------------------
+
+from tests.conftest import Observations, build_engine, make_artifact  # noqa: E402
+
+RISKY_CLICK = {
+    "id": "s1",
+    "action": "click",
+    "element": "post_button",
+    "risk": "risky",
+    "checkpoint": {"type": "text_present", "text": "TRANSFER POSTED", "timeout_ms": 300},
+}
+
+
+def _run_flow(engine, params=None):
+    from replay.result import ReplayResult
+
+    result = ReplayResult(
+        classification="success", capability_id="t", capability_version="1.0.0",
+        tenant="t", run_id=engine.run_id,
+    )
+    asyncio.run(engine._run_flow(params or {}, result))
+    return result
+
+
+def test_risky_step_with_escalation_raises_an_intervention_request(tmp_path):
+    operator = ScriptedOperator([OperatorDecision(Decision.ABORT, notes="not authorised")])
+    engine = build_engine(
+        make_artifact([RISKY_CLICK]), tmp_path, escalate=True, operator=operator
+    )
+    result = _run_flow(engine)
+
+    assert len(operator.seen) == 1, "the risky step must reach the operator"
+    request = operator.seen[0]
+    assert request.classification == "risk_blocked"
+    assert request.step_id == "s1"
+    assert "irreversible" in request.reason
+    assert "Perform the step manually" in request.reason
+    assert "TRANSFER POSTED" in request.expected
+    assert "not performed" in request.observed
+
+    written = json.loads(Path(result.evidence["intervention_request"]).read_text())
+    assert written["stopped"]["classification"] == "risk_blocked"
+    assert engine.executor.calls == [], "automation must not have performed the step"
+
+
+def test_operator_performing_the_step_lets_the_run_continue(tmp_path):
+    """The human acts on the live session; the checkpoint verifies it landed;
+    automation resumes at the NEXT step without re-performing this one."""
+    obs = Observations(page_text="")
+
+    def human_posts_it(request):
+        obs.page_text = "TRANSFER POSTED"
+
+    operator = ScriptedOperator(
+        [OperatorDecision(Decision.RESUME, notes="posted manually", operator="super1")],
+        on_control=human_posts_it,
+    )
+    artifact = make_artifact([
+        RISKY_CLICK,
+        {"id": "s2", "action": "click", "element": "post_button", "risk": "safe"},
+    ])
+    engine = build_engine(
+        artifact, tmp_path, observations=obs, escalate=True, operator=operator
+    )
+    result = _run_flow(engine)
+
+    assert engine.executor.calls == ["s2"], "s1 was performed by the human, not replayed"
+    assert result.classification == "success"
+    assert result.human_interventions[0]["decision"] == "resume"
+
+
+def test_resume_without_actually_doing_it_does_not_pass(tmp_path):
+    """A resume is not evidence. If the checkpoint still fails, the run stops
+    rather than trusting the operator's report that the transfer went through."""
+    operator = ScriptedOperator([OperatorDecision(Decision.RESUME, notes="said done")])
+    engine = build_engine(
+        make_artifact([RISKY_CLICK]), tmp_path,
+        observations=Observations(page_text=""), escalate=True, operator=operator,
+    )
+    result = _run_flow(engine)
+
+    assert result.classification == "hard_failure"
+    assert "checkpoint still fails" in result.message
+    assert engine.executor.calls == []
+
+
+def test_escalate_refuses_to_succeed_for_a_risky_step_with_no_checkpoint(tmp_path):
+    """Artifact validation rejects this shape at load time. This holds the
+    invariant if one reaches the engine another way -- a hand-built step, a
+    future code path -- because assuming a transfer landed is exactly the
+    failure the checkpoint exists to prevent."""
+    artifact = make_artifact([RISKY_CLICK])
+    uncheckable = artifact.steps[0].model_copy(update={"checkpoint": None})
+    operator = ScriptedOperator([OperatorDecision(Decision.RESUME, notes="done")])
+    engine = build_engine(artifact, tmp_path, escalate=True, operator=operator)
+
+    from replay.result import ReplayResult
+
+    result = ReplayResult(
+        classification="hard_failure", capability_id="t", capability_version="1.0.0",
+        tenant="t", run_id=engine.run_id,
+    )
+    resumed = asyncio.run(engine._escalate(uncheckable, {}, result, classification="risk_blocked"))
+
+    assert resumed is False
+    assert "cannot be verified" in result.message
+
+
+def test_block_policy_never_reaches_the_operator(tmp_path):
+    operator = ScriptedOperator([OperatorDecision(Decision.RESUME)])
+    engine = build_engine(
+        make_artifact([RISKY_CLICK], risky_handling="block"), tmp_path,
+        escalate=True, operator=operator,
+    )
+    result = _run_flow(engine)
+
+    assert operator.seen == [], "'block' means no; there is nothing to ask"
+    assert result.classification == "hard_failure"
+
+
+# ---------------------------------------------------------------------------
 # Human activity capture
 # ---------------------------------------------------------------------------
 

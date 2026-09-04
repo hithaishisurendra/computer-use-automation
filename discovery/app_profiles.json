@@ -1,0 +1,45 @@
+{
+  "_comment": [
+    "Per-app vocabulary the recorder uses to make a FIRST GUESS at which",
+    "recorded clicks are irreversible. It lives here, beside policy.json,",
+    "rather than in recorder.py because it is target-specific knowledge, not",
+    "recording logic -- a second app gets a second entry, not a code change.",
+    "",
+    "This is a heuristic and it is not a determination. Verb matching cannot",
+    "reliably detect irreversibility in a legacy UI: the same word commits on",
+    "one screen and navigates on another, and an app is free to label its",
+    "post button 'OK'. The recorder proposes; a human disposes during the",
+    "draft -> approved review. That is what capability.status: 'draft' is for,",
+    "and why every decision below is written into the artifact where a",
+    "reviewer will see it rather than only into a log.",
+    "",
+    "post_like_verbs  matched with word boundaries, case-insensitively,",
+    "                 against the resolved accessible name of a clicked",
+    "                 control. A match records the step as risk: 'risky'.",
+    "",
+    "near_miss_verbs  considered and NOT treated as risky. Recorded as",
+    "                 near-misses so a reviewer can see what the heuristic",
+    "                 weighed, not just what it concluded. 'Submit' sits here",
+    "                 on purpose: it is the generic verb for sending any form,",
+    "                 including a search, so treating it as a commit would",
+    "                 mark read-only lookups risky and block them under",
+    "                 require_confirmation. An app where Submit really does",
+    "                 mean post moves it into post_like_verbs for that app."
+  ],
+
+  "default": {
+    "post_like_verbs": ["Post", "Confirm", "Transfer", "Save", "Delete"],
+    "near_miss_verbs": [
+      "Submit", "Apply", "Send", "Update", "Continue", "Accept",
+      "Approve", "Authorize", "Remove", "Void", "Reverse", "OK"
+    ]
+  },
+
+  "coreserv": {
+    "_note": [
+      "Inherits the default set. CoreServ's search form submits with a button",
+      "named 'Submit', which is exactly the read-only case the default set is",
+      "shaped to leave alone."
+    ]
+  }
+}

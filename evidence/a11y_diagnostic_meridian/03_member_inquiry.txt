@@ -1,0 +1,52 @@
+STEP: 03_member_inquiry
+page.url: https://web-sample.interface-hiring.com/members
+frame count: 1
+NOTE: sensitive values below are masked on write. Node and token counts are measured BEFORE masking, so they reflect what perception actually produces for an LLM.
+==============================================================================
+
+--- FRAME name='' url='https://web-sample.interface-hiring.com/members' ---
+raw node count: 39
+raw estimated tokens (full JSON snapshot): 4790
+filtered node count: 37
+filtered estimated tokens (compact text): 311
+
+interactive controls: 9/9 named ({'platform': 7, 'preceding_td': 2})
+
+compact rendering:
+document
+  table
+    rowgroup
+      row
+        cell "MERIDIAN CORE Member Services Platform v4.2.1 Cornerstone Financial Systems™"
+          text "Member Services Platform v4.2.1"
+      row
+        cell
+          generic
+            link "Main Menu" [href=/menu]
+            text "·"
+            link "Member Inquiry" [href=/members]
+            text "·"
+            link "System Settings" [href=/settings]
+            text "·"
+            link "Sign Off" [href=/signoff]
+      row
+        cell
+          heading "MEMBER INQUIRY / SELECTION" [level=1]
+          table
+            rowgroup
+              row
+                cell "Search by"
+                cell "Member Number"
+                  combobox "Search by" [name_source=preceding_td]
+                    option "Member Number" [selected=True]
+                    option "Last Name"
+              row
+                cell "Value"
+                cell
+                  textbox "Value" [name_source=preceding_td]
+                  button "Search"
+          text "Try member numbers 100234, 100987, 101555, 102777, 103001."
+      row
+        cell "OPR TELLER1 | BR MAIN-001 | 09/03/2026 04:48:54 | SID A14F786A"
+      row
+        cell "F3=Sign Off F5=Main Menu F7=Member Inquiry F12=Cancel"

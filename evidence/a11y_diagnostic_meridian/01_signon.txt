@@ -1,0 +1,48 @@
+STEP: 01_signon
+page.url: https://web-sample.interface-hiring.com/signon
+frame count: 1
+NOTE: sensitive values below are masked on write. Node and token counts are measured BEFORE masking, so they reflect what perception actually produces for an LLM.
+==============================================================================
+
+--- FRAME name='' url='https://web-sample.interface-hiring.com/signon' ---
+raw node count: 37
+raw estimated tokens (full JSON snapshot): 4701
+filtered node count: 33
+filtered estimated tokens (compact text): 312
+
+interactive controls: 7/7 named ({'preceding_td': 3, 'platform': 4})
+
+compact rendering:
+document
+  table
+    rowgroup
+      row
+        cell "MERIDIAN CORE Member Services Platform v4.2.1 Cornerstone Financial Systems™"
+          text "Member Services Platform v4.2.1"
+      row
+        cell "OPERATOR SIGN ON Operator ID: Password: Branch: MAIN-001 - Main Office Sign On Demo operators: teller1 / password · super1 / password (supervisor)"
+          heading "OPERATOR SIGN ON" [level=1]
+          table
+            rowgroup
+              row
+                cell "Operator ID"
+                cell
+                  textbox "Operator ID" [name_source=preceding_td]
+              row
+                cell "Password"
+                cell
+                  textbox "Password" [name_source=preceding_td]
+              row
+                cell "Branch"
+                cell "MAIN-001 - Main Office"
+                  combobox "Branch" [name_source=preceding_td]
+                    option "MAIN-001 - Main Office" [selected=True]
+                    option "WEST-014 - Westside"
+                    option "EAST-022 - Eastgate"
+              row
+                cell
+                  button "Sign On"
+      row
+        cell "NOT SIGNED ON | 09/03/2026 04:48:52"
+      row
+        cell "F3=Sign Off F5=Main Menu F7=Member Inquiry F12=Cancel"

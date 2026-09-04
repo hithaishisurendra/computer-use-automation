@@ -1,0 +1,64 @@
+STEP: 04_search_results
+page.url: https://web-sample.interface-hiring.com/members?by=number&q=100234
+frame count: 1
+NOTE: sensitive values below are masked on write. Node and token counts are measured BEFORE masking, so they reflect what perception actually produces for an LLM.
+==============================================================================
+
+--- FRAME name='' url='https://web-sample.interface-hiring.com/members?by=number&q=100234' ---
+raw node count: 52
+raw estimated tokens (full JSON snapshot): 6866
+filtered node count: 49
+filtered estimated tokens (compact text): 398
+
+interactive controls: 10/10 named ({'platform': 8, 'preceding_td': 2})
+
+compact rendering:
+document
+  table
+    rowgroup
+      row
+        cell "MERIDIAN CORE Member Services Platform v4.2.1 Cornerstone Financial Systems™"
+          text "Member Services Platform v4.2.1"
+      row
+        cell
+          generic
+            link "Main Menu" [href=/menu]
+            text "·"
+            link "Member Inquiry" [href=/members]
+            text "·"
+            link "System Settings" [href=/settings]
+            text "·"
+            link "Sign Off" [href=/signoff]
+      row
+        cell
+          heading "MEMBER INQUIRY / SELECTION" [level=1]
+          table
+            rowgroup
+              row
+                cell "Search by"
+                cell "Member Number"
+                  combobox "Search by" [name_source=preceding_td]
+                    option "Member Number" [selected=True]
+                    option "Last Name"
+              row
+                cell "Value"
+                cell
+                  textbox "Value" [value=100234, name_source=preceding_td]
+                  button "Search"
+          table
+            rowgroup
+              row
+                cell "Member No."
+                cell "Name"
+                cell "Shares"
+              row
+                cell "100234"
+                cell "<redacted:pii>"
+                cell "19"
+                cell
+                  link "Select" [href=/members/100234]
+          text "Try member numbers 100234, 100987, 101555, 102777, 103001."
+      row
+        cell "OPR TELLER1 | BR MAIN-001 | 09/03/2026 04:48:54 | SID A14F786A"
+      row
+        cell "F3=Sign Off F5=Main Menu F7=Member Inquiry F12=Cancel"
