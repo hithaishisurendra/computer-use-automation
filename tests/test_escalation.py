@@ -196,9 +196,12 @@ def test_request_carries_every_piece_of_required_context(request_obj):
     assert payload["raised_at"]
 
 
-def test_request_is_written_through_the_seed_scrubber(tmp_path):
+def test_request_is_written_through_the_profile_scrubber(tmp_path):
     """An intervention request is a whole-page capture by construction, so
-    pattern-only scrubbing would miss names and account numbers."""
+    pattern-only scrubbing would miss names and account numbers. The literals
+    come from the app profile now rather than from a CoreServ import inside
+    the redaction module."""
+    from capability.profile import load_profile
     from coreserv.data import MEMBERS
 
     member = MEMBERS[0]
@@ -213,7 +216,7 @@ def test_request_is_written_through_the_seed_scrubber(tmp_path):
             f'cell "{member["address"]}" cell "{member["accounts"][0]["account_number"]}"'
         ),
     )
-    path = write_request(leaky, tmp_path)
+    path = write_request(leaky, tmp_path, profile=load_profile("coreserv"))
     written = path.read_text(encoding="utf-8")
 
     assert member["ssn"] not in written

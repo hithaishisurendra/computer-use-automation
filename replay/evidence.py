@@ -23,21 +23,26 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
-from capability.redaction import Scrubber
+from capability.redaction import Scrubber, profile_scrubber
 from capability.schema import Artifact
 from capability.validate import describe_credentials, redact
 
 
 class EvidenceWriter:
-    def __init__(self, directory: Path, artifact: Artifact):
+    def __init__(self, directory: Path, artifact: Artifact, profile=None):
         self.dir = Path(directory)
         self.dir.mkdir(parents=True, exist_ok=True)
         self.artifact = artifact
         self.log_path = self.dir / "steps.jsonl"
-        # Shape-based rules only by default: a replay runs against live data
-        # it cannot enumerate. Known literals (this run's credentials) are
-        # registered on top via register_secrets.
-        self.scrubber = Scrubber()
+        # Shape rules plus whatever the app profile declares. A replay runs
+        # against live data it cannot enumerate, so patterns carry the load;
+        # a profile's literals are precision on top. Known literals for this
+        # run (its credentials) are registered via register_secrets.
+        self.scrubber = profile_scrubber(profile)
+        # Written before anything else, so evidence records what redaction was
+        # actually configured with rather than leaving it to be inferred from
+        # what did or did not get masked.
+        self.log("redaction_configured", self.scrubber.sources.describe())
 
     # -- redaction ----------------------------------------------------------
 
@@ -59,6 +64,10 @@ class EvidenceWriter:
 
     def _scrub_obj(self, obj: Any) -> Any:
         return self.scrubber.scrub_obj(obj)
+
+    def redaction_warning(self) -> Optional[str]:
+        """Non-None when this writer is scrubbing by shape rules only."""
+        return self.scrubber.sources.warning() if self.scrubber.sources else None
 
     def redact_outputs(self, outputs: dict[str, Any]) -> dict[str, Any]:
         """Mask declared outputs by their sensitivity for logging."""

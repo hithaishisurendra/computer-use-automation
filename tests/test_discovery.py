@@ -520,9 +520,10 @@ def test_risk_decisions_and_near_misses_are_logged(results_tree):
 
 def test_verb_vocabulary_comes_from_the_app_profile(results_tree):
     """Which words mean commit is per-app knowledge, so it is configuration."""
-    from discovery.recorder import RiskRules, load_risk_rules
+    from capability.profile import load_profile
+    from discovery.recorder import RiskRules, risk_rules_from_profile
 
-    default = load_risk_rules("coreserv")
+    default = risk_rules_from_profile(load_profile("coreserv"))
     assert "Post" in default.post_like_verbs
     assert "Submit" in default.near_miss_verbs
 

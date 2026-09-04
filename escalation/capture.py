@@ -33,7 +33,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
-from capability.redaction import seed_data_scrubber
+from capability.redaction import profile_scrubber
 
 
 def _control_lines(snapshot: str) -> set[str]:
@@ -86,9 +86,13 @@ class HumanActivity:
 class HumanActionCapture:
     """Brackets a handoff and diffs the session across it."""
 
-    def __init__(self, page, perceive):
+    def __init__(self, page, perceive, content_frame: Optional[str] = None):
         self.page = page
         self.perceive = perceive
+        # Which frame's URL identifies "where the session is" is a property of
+        # the application, so the caller supplies it from the app profile.
+        # None means the document itself.
+        self.content_frame = content_frame
         self._before_snapshot: str = ""
         self.activity: Optional[HumanActivity] = None
 
@@ -96,10 +100,13 @@ class HumanActionCapture:
         from perception.tree import filter_tree, to_compact_text
 
         url = self.page.url
-        try:
-            url = next((f.url for f in self.page.frames if f.name == "content"), url)
-        except Exception:
-            pass
+        if self.content_frame is not None:
+            try:
+                url = next(
+                    (f.url for f in self.page.frames if f.name == self.content_frame), url
+                )
+            except Exception:
+                pass
         try:
             frames = await self.perceive()
             text = "\n".join(
@@ -138,12 +145,13 @@ class HumanActionCapture:
 
 
 def write_activity(
-    run_id: str, activity: HumanActivity, session_state: dict[str, Any], root: str | Path
+    run_id: str, activity: HumanActivity, session_state: dict[str, Any], root: str | Path,
+    profile=None,
 ) -> Path:
     """Persist the handoff record, scrubbed."""
     directory = Path(root) / run_id
     directory.mkdir(parents=True, exist_ok=True)
-    scrubber = seed_data_scrubber()
+    scrubber = profile_scrubber(profile)
     payload = scrubber.scrub_obj(
         {"human_activity": activity.as_dict(), "control": session_state}
     )

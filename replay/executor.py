@@ -180,6 +180,16 @@ class Executor:
 
     # -- locating -----------------------------------------------------------
 
+    async def locate(self, element_key: str, params: dict[str, Any]) -> tuple[Resolution, Any]:
+        """Public entry for resolving a control the engine (not a step) drives.
+
+        Authentication needs the registry and the resolver without being a
+        recorded step -- it is engine infrastructure, and putting it in the
+        step list would push a credential parameter into every capability's
+        public contract.
+        """
+        return await self._locate(element_key, params)
+
     async def _locate(self, element_key: str, params: dict[str, Any]) -> tuple[Resolution, Any]:
         element = self.artifact.elements[element_key]
         frames = await self.perceive()
@@ -256,6 +266,14 @@ class Executor:
             return ActionOutcome(step.id, step.action, resolution, extracted=text, detail=risk_note)
 
         raise PolicyViolation("action", f"unhandled action {step.action!r}", step.id)
+
+    async def goto(self, target_context, url: str) -> None:
+        """Public entry for a navigation the engine (not a step) performs.
+
+        Recovery needs to re-request a URL without that being a recorded
+        step, and it should get the same redirect-tolerance a step does.
+        """
+        await self._goto(target_context, url)
 
     async def _goto(self, target_context, url: str) -> None:
         """Navigate, tolerating a redirect already in flight.

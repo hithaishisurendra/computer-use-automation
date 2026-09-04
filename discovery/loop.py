@@ -33,7 +33,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Optional
 
-from capability.redaction import Scrubber, seed_data_scrubber
+from capability.profile import profile_for
+from capability.redaction import Scrubber, profile_scrubber
 from capability.schema import Element, LocatorRung, Policy, Scope, Step, Target
 from capability.validate import AuthConfigError, resolve_credentials
 from discovery.model import (
@@ -44,7 +45,7 @@ from discovery.model import (
     Observation,
     build_client,
 )
-from discovery.prompts import ACTION_TOOLS, TERMINAL_TOOLS, TOOLS, build_system_prompt
+from discovery.prompts import ACTION_TOOLS, TERMINAL_TOOLS, build_system_prompt, build_tools
 from perception.tree import filter_tree, snapshot_all_frames, to_compact_text
 from replay import resolver
 from escalation.session import ControlledSession
@@ -150,7 +151,9 @@ def _element_key(tool_input: dict[str, Any], action: str) -> str:
     return f"{slug}_{suffix}" if suffix and not slug.endswith(suffix) else slug
 
 
-def _element_from_tool_input(tool_input: dict[str, Any], action: str) -> Element:
+def _element_from_tool_input(
+    tool_input: dict[str, Any], action: str, default_frame: Optional[str] = None
+) -> Element:
     """Build the single-rung element the executor needs to act *right now*.
 
     This is not the recorded chain. Discovery only needs something that
@@ -159,7 +162,7 @@ def _element_from_tool_input(tool_input: dict[str, Any], action: str) -> Element
     element. Conflating the two would bake whatever the model happened to say
     into the artifact as if it were a robustness decision.
     """
-    frame = tool_input.get("frame") or "content"
+    frame = tool_input.get("frame") or default_frame
     role = tool_input.get("role")
     name = tool_input.get("name")
     row_contains = tool_input.get("row_contains")
@@ -201,6 +204,7 @@ class DiscoveryLoop:
         provider: str = DEFAULT_PROVIDER,
         model: Optional[str] = None,
         client: Optional[ModelClient] = None,
+        profile=None,
         escalate: bool = False,
         operator=None,
         escalation_root: str | Path = "evidence/escalation",
@@ -233,7 +237,8 @@ class DiscoveryLoop:
         # Disk evidence therefore gets the seed scrubber, exactly as the a11y
         # diagnostic does. Model-facing text keeps the narrower pattern-only
         # scrubber -- see _scrub_for_model for why the two differ.
-        self.disk_scrubber = seed_data_scrubber()
+        self.profile = profile or profile_for(target)
+        self.disk_scrubber = profile_scrubber(self.profile)
         self.model_scrubber = Scrubber()
         self.log_path = self.evidence_dir / "cycles.jsonl"
         self.cycles: list[Cycle] = []
@@ -271,9 +276,10 @@ class DiscoveryLoop:
     async def _observe(self) -> tuple[str, str, dict[str, Optional[dict]]]:
         frames = await self._perceive()
         url = self.page.url
-        for frame in self.page.frames:
-            if frame.name == "content":
-                url = frame.url or url
+        if self.profile.content_frame is not None:
+            for frame in self.page.frames:
+                if frame.name == self.profile.content_frame:
+                    url = frame.url or url
 
         blocks = []
         for name, tree in frames.items():
@@ -292,7 +298,10 @@ class DiscoveryLoop:
         """Execute one model-requested action through the shared executor."""
         action = cycle.tool_name
         tool_input = cycle.tool_input
-        frame = tool_input.get("frame") or "content"
+        # None means the document. A frameless app has no frame to name, and
+        # defaulting to a frame name it does not have would make every action
+        # unresolvable in a way that reads like a missing control.
+        frame = tool_input.get("frame") or self.profile.content_frame
 
         if action == "navigate":
             step = Step(id=f"d{cycle.index}", action="navigate", path=tool_input["path"], frame=frame)
@@ -300,7 +309,7 @@ class DiscoveryLoop:
             return f"Navigated to {tool_input['path']} in frame {frame}."
 
         key = _element_key(tool_input, action)
-        element = _element_from_tool_input(tool_input, action)
+        element = _element_from_tool_input(tool_input, action, self.profile.content_frame)
         self.artifact.elements[key] = element
         cycle.element_key = key
 
@@ -348,10 +357,35 @@ class DiscoveryLoop:
         url = self.target.base_url.rstrip("/") + auth.path
         check_destination(self.artifact, url)
         await self.page.goto(url, wait_until="load")
-        await self.page.fill('input[name="username"]', credentials.get("username", ""))
-        await self.page.fill('input[name="password"]', credentials.get("password", ""))
+
+        # Sign-on is targeted through the app profile's auth elements, by role
+        # and accessible name, exactly as replay does it. Discovery has no
+        # artifact to hold an element registry, so the profile's defaults are
+        # registered on the provisional one -- which is what that stand-in
+        # exists for.
+        defaults = self.profile.auth_defaults
+        if defaults is None or not defaults.submit:
+            raise AuthConfigError("discovery", [], [])
+        for key, element in defaults.elements.items():
+            self.artifact.elements.setdefault(key, Element.model_validate(element))
+
+        values = {**credentials, **auth.parameters}
+        for field_name, key in defaults.fields.items():
+            value = values.get(field_name)
+            if value is None:
+                continue
+            resolution, locator = await self.executor.locate(key, {})
+            role = (resolution.node.get("role") or "").strip().lower()
+            if role == "combobox":
+                await locator.select_option(value)
+            elif role in ("checkbox", "radio"):
+                await locator.check()
+            else:
+                await locator.fill(value)
+
         async with self.page.expect_navigation():
-            await self.page.click('button:has-text("Login")')
+            _, submit = await self.executor.locate(defaults.submit, {})
+            await submit.click()
         self.log("authenticated", {"mode": auth.mode, "env_vars": sorted(auth.credentials_ref.values())})
 
     # -- run ----------------------------------------------------------------
@@ -374,6 +408,7 @@ class DiscoveryLoop:
             entry_path=self.target.entry_path,
             allowed_paths=self.policy.allowed_paths,
             allowed_actions=list(self.policy.allowed_actions),
+            content_frame=self.profile.content_frame,
         )
         self.log(
             "run_started",
@@ -385,6 +420,9 @@ class DiscoveryLoop:
                 "policy": self.policy.model_dump(mode="json"),
             },
         )
+
+        # Shaped by the profile: frame targeting only where frames exist.
+        tools = build_tools(self.profile.content_frame)
 
         messages: list[Message] = []
         outputs: dict[str, str] = {}
@@ -405,9 +443,13 @@ class DiscoveryLoop:
                 await self._authenticate()
 
                 # The flow starts post-authentication, at the declared entry.
+                # The flow starts at its declared entry. This used to
+                # policy-check `entry` and then navigate to a hardcoded
+                # "/home", so the declared entry_path was validated and
+                # ignored -- and "/home" does not exist on every app.
                 entry = self.target.base_url.rstrip("/") + self.target.entry_path
                 check_destination(self.artifact, entry)
-                await self.page.goto(self.target.base_url.rstrip("/") + "/home", wait_until="load")
+                await self.page.goto(entry, wait_until="load")
 
                 for index in range(1, MAX_STEPS + 1):
                     if time.perf_counter() > deadline:
@@ -421,7 +463,7 @@ class DiscoveryLoop:
 
                     messages.append(Observation(text=observation))
 
-                    response = self.client.complete(system, messages, TOOLS)
+                    response = self.client.complete(system, messages, tools)
 
                     cycle.reasoning = response.text
                     tool_uses = response.calls
@@ -610,7 +652,7 @@ class DiscoveryLoop:
         request_path = write_request(request, self.escalation_root)
         self.log("intervention_raised", {"cycle": cycle.index, "request": str(request_path)})
 
-        capture = HumanActionCapture(self.page, self._perceive)
+        capture = HumanActionCapture(self.page, self._perceive, self.profile.content_frame)
         await capture.begin()
         self.control.hand_to_human(f"model reported stuck at cycle {cycle.index}: {reason}")
         try:

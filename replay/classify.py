@@ -5,7 +5,9 @@ The split is the answer to "where does error detection live":
   Layer 1, ENGINE UNIVERSALS -- session expiry, the 500 page, the
   maintenance interstitial, timeouts, unresolvable elements. These can occur
   on any step of any flow, so duplicating them into every artifact would be
-  noise. They live here.
+  noise. The *logic* lives here; the strings and the recovery actions that
+  vary between applications live in the app profile, because they are facts
+  about a vendor product rather than about this engine.
 
   Layer 2, ARTIFACT-DECLARED OUTCOMES -- "No records match" meaning no such
   member. Only the flow knows that a not-found search is a legitimate
@@ -72,34 +74,49 @@ class Detection:
 # ---------------------------------------------------------------------------
 
 # Marker text is matched against the page's visible text. These are
-# properties of the CoreServ *product*, not of any one recorded flow, which
-# is exactly why they belong to the engine rather than to an artifact.
-SESSION_EXPIRED_MARKER = "Your session has ended."
-SERVER_ERROR_MARKER = "An unexpected error occurred."
-INTERSTITIAL_MARKER = "System Maintenance"
-INTERSTITIAL_DISMISS = "Continue"
+# properties of the *application*, not of any one recorded flow -- which is
+# why they live in an app profile rather than as constants here. They were
+# constants here, and on a second app every one of them was wrong: CoreServ
+# says "Your session has ended.", MERIDIAN says "YOUR SESSION HAS TIMED OUT",
+# and the engine detected neither expiry nor interstitial on the app it was
+# not written against, quietly.
+MAINTENANCE_INTERSTITIAL = "maintenance_interstitial"
+SESSION_EXPIRED = "session_expired"
+SERVER_ERROR = "server_error"
 
 
-def detect_engine_universals(page_text: str) -> Optional[Detection]:
-    """Check the universals in severity order.
+def detect_engine_universals(page_text: str, profile) -> Optional[Detection]:
+    """Check the universals in severity order, using the app's own markers.
 
     Recoverable conditions are checked BEFORE hard failures: the
     interstitial can overlay an otherwise healthy page, and dismissing it
     is cheaper and more accurate than failing a run that would have
     succeeded on retry.
+
+    `recovery` on the returned Detection describes what the profile
+    prescribes, so the message an operator reads matches what the engine will
+    actually do rather than assuming every app dismisses a control.
     """
-    if INTERSTITIAL_MARKER in page_text:
+    marker = profile.matches("maintenance", page_text)
+    if marker is not None:
+        action = profile.recovery.get(MAINTENANCE_INTERSTITIAL)
+        if action is not None and action.kind == "dismiss_control":
+            how = f"dismiss via {action.control_name!r} and retry the step"
+        elif action is not None and action.kind == "reload_step_url":
+            how = "re-request the step's own URL and retry it"
+        else:
+            how = "back off and retry the step"
         return Detection(
-            name="maintenance_interstitial",
+            name=MAINTENANCE_INTERSTITIAL,
             layer="engine",
             classification="recoverable",
             message="A maintenance interstitial is covering the page.",
-            recovery=f"dismiss via {INTERSTITIAL_DISMISS!r} and retry the step",
+            recovery=how,
         )
 
-    if SESSION_EXPIRED_MARKER in page_text:
+    if profile.matches("session_expired", page_text) is not None:
         return Detection(
-            name="session_expired",
+            name=SESSION_EXPIRED,
             layer="engine",
             classification="hard_failure",
             message=(
@@ -109,9 +126,9 @@ def detect_engine_universals(page_text: str) -> Optional[Detection]:
             escalation_eligible=True,
         )
 
-    if SERVER_ERROR_MARKER in page_text:
+    if profile.matches("server_error", page_text) is not None:
         return Detection(
-            name="server_error",
+            name=SERVER_ERROR,
             layer="engine",
             classification="hard_failure",
             message="The application returned an unexpected server error.",
@@ -254,13 +271,14 @@ def classify(
     step_outcome_names: list[str],
     page_text: str,
     url: str,
+    profile,
 ) -> Optional[Detection]:
     """Full two-layer classification for one step.
 
     Engine universals first -- see the module docstring for why the order is
     load-bearing rather than arbitrary.
     """
-    universal = detect_engine_universals(page_text)
+    universal = detect_engine_universals(page_text, profile)
     if universal is not None:
         return universal
     return detect_artifact_outcomes(artifact, step_outcome_names, page_text, url)

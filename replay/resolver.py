@@ -6,6 +6,12 @@ one live element.
 
 Two rules that carry most of the weight:
 
+0. **A header row does not have to be marked up as one.** `cell_in_row`
+   originally required a `columnheader` node, which only a `<th>` produces.
+   Legacy grids routinely style a `<td>` row instead, so a table with obvious
+   headers has none in the accessibility tree and the strategy resolved
+   nothing at all. It now falls back to the table's own first row, scoped to
+   that table and refused when ambiguous.
 1. **Ambiguity is a miss, not a pick-the-first.** A rung matching three
    nodes has not identified anything; silently taking [0] is how replay
    ends up clicking the wrong row and reporting success. An ambiguous rung
@@ -154,6 +160,11 @@ def node_text(node: Optional[dict]) -> str:
     return " ".join(parts)
 
 
+def frame_key(frame: Optional[str]) -> str:
+    """Snapshot key for a declared frame name. None -> the document."""
+    return frame if frame is not None else ""
+
+
 def _role_of(node: dict) -> str:
     return (node.get("role") or "").strip().lower()
 
@@ -207,8 +218,19 @@ def _row_cells(row: dict) -> list[dict]:
 def _find_column_index(root: Optional[dict], row: dict, column_header: str) -> Optional[int]:
     """Find which column position a named header occupies in the row's table.
 
-    Looks for a sibling row (under the same parent) whose cells include a
-    columnheader with the wanted name, and returns its position.
+    Two passes, in order of confidence.
+
+    1. A real `columnheader` node anywhere with the wanted name. This is what
+       a `<th>` produces and it is unambiguous.
+    2. Failing that, the first row of the target row's own table, read as a
+       header row. Legacy table markup very often builds a header row from
+       styled `<td>` rather than `<th>` -- MERIDIAN does it on every grid, so
+       it has no `columnheader` node at all and pass 1 finds nothing on a
+       table that plainly has headers.
+
+    The fallback is scoped to the row's own table rather than the whole
+    document, and it declines when the name matches more than one column,
+    because "which column is Balance" has no answer if two say Balance.
     """
     for candidate in iter_nodes(root):
         if _role_of(candidate) != "row":
@@ -219,7 +241,53 @@ def _find_column_index(root: Optional[dict], row: dict, column_header: str) -> O
                 # Only meaningful if the target row has at least this many cells.
                 if len(_row_cells(row)) > i:
                     return i
-    return None
+
+    return _header_row_index(root, row, column_header)
+
+
+def _rows_of(container: Optional[dict]) -> list[dict]:
+    return [n for n in iter_nodes(container) if _role_of(n) == "row"]
+
+
+def _owning_table(root: Optional[dict], row: dict) -> Optional[dict]:
+    """The innermost table containing this row.
+
+    Innermost for the same reason scopes are: legacy pages nest layout
+    tables around data tables, and the outer one's first row is page
+    furniture, not headers.
+    """
+    owner = None
+    for node in iter_nodes(root):
+        if _role_of(node) != "table":
+            continue
+        if any(candidate is row for candidate in _rows_of(node)):
+            owner = node  # later matches are deeper in the walk
+    return owner
+
+
+def _header_row_index(root: Optional[dict], row: dict, column_header: str) -> Optional[int]:
+    """Treat a table's first row as headers when it declares none.
+
+    Only fires when the table contains no `columnheader` at all: a table that
+    has real headers and simply does not have this one is a miss, not an
+    invitation to guess from its first data row.
+    """
+    table = _owning_table(root, row)
+    if table is None:
+        return None
+    if any(_role_of(n) == "columnheader" for n in iter_nodes(table)):
+        return None
+
+    rows = _rows_of(table)
+    if len(rows) < 2 or rows[0] is row:
+        return None
+
+    header_cells = _row_cells(rows[0])
+    matches = [i for i, cell in enumerate(header_cells) if _name_of(cell) == column_header]
+    if len(matches) != 1:
+        return None
+    index = matches[0]
+    return index if len(_row_cells(row)) > index else None
 
 
 # ---------------------------------------------------------------------------
@@ -306,7 +374,11 @@ def resolve_element(
     started = time.perf_counter()
     resolution = Resolution(element_key=element_key, resolved=False, frame_name=element.frame)
 
-    root = frames.get(element.frame)
+    # An element that names no frame lives in the document itself. Playwright
+    # reports the main frame's name as the empty string, so that is the key it
+    # arrives under -- but "" is an implementation detail of the snapshot, not
+    # something an artifact should have to write down.
+    root = frames.get(frame_key(element.frame))
     if root is None:
         resolution.duration_ms = (time.perf_counter() - started) * 1000
         resolution.attempts.append(
