@@ -1,0 +1,45 @@
+--- FRAME (top) ---
+document
+  table
+    rowgroup
+      row
+        cell "MERIDIAN CORE Member Services Platform v4.2.1 Cornerstone Financial Systems™"
+          text "Member Services Platform v4.2.1"
+      row
+        cell
+          generic
+            link "Main Menu" [href=/menu]
+            text "·"
+            link "Member Inquiry" [href=/members]
+            text "·"
+            link "System Settings" [href=/settings]
+            text "·"
+            link "Sign Off" [href=/signoff]
+      row
+        cell
+          heading "CONFIRM FUNDS TRANSFER" [level=1]
+          table
+            rowgroup
+              row
+                cell "Member"
+                cell "100987 - <redacted:pii>"
+              row
+                cell "From"
+                cell "100987-MMKT-5 ($15.50)"
+              row
+                cell "To"
+                cell "100987-MMKT-6 ($22.50)"
+              row
+                cell "Amount"
+                cell "$5.00"
+              row
+                cell "Memo"
+                cell "dashboard check"
+          text "This will post immediately and cannot be reversed from this screen."
+          generic
+            button "Post Transfer"
+            link "Cancel" [href=/members/100987/transfer]
+      row
+        cell "OPR <redacted:credential> | BR MAIN-001 | 09/04/2026 07:55:54 | SID <redacted:session>"
+      row
+        cell "F3=Sign Off F5=Main Menu F7=Member Inquiry F12=Cancel"

@@ -857,3 +857,97 @@ They were built with the step id in hand, and then
 after it — so the first update recording blamed `s4` for a decision about
 `s5`. Provenance that points a reviewer at the wrong step is worse than
 provenance that says nothing, because it will be believed.
+
+---
+
+## A paused run outlives the request that started it
+
+An attended invocation runs on its own thread with its own event loop, and
+`PendingOperator` blocks that thread on an Event a later HTTP request sets.
+
+The escalation model depends on the human working on *the session that got
+stuck* -- same browser, same cookies, same half-completed flow. An HTTP
+request cannot hold that: the response has to return so the dashboard can
+render the intervention. So the run keeps its thread and the operator surface
+blocks it, exactly as `ConsoleOperator` blocks on stdin.
+
+That symmetry is the design. Both satisfy `OperatorSurface`, so the engine
+cannot tell them apart, which is what makes the dashboard a second operator
+*surface* rather than a second escalation *mechanism*. `ConsoleOperator`
+stays: unattended CLI replay still escalates to a terminal.
+
+Considered and rejected: serialising the paused run and rehydrating it on
+resume. Rejected because a browser session is not serialisable in any useful
+sense -- rehydrating means a new session, which is precisely what the
+handoff model forbids.
+
+A pause has a deadline (30 minutes) and expires into an abort. It holds a
+browser, a thread and a live application session; waiting forever leaks all
+three. Expiry aborts rather than resumes, because resuming would continue a
+run whose blocked step nobody performed.
+
+---
+
+## The dashboard reads the API and reaches nothing else
+
+`api/dashboard.py` serves static files. The page's only capability is
+`fetch`, and a test asserts every path it requests is one the API serves.
+When the dashboard needed the stuck screenshot, the API grew
+`/runs/{id}/evidence` rather than the page learning where evidence lives.
+
+Considered and rejected: server-rendering the pages from FastAPI with Jinja.
+Rejected because a template with the artifact in scope can read anything, and
+the constraint worth enforcing is that the dashboard has no more access than
+any other API client. A static page cannot cheat: there is nothing in scope to
+cheat with.
+
+---
+
+## The chokepoint scan now covers HTTP response bodies
+
+`test_redaction_chokepoint.py` scans `api/` and flags any
+`JSONResponse`/`PlainTextResponse` whose content did not come from a sink.
+
+An HTTP body is an output surface, and this project has leaked at every new
+surface it added. The scan caught two real gaps the moment it was widened:
+`_live_run_body` scrubbed only its escalation block, and the evidence endpoint
+returned file contents unscrubbed.
+
+The fix in `_live_run_body` is worth naming: it now sinks the *assembled*
+body rather than each part. Piece-by-piece scrubbing is how the previous six
+incidents happened -- whoever adds the seventh field forgets, and nothing says
+so.
+
+Considered and rejected: matching sink calls by receiver name
+(`sink.payload(`). Rejected because it missed `null_sink().payload(...)` and
+`record._sink.payload(...)`, both correct. The guarantee comes from which
+method ran, not from what the variable is called, so the scan matches
+`.payload(` / `.emit(` / `.text(`.
+
+---
+
+## `kv()` escapes its own values
+
+The definition-list helper interpolated its value raw and trusted every call
+site to have escaped first. That works until someone adds a row and forgets,
+and the page then renders app-controlled text as markup -- a legacy console
+that echoes a member's input into an error message is exactly the source that
+would exploit it. Callers needing markup pass `html(...)`, which is explicit
+and greppable.
+
+Considered and rejected: leaving it to the call sites and testing that they
+comply. Rejected as the same shape as the redaction problem: a rule every
+caller must remember is a rule that eventually is not followed. Safe by
+construction beats enforced by review.
+
+---
+
+## Request models forbid unknown fields
+
+`StrictRequest` sets `extra="forbid"`, so `{"policy": {...}}` on an invoke is
+a 422 rather than a silently ignored key.
+
+Silently ignoring it gives a caller a 200 and no way to tell the override was
+not honoured. The value was never read -- but a reader cannot distinguish
+"ignored" from "applied", and the next person to add a field may wire it up.
+A 422 says plainly that this surface does not take policy.

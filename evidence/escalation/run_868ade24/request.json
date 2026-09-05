@@ -1,0 +1,42 @@
+{
+  "run_id": "run_868ade24",
+  "source": "replay",
+  "raised_at": "2026-09-04T07:55:54.845976+00:00",
+  "capability": {
+    "id": "member_funds_transfer",
+    "version": "1.0.0"
+  },
+  "goal": "Replay member_funds_transfer@1.0.0",
+  "stopped": {
+    "step_id": "s11",
+    "classification": "risk_blocked",
+    "reason": "Step s11 (click 'post_transfer_button') is blocked because it is irreversible and this capability's policy is 'require_confirmation'. Automation has performed nothing. Perform the step manually in this live session if you approve of it, then resume; the run will verify the outcome before continuing.",
+    "expected": "element 'confirmation_number_source' present",
+    "observed": "the step was not performed; automation stopped before acting"
+  },
+  "state": {
+    "url": "https://web-sample.interface-hiring.com/members/100987/transfer/review",
+    "screenshot": "evidence/escalation/run_868ade24/stuck.png",
+    "snapshot_file": "evidence/escalation/run_868ade24/stuck_snapshot.txt",
+    "accessibility_snapshot": "--- FRAME (top) ---\ndocument\n  table\n    rowgroup\n      row\n        cell \"MERIDIAN CORE Member Services Platform v4.2.1 Cornerstone Financial Systems\u2122\"\n          text \"Member Services Platform v4.2.1\"\n      row\n        cell\n          generic\n            link \"Main Menu\" [href=/menu]\n            text \"\u00b7\"\n            link \"Member Inquiry\" [href=/members]\n            text \"\u00b7\"\n            link \"System Settings\" [href=/settings]\n            text \"\u00b7\"\n            link \"Sign Off\" [href=/signoff]\n      row\n        cell\n          heading \"CONFIRM FUNDS TRANSFER\" [level=1]\n          table\n            rowgroup\n              row\n                cell \"Member\"\n                cell \"100987 - <redacted:pii>\"\n              row\n                cell \"From\"\n                cell \"100987-MMKT-5 ($15.50)\"\n              row\n                cell \"To\"\n                cell \"100987-MMKT-6 ($22.50)\"\n              row\n                cell \"Amount\"\n                cell \"$5.00\"\n              row\n                cell \"Memo\"\n                cell \"dashboard check\"\n          text \"This will post immediately and cannot be reversed from this screen.\"\n          generic\n            button \"Post Transfer\"\n            link \"Cancel\" [href=/members/100987/transfer]\n      row\n        cell \"OPR <redacted:credential> | BR MAIN-001 | 09/04/2026 07:55:54 | SID <redacted:session>\"\n      row\n        cell \"F3=Sign Off F5=Main Menu F7=Member Inquiry F12=Cancel\""
+  },
+  "inputs": {
+    "member_ref": "****87",
+    "from_share": "***********-5",
+    "to_share": "***********-6",
+    "amount": "5.00",
+    "memo": "dashboard check"
+  },
+  "completed_steps": [
+    "s1",
+    "s2",
+    "s3",
+    "s4",
+    "s5",
+    "s6",
+    "s7",
+    "s8",
+    "s9",
+    "s10"
+  ]
+}

@@ -27,7 +27,11 @@ from capability.profile import AppProfile, load_profile
 from capability.sink import RedactionSink, null_sink
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-SCANNED = ("capability", "replay", "discovery", "escalation", "perception", "scripts")
+# `api` is scanned too. The dashboard and the capability API are output
+# surfaces, and this project has leaked at every new surface -- an HTTP
+# response body is not a safer destination than a file.
+SCANNED = ("capability", "replay", "discovery", "escalation", "perception",
+           "scripts", "api")
 CHOKEPOINT = REPO_ROOT / "capability" / "sink.py"
 
 # Writers that put bytes somewhere outside the process.
@@ -35,7 +39,43 @@ _WRITE_METHODS = {"write_text", "write_bytes"}
 
 # Receivers that ARE the chokepoint. A call is allowed when it is the sink
 # doing the writing.
-_SINK_RECEIVERS = {"sink", "self.sink", "SINK", "loop.sink", "self.evidence.sink"}
+_SINK_RECEIVERS = {"sink", "self.sink", "SINK", "loop.sink", "self.evidence.sink",
+                   "engine.sink", "record._sink", "self._sink"}
+
+# Response classes that put a body on the wire. Same rule as a file write:
+# what goes through them has to have been through a sink first.
+_RESPONSE_CLASSES = {"JSONResponse", "PlainTextResponse", "HTMLResponse", "Response"}
+
+# Sink methods whose output is already scrubbed. Matched on the method name
+# rather than on a receiver spelling, so `sink.payload(...)`,
+# `null_sink().payload(...)` and `record._sink.payload(...)` all count -- the
+# guarantee comes from which method ran, not from what the variable is called.
+_SINK_CALLS = (".payload(", ".emit(", ".text(")
+
+
+def _sinked_names(tree: ast.AST) -> set[str]:
+    """Names in this module whose value provably came from a sink.
+
+    Two shapes: a variable assigned from a sink call, and a function whose
+    every `return` is one. Both are how a real module writes this -- refusing
+    them would push authors toward inlining, which is not safer, just less
+    readable.
+    """
+    names: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assign):
+            rendered = ast.unparse(node.value)
+            if any(marker in rendered for marker in _SINK_CALLS):
+                names.update(t.id for t in node.targets if isinstance(t, ast.Name))
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            returns = [n for n in ast.walk(node)
+                       if isinstance(n, ast.Return) and n.value is not None]
+            if returns and all(
+                any(marker in ast.unparse(r.value) for marker in _SINK_CALLS)
+                for r in returns
+            ):
+                names.add(node.name)
+    return names
 
 
 def _python_files():
@@ -79,6 +119,30 @@ def _violations(path: Path) -> list[str]:
                     mode = kw.value.value
             if any(m in mode for m in ("w", "a", "x")):
                 found.append(f"{rel}:{node.lineno}: open(..., {mode!r})")
+
+        # JSONResponse(content=<not from a sink>) -- an HTTP body is an
+        # output surface, and the dashboard is the newest one.
+        if isinstance(func, ast.Name) and func.id in _RESPONSE_CLASSES:
+            content = next(
+                (kw.value for kw in node.keywords if kw.arg == "content"),
+                node.args[0] if node.args else None,
+            )
+            if content is not None:
+                rendered = ast.unparse(content)
+                # Either the call is visibly a sink call, or it is a name
+                # whose only assignment in this module is one. Anything else
+                # is an unscrubbed body.
+                sinked = any(marker in rendered for marker in _SINK_CALLS) or (
+                    isinstance(content, ast.Name) and content.id in _sinked_names(tree)
+                ) or (
+                    isinstance(content, ast.Call)
+                    and isinstance(content.func, ast.Name)
+                    and content.func.id in _sinked_names(tree)
+                )
+                if not sinked:
+                    found.append(
+                        f"{rel}:{node.lineno}: {func.id}(content=...) not from a sink"
+                    )
 
         # print(json.dumps(...)) -- a payload handed to a caller
         if isinstance(func, ast.Name) and func.id == "print":
@@ -258,3 +322,67 @@ def test_an_unscrubbable_file_is_recorded_rather_than_assumed_clean(meridian_sin
     """A screenshot of a member record shows everything the page showed."""
     meridian_sink.note_unscrubbable("evidence/x/failure.png", "screenshot")
     assert meridian_sink.describe()["unscrubbable_files"][0]["path"].endswith("failure.png")
+
+
+# ---------------------------------------------------------------------------
+# The dashboard is the newest output surface
+# ---------------------------------------------------------------------------
+
+
+def test_the_scan_detects_an_unsinked_http_body(tmp_path):
+    """An HTTP response body is an output surface, and this project has
+    leaked at every one it added. Proves the scanner catches the shape rather
+    than merely passing."""
+    bad = tmp_path / "leaky_api.py"
+    bad.write_text(
+        "from fastapi.responses import JSONResponse\n"
+        "def handler(record):\n"
+        "    return JSONResponse(status_code=200, content=record.raw_result)\n",
+        encoding="utf-8",
+    )
+    found = _violations(bad)
+    assert any("JSONResponse" in v for v in found), found
+
+
+def test_a_sinked_http_body_is_not_flagged(tmp_path):
+    ok = tmp_path / "clean_api.py"
+    ok.write_text(
+        "from fastapi.responses import JSONResponse\n"
+        "def handler(sink, payload):\n"
+        "    return JSONResponse(status_code=200, content=sink.payload(payload))\n",
+        encoding="utf-8",
+    )
+    assert _violations(ok) == []
+
+
+def test_a_body_built_by_a_sinking_helper_is_not_flagged(tmp_path):
+    """Refusing this would push authors to inline everything, which is not
+    safer -- just less readable."""
+    ok = tmp_path / "helper_api.py"
+    ok.write_text(
+        "from fastapi.responses import JSONResponse\n"
+        "def _body(record):\n"
+        "    return record._sink.payload({'run': record.run_id})\n"
+        "def handler(record):\n"
+        "    return JSONResponse(status_code=200, content=_body(record))\n",
+        encoding="utf-8",
+    )
+    assert _violations(ok) == []
+
+
+def test_the_dashboard_module_reaches_nothing():
+    """The dashboard serves static files and nothing else. If it could load an
+    artifact or drive a page it would be a second way to reach the engine,
+    which is exactly what the API was built not to be."""
+    import ast
+
+    tree = ast.parse((REPO_ROOT / "api" / "dashboard.py").read_text(encoding="utf-8"))
+    imported = {n.module for n in ast.walk(tree)
+                if isinstance(n, ast.ImportFrom) and n.module}
+    imported |= {a.name for n in ast.walk(tree) if isinstance(n, ast.Import)
+                 for a in n.names}
+    for banned in ("playwright", "replay", "perception", "capability", "discovery",
+                   "escalation"):
+        assert not any(m.split(".")[0] == banned for m in imported), (
+            f"api/dashboard.py imports {banned}: it must serve files, not reach the engine"
+        )

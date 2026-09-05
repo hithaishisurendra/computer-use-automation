@@ -1,0 +1,20 @@
+{
+  "classification": "caller_error",
+  "capability": {
+    "id": "member_share_balance",
+    "version": "1.0.0"
+  },
+  "tenant": "demo",
+  "run_id": "run_241c7baf",
+  "duration_ms": 0.03,
+  "inputs": {},
+  "message": "invalid inputs for capability 'member_share_balance': member_ref: value *bc does not match required pattern '^[0-9]{6}$'",
+  "violations": [
+    {
+      "input": "member_ref",
+      "code": "pattern_mismatch",
+      "message": "value *bc does not match required pattern '^[0-9]{6}$'"
+    }
+  ],
+  "trace": []
+}

@@ -1,0 +1,33 @@
+{
+  "human_activity": {
+    "started_at": "2026-09-04T07:58:07.565276+00:00",
+    "ended_at": "2026-09-04T07:58:07.598206+00:00",
+    "operator": "demo",
+    "decision": "abort",
+    "notes": "seam check",
+    "url_before": "https://web-sample.interface-hiring.com/members/100987/transfer/review",
+    "url_after": "https://web-sample.interface-hiring.com/members/100987/transfer/review",
+    "url_changed": false,
+    "controls_appeared": [],
+    "controls_disappeared": [],
+    "capture_scope": "effect-level: URL and accessibility-state diff across the handoff. Individual actions are not recorded -- see module docstring for the seam."
+  },
+  "control": {
+    "owner": "automation",
+    "context_identity": 4431215792,
+    "transitions": [
+      {
+        "at": "2026-09-04T07:58:07.565298+00:00",
+        "from": "automation",
+        "to": "human",
+        "reason": "step s11: Step s11 is marked risky and policy is 'require_confirmation'. the step is irreversible and policy requires a person to perform it; automation stopped before acting."
+      },
+      {
+        "at": "2026-09-04T07:58:07.594072+00:00",
+        "from": "human",
+        "to": "automation",
+        "reason": "operator returned control after step s11"
+      }
+    ]
+  }
+}

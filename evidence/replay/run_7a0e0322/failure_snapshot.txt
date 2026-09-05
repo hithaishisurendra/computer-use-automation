@@ -1,0 +1,38 @@
+--- FRAME '' ---
+document
+  table
+    rowgroup
+      row
+        cell "MERIDIAN CORE Member Services Platform v4.2.1 Cornerstone Financial Systems™"
+          text "Member Services Platform v4.2.1"
+      row
+        cell
+          generic
+            link "Main Menu" [href=/menu]
+            text "·"
+            link "Member Inquiry" [href=/members]
+            text "·"
+            link "System Settings" [href=/settings]
+            text "·"
+            link "Sign Off" [href=/signoff]
+      row
+        cell
+          heading "MEMBER INQUIRY / SELECTION" [level=1]
+          table
+            rowgroup
+              row
+                cell "Search by"
+                cell "Member Number"
+                  combobox "Search by" [name_source=preceding_td]
+                    option "Member Number" [selected=True]
+                    option "Last Name"
+              row
+                cell "Value"
+                cell
+                  textbox "Value" [value=999999, name_source=preceding_td]
+                  button "Search"
+          text "No member records matched your search. Try member numbers 100234, 100987, 101555, 102777, 103001."
+      row
+        cell "OPR <redacted:credential> | BR MAIN-001 | 09/04/2026 08:12:13 | SID <redacted:session>"
+      row
+        cell "F3=Sign Off F5=Main Menu F7=Member Inquiry F12=Cancel"
