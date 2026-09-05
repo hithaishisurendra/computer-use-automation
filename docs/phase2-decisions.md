@@ -1380,3 +1380,61 @@ balance and the recovery recorded as a fired condition. A 440 on the POST
 request itself during `member_funds_transfer` under `flag` handling — the one
 posture where a risky step actually executes: **one attempt, no re-auth,
 hard failure toward escalation, and both balances unchanged.**
+
+---
+
+## The chatbot is an API caller, and the reporting is the product
+
+Another view in the same dashboard, served by the same FastAPI app. It reads
+`GET /capabilities`, asks the model to pick one and fill its declared
+arguments, and calls the same `POST .../invoke` any other caller uses. It has
+no path that loads an artifact, touches policy or runs an engine — asserted
+structurally, because a chat layer that grew its own invoke path would be a
+second place for a check to go missing.
+
+The model's job is deliberately narrow: pick a capability, fill its arguments.
+It does not decide whether a step is risky, whether a capability may run, or
+how a result is classified. Every one of those is settled before it is asked
+anything, and nothing it returns can change them.
+
+**The reporting is where the value is.** A result classification is a contract
+the rest of the system has been careful about, and the easiest way to discard
+that is a chat layer rendering everything non-success as "sorry, something
+went wrong". So there is one branch per classification, and a business outcome
+returns the application's own message verbatim — no "failed", no apology. A
+test asserts every MERIDIAN business outcome reads as an answer, because a
+phrasing regression there turns a legitimate result into an apparent crash in
+the one surface a demo viewer actually reads.
+
+`escalation_required` names the step, says what the checkpoint will verify on
+resume, and points at the Interventions tab. It must never imply the
+irreversible action completed.
+
+The chosen capability and its arguments are shown alongside the reply, so the
+mapping is visible rather than inferred from the outcome.
+
+Considered and rejected: letting the chat request name a capability directly.
+It would make debugging easier and make this a second invoke path with its own
+opportunity to skip a check. `ChatRequest` accepts one field — `message` — and
+a test asserts it.
+
+### Two defects this surfaced
+
+**The API process never loaded `.env`.** The CLIs call `load_dotenv`
+themselves; a server does not, so every chat request reported "I could not
+reach the language model" on a machine where the key was in `.env` the whole
+time. Diagnosed only because the live test failed identically four times in a
+row — a plausible-looking error message that was describing the wrong cause.
+
+**Capability descriptions described one invocation, not a contract.** The
+recorder copied the goal verbatim, so `member_share_balance` read as *"Look up
+member 100234…"*. The model believed it and **declined three of six live
+requests**, explaining that the capability was "tied specifically to member
+100234" — reading the description as a constraint over the declared
+parameters, which is the correct reading of what it said.
+
+The parameters were right the whole time; the prose contradicted them. The
+recorder now substitutes each discovered value with the parameter carrying it,
+so the description reads *"Look up member `<member_ref>`…"*. Not a chatbot
+bug: an artifact whose description disagrees with its own inputs is wrong for
+every reader, and the chatbot was the first one to say so out loud.

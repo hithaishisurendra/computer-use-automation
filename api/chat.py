@@ -25,7 +25,14 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from discovery.model import Message, ModelClient, Observation, ToolSpec, build_client
+from discovery.model import (
+    Message,
+    ModelClient,
+    Observation,
+    ToolSpec,
+    build_client,
+    load_dotenv,
+)
 
 # What the model is told, and what it is not. The prohibitions are worth
 # stating explicitly even though they are structurally impossible: a model
@@ -124,6 +131,11 @@ class Chat:
     @property
     def client(self) -> ModelClient:
         if self._client is None:
+            # The CLIs load .env themselves; a server process never did, so
+            # the chat endpoint reported "could not reach the model" on a
+            # machine where the key was sitting in .env the whole time. Built
+            # lazily so an API with no key still serves every other endpoint.
+            load_dotenv()
             self._client = build_client(self._provider, self._model)
         return self._client
 

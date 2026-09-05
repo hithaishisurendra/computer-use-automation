@@ -445,6 +445,47 @@ def _index_within(container: dict, target: dict, role: str) -> Optional[int]:
     return same.index(target) if target in same else None
 
 
+def _generalise(text: str, inputs: dict[str, dict[str, Any]]) -> str:
+    """Replace this run's discovered values with the parameters that carry them.
+
+    The goal names one record; the capability works for any. Copying the goal
+    verbatim into `description` made every capability read as a description of
+    a single invocation -- and a calling agent that reads contracts believed
+    it, declining to look up member 999999 because the description said
+    100234. The parameters were right the whole time; the prose contradicted
+    them.
+
+    Longest value first, so a short value that is a substring of a longer one
+    cannot corrupt it.
+    """
+    out = text
+    by_length = sorted(
+        ((spec["name"], str(spec.get("example") or "")) for spec in inputs.values()),
+        key=lambda pair: -len(pair[1]),
+    )
+    for name, example in by_length:
+        if example and example in out:
+            out = out.replace(example, f"<{name}>")
+    return out
+
+
+def _capability_description(goal: str, inputs: dict[str, dict[str, Any]]) -> str:
+    """What this capability does, for a caller who has never seen the run."""
+    described = _generalise(goal, inputs)
+    if inputs:
+        described += (
+            " Parameterised: "
+            + ", ".join(f"<{spec['name']}>" for spec in inputs.values())
+            + " are supplied per invocation."
+        )
+    return described
+
+
+def _capability_name(goal: str, inputs: dict[str, dict[str, Any]]) -> str:
+    name = _generalise(goal, inputs)
+    return name if len(name) < 80 else name[:77] + "..."
+
+
 def _output_name(raw: str, taken: set[str]) -> str:
     """Name an output after what it is, not after the record it was found on.
 
@@ -1158,8 +1199,8 @@ def record(
         "capability": {
             "id": capability_id,
             "version": version,
-            "name": goal if len(goal) < 80 else goal[:77] + "...",
-            "description": goal,
+            "name": _capability_name(goal, inputs),
+            "description": _capability_description(goal, inputs),
             # Discovery never approves its own output. A human (or a replay
             # confidence signal) promotes draft -> approved.
             "status": "draft",

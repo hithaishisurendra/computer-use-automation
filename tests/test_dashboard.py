@@ -69,7 +69,7 @@ def test_the_page_only_reaches_the_api():
     js = (STATIC / "app.js").read_text()
     for path in re.findall(r'api\(\s*[`"\']([^`"\'$]*)', js):
         assert path.startswith("/"), path
-        assert path.split("/")[1] in {"capabilities", "runs", "interventions"}, path
+        assert path.split("/")[1] in {"capabilities", "runs", "interventions", "chat"}, path
     # No other way out of the page.
     for escape in ("XMLHttpRequest", "WebSocket", "eval(", "localStorage"):
         assert escape not in js
@@ -546,7 +546,7 @@ def test_the_dashboard_never_builds_a_capability_specific_path():
     for path in re.findall(r'api\(\s*[`"\']([^`"\']*)', source):
         assert path.startswith("/"), path
         head = path.split("/")[1].split("$")[0]
-        assert head in {"capabilities", "runs", "interventions"}, path
+        assert head in {"capabilities", "runs", "interventions", "chat"}, path
 
 
 def test_the_scan_would_catch_a_violation(tmp_path, monkeypatch):
