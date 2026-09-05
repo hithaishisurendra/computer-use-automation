@@ -1,0 +1,26 @@
+--- FRAME '' ---
+document
+  table
+    rowgroup
+      row
+        cell "MERIDIAN CORE Member Services Platform v4.2.1 Cornerstone Financial Systems™"
+          text "Member Services Platform v4.2.1"
+      row
+        cell
+          generic
+            link "Main Menu" [href=/menu]
+            text "·"
+            link "Member Inquiry" [href=/members]
+            text "·"
+            link "System Settings" [href=/settings]
+            text "·"
+            link "Sign Off" [href=/signoff]
+      row
+        cell
+          generic
+            text "SUPERVISOR OVERRIDE REQUIRED Operator profile <redacted:credential> is not authorized to perform this function. A supervisor must sign on to complete this request."
+            link "Return to previous screen" [href=https://web-sample.interface-hiring.com/members/103001/hold]
+      row
+        cell "OPR <redacted:credential> | BR MAIN-001 | 09/05/2026 06:24:03 | SID <redacted:session>"
+      row
+        cell "F3=Sign Off F5=Main Menu F7=Member Inquiry F12=Cancel"

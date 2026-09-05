@@ -785,6 +785,7 @@ def record(
     log: Optional[Callable[[str, dict[str, Any]], None]] = None,
     default_frame: Optional[str] = None,
     is_sensitive: Optional[Callable[[str], bool]] = None,
+    required_role: Optional[str] = None,
 ) -> dict[str, Any]:
     """Build the artifact dict from a successful discovery run.
 
@@ -914,6 +915,7 @@ def record(
                     "path": cycle.tool_input["path"],
                     "frame": frame,
                     "risk": "safe",
+                    "retry_after_reauth": True,
                 }
             )
             continue
@@ -1067,6 +1069,12 @@ def record(
             "action": action,
             "element": key,
             "risk": risk,
+            # Safe to repeat after re-authenticating, if the session expires
+            # mid-run. True only for steps with no side effect: a risky step
+            # is never retried (the schema refuses the combination outright),
+            # and neither is a click that commits. Navigating, searching,
+            # filling a form and reading a value can all be done twice.
+            "retry_after_reauth": risk != "risky",
         }
         if step_note:
             step["notes"] = step_note
@@ -1155,6 +1163,10 @@ def record(
             # Discovery never approves its own output. A human (or a replay
             # confidence signal) promotes draft -> approved.
             "status": "draft",
+            # The privilege this flow was recorded under. Part of the public
+            # contract: a calling agent reads it before invoking rather than
+            # discovering it from a refusal.
+            "required_role": required_role,
         },
         "target": target.model_dump(mode="json", exclude_none=True),
         "inputs": list(inputs.values()),
@@ -1285,6 +1297,7 @@ def _ensure_opening_navigate(
         "path": entry_path,
         "frame": frame,
         "risk": "safe",
+        "retry_after_reauth": True,
         "notes": (
             "Added at record time: the session was already at "
             f"{observed or 'the entry page'} when the first action ran, so no navigation "

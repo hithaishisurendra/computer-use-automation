@@ -139,6 +139,12 @@
     },
     "parameters": {
       "branch": "MAIN-001"
+    },
+    "role_credentials": {
+      "supervisor": {
+        "username": "MERIDIAN_SUPERVISOR",
+        "password": "MERIDIAN_SUPERVISOR_PASSWORD"
+      }
     }
   },
   "entry_path": "/menu",

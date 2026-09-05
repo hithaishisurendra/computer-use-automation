@@ -192,6 +192,22 @@ def validate_inputs(artifact: Artifact, params: dict[str, Any]) -> ValidatedInpu
     )
 
 
+def _credentials_for(artifact: Artifact) -> dict[str, str]:
+    """The credential field -> env var mapping this capability signs on with.
+
+    `required_role` selects a set from `role_credentials`; without one the
+    default `credentials_ref` applies, so every artifact recorded before roles
+    existed resolves exactly as before.
+    """
+    auth = artifact.target.auth
+    if auth is None:
+        return {}
+    role = artifact.capability.required_role
+    if role and role in auth.role_credentials:
+        return auth.role_credentials[role]
+    return auth.credentials_ref
+
+
 def describe_credentials(artifact: Artifact) -> dict[str, Any]:
     """Log-safe description of credential configuration: which environment
     variables the artifact refers to and whether each is currently set.
@@ -202,9 +218,10 @@ def describe_credentials(artifact: Artifact) -> dict[str, Any]:
     return {
         "auth_required": True,
         "mode": auth.mode,
+        "required_role": artifact.capability.required_role,
         "env_vars": {
             role: {"name": var, "resolved": bool(os.environ.get(var))}
-            for role, var in auth.credentials_ref.items()
+            for role, var in _credentials_for(artifact).items()
         },
     }
 
@@ -225,7 +242,12 @@ def resolve_credentials(artifact: Artifact, env: Optional[dict[str, str]] = None
     missing: list[str] = []
     checked: list[str] = []
 
-    for role, var_name in auth.credentials_ref.items():
+    # A capability that declares a privilege signs on with THAT operator, for
+    # the whole run. The alternative -- signing on as the default operator and
+    # elevating at the step that needs it -- is a named cut: it needs a second
+    # session or a re-authentication mid-flow, and an approval channel that
+    # carries an operator identity, which this system does not have.
+    for role, var_name in _credentials_for(artifact).items():
         checked.append(var_name)
         value = source.get(var_name)
         if not value:

@@ -83,6 +83,7 @@ def build_target(
     tenant: str,
     app_version: str,
     profile,
+    role: Optional[str] = None,
 ) -> Target:
     """The target a discovery run drives, described by its app profile.
 
@@ -98,6 +99,13 @@ def build_target(
             f"app profile {profile.name!r} declares no auth_defaults.credentials_ref, "
             "so discovery has no credentials to sign on with"
         )
+    if role and role not in auth.role_credentials:
+        raise ValueError(
+            f"app profile {profile.name!r} declares no role_credentials for {role!r} "
+            f"(has: {sorted(auth.role_credentials) or 'none'}). Recording under a "
+            "privilege the profile cannot resolve would sign on as the default "
+            "operator and be refused at the step that needs it."
+        )
     return Target(
         surface="web",
         app=profile.name,
@@ -109,6 +117,7 @@ def build_target(
             mode="form_login",
             path=auth.path,
             credentials_ref=dict(auth.credentials_ref),
+            role_credentials={r: dict(f) for r, f in auth.role_credentials.items()},
             parameters=dict(auth.parameters),
             success_check=Condition(type="url_matches", pattern=auth.success_pattern),
         ),
@@ -146,6 +155,16 @@ def main() -> None:
     )
     parser.add_argument("--capability-id", default=None)
     parser.add_argument("--version", default="1.0.0")
+    parser.add_argument(
+        "--role",
+        default=None,
+        help=(
+            "Operator privilege to record this capability under, e.g. 'supervisor'. "
+            "Selects a credential set from the app profile's role_credentials and "
+            "writes capability.required_role, so a calling agent can see the "
+            "privilege before invoking."
+        ),
+    )
     parser.add_argument("--tenant", default="northridge")
     parser.add_argument("--app-version", default="4.2.1")
     parser.add_argument("--provider", default=DEFAULT_PROVIDER, choices=sorted(PROVIDERS))
@@ -186,7 +205,8 @@ def main() -> None:
         print(null_sink().emit({"status": "profile_error", "message": str(exc)}))
         raise SystemExit(2)
 
-    target = build_target(args.target, args.entry, args.tenant, args.app_version, profile)
+    target = build_target(args.target, args.entry, args.tenant, args.app_version,
+                          profile, role=args.role)
 
     loop = DiscoveryLoop(
         goal=args.goal,
@@ -199,6 +219,7 @@ def main() -> None:
         profile=profile,
         escalate=args.escalate,
         operator=(ConsoleOperator() if args.escalate else None),
+        required_role=args.role,
         **({"max_wall_clock_s": args.max_seconds} if args.max_seconds else {}),
     )
     outcome = asyncio.run(loop.run())
@@ -240,6 +261,7 @@ def main() -> None:
         policy=policy,
         goal=args.goal,
         model=f"{outcome.provider}:{outcome.model}",
+        required_role=args.role,
         risk_rules=risk_rules,
         log=loop.log,
         default_frame=profile.content_frame,

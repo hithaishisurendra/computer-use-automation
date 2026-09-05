@@ -1,0 +1,26 @@
+{
+  "run_id": "disc_5613eb41",
+  "status": "goal_reached",
+  "goal": "Place a hold on member 100987's share 100987-MMKT-6, selecting reason code LEGAL from the Reason Code dropdown and entering the note 'court order received'. Continue past the review screen and click Apply Hold so the hold is actually posted, then read the confirmation number.",
+  "provider": "anthropic",
+  "model": "claude-sonnet-5",
+  "rate_limit_retries": 0,
+  "usage": {
+    "input_tokens": 54774,
+    "output_tokens": 1381,
+    "cache_creation_input_tokens": 3056,
+    "cache_read_input_tokens": 30560,
+    "calls": 11
+  },
+  "cost_usd": 0.13711,
+  "human_interventions": [],
+  "steps_attempted": 11,
+  "outputs": {},
+  "summary": "Placed a LEGAL hold on member 100987's share 100987-MMKT-6 with note 'court order received', confirmed and applied the hold successfully. Confirmation number: CN480292.",
+  "message": null,
+  "duration_ms": 22992.27,
+  "artifact_valid": true,
+  "artifact": "evidence/discovery/disc_5613eb41/artifact.json",
+  "steps_recorded": 10,
+  "flow_completed": true
+}

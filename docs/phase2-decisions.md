@@ -1291,3 +1291,92 @@ would be disproportionate.
 computed from the step and its checkpoint together, at load, every time. It
 does not copy a record-time conclusion forward — which is why it catches an
 artifact edited after recording, the case the recorder cannot see.
+
+---
+
+## A capability declares the privilege it needs
+
+`Capability.required_role` names an operator privilege; `AuthSpec.role_credentials`
+maps a role to a credential set of environment variable NAMES, exactly as
+`credentials_ref` does. The engine signs on with that set for the whole run.
+The catalogue exposes it and the dashboard shows it.
+
+**It is a contract question, not an implementation detail.** A calling agent
+that cannot ask what privilege a capability needs learns it from a 403 — which
+means learning by failing, and an audit trail recording an attempt nobody
+intended. `required_role` sits beside the typed inputs for the same reason
+they do.
+
+Mid-flow elevation stays a **named cut**. Signing on as a teller and elevating
+at the step that needs it requires a second session or a re-authentication,
+plus an approval channel carrying an operator identity — which this system
+does not have, and which is the same reason `Decision.APPROVE` was cut.
+Signing on as the supervisor for the whole run is what a human does.
+
+Considered and rejected: a separate `supervisor_credentials_ref` field.
+Rejected because it makes a third role need a third field. Keying the existing
+mechanism by privilege costs one nesting level and generalises.
+
+A capability naming a role with no matching set is refused at load. Falling
+back to the default operator would mean doing everything before the privileged
+step and being refused by the app at it — the worst place to find out.
+
+`role_credentials` gets the same env-var-name validator as `credentials_ref`.
+A second credential mapping that skipped it would be a second way to commit a
+password.
+
+**Derives at the boundary**: one resolution function, selecting a set by role.
+The 403 was already an app-level business outcome and the branch parameter
+already used `AuthSpec.parameters`, both from earlier work.
+
+---
+
+## Re-authentication is a per-step permission, not an engine behaviour
+
+`Step.retry_after_reauth` (default false) says whether a step may be retried
+after re-signing on. On a detected session expiry the engine re-runs the auth
+block, asserts its `success_check`, re-walks the repeatable prefix, and retries
+the step once. Any other step fails as before.
+
+The question was never "can we re-authenticate" — the engine already had both
+pieces. It is **"is it safe to retry a step whose side effect may already have
+happened."** A session that died mid-post gives no way to tell whether the post
+landed first, so re-authenticating and clicking again is how one transfer
+becomes two.
+
+**Enforced, not defaulted.** A risky step declaring `retry_after_reauth` is
+refused by the schema. Defaulting to false would leave the unsafe combination
+expressible by anyone editing an artifact by hand, and this is the pairing that
+turns a session blip into a double post.
+
+**Not reclassified in the classifier.** Session expiry stays `hard_failure`
+and the engine intercepts it for steps that permit recovery. Reclassifying it
+globally as `recoverable` would make *every* step retryable and put the
+decision in the layer that reads the page, when it belongs to the step being
+run.
+
+**The prefix is re-walked.** Re-authenticating lands on the app's entry page,
+not where the flow was, so retrying the failed step alone would act on the
+wrong screen. Only steps marked repeatable are re-run — and a flow whose prefix
+contains an irreversible step cannot reach this path at all, because that step
+would have failed toward escalation rather than re-authenticating.
+
+Once per step: a session that expires again immediately is not transient, and
+looping would turn a fast failure into a hung run.
+
+**Detection was verified first.** The diagnostic found CoreServ's expiry marker
+did not match its live page, so the condition had been invisible to the
+classifier for a whole phase. MERIDIAN's marker was checked against the real
+440 page as perception renders it before any of this was built.
+
+**Derives at the boundary**: one permission, declared per step by the recorder,
+read by the engine. The recorder grants it to safe steps and withholds it from
+risky ones, and the schema refuses the contradiction — so the recorder's
+judgement and the engine's rule cannot drift apart.
+
+Verified live, both directions. A mid-flow 440 during `member_share_balance`:
+detected at s5, re-authenticated, prefix replayed, `success` with the correct
+balance and the recovery recorded as a fired condition. A 440 on the POST
+request itself during `member_funds_transfer` under `flag` handling — the one
+posture where a risky step actually executes: **one attempt, no re-auth,
+hard failure toward escalation, and both balances unchanged.**

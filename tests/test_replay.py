@@ -840,3 +840,93 @@ def test_failure_captures_screenshot_and_snapshot(artifact, faults, creds, tmp_p
     assert result.evidence.get("snapshot")
     assert Path(result.evidence["snapshot"]).exists()
     assert Path(result.evidence["screenshot"]).exists()
+
+
+# ---------------------------------------------------------------------------
+# Session re-auth: a per-step property, never a global behaviour
+#
+# The question is never "can we re-authenticate". It is "is it safe to retry a
+# step whose side effect may already have happened".
+# ---------------------------------------------------------------------------
+
+
+def test_a_risky_step_may_not_declare_retry_after_reauth():
+    """Enforced by the schema rather than merely defaulted false. Defaulting
+    would leave the unsafe combination expressible by anyone hand-editing an
+    artifact, and a session that died mid-post gives no way to know whether
+    the post landed first."""
+    from capability.schema import Step
+
+    with pytest.raises(ValueError) as exc:
+        Step(id="s1", action="click", element="e", risk="risky",
+             retry_after_reauth=True,
+             checkpoint={"type": "text_present", "text": "POSTED"})
+    assert "not permitted on a step marked risk='risky'" in str(exc.value)
+
+
+def test_a_safe_step_may_declare_it():
+    from capability.schema import Step
+
+    step = Step(id="s1", action="extract", element="e", into="o",
+                retry_after_reauth=True)
+    assert step.retry_after_reauth is True
+
+
+def test_the_default_is_false():
+    """A step nobody has thought about is not retried."""
+    from capability.schema import Step
+
+    assert Step(id="s1", action="extract", element="e", into="o").retry_after_reauth is False
+
+
+def test_every_shipped_risky_step_refuses_reauth_retry():
+    """The regression guard. If a capability ever ships an irreversible step
+    that re-authenticates and retries, a session blip becomes a double post."""
+    import glob
+
+    for path in sorted(glob.glob(str(REPO_ROOT / "capabilities" / "*" / "1.0.0.json"))):
+        data = json.loads(Path(path).read_text())
+        for step in data["steps"]:
+            if step["risk"] == "risky":
+                assert step.get("retry_after_reauth") is not True, (
+                    f"{data['capability']['id']} {step['id']}")
+
+
+def test_the_recorder_grants_it_to_safe_steps_only():
+    from capability.loader import load_resolved
+
+    artifact = load_resolved(CAPABILITIES, "member_funds_transfer", "1.0.0")
+    for step in artifact.steps:
+        if step.risk == "risky":
+            assert step.retry_after_reauth is False
+        else:
+            assert step.retry_after_reauth is True
+
+
+def test_meridian_s_expiry_marker_matches_its_live_page():
+    """Detection has to work before recovery means anything. The CoreServ
+    marker did NOT match its live page for a whole phase, and the condition
+    was invisible to the classifier the entire time."""
+    from capability.profile import load_profile
+
+    # Text as perception renders MERIDIAN's 440 page, from the diagnostic.
+    page = ('cell "MERIDIAN CORE Member Services Platform v4.2.1" '
+            'text "YOUR SESSION HAS TIMED OUT For security, your session ended '
+            'due to inactivity." link "Return to Sign On" cell "NOT SIGNED ON"')
+    profile = load_profile("meridian")
+    assert profile.matches("session_expired", page)
+    detection = classify.detect_engine_universals(page, profile)
+    assert detection is not None and detection.name == classify.SESSION_EXPIRED
+
+
+def test_reauth_replays_only_the_repeatable_prefix():
+    """Re-authenticating lands on the entry page, not where the flow was, so
+    the steps before the failure have to be re-walked -- but only those the
+    artifact says are safe to repeat."""
+    import inspect
+
+    from replay.engine import ReplayEngine
+
+    source = inspect.getsource(ReplayEngine._replay_prefix)
+    assert "if not earlier.retry_after_reauth:" in source
+    assert "continue" in source

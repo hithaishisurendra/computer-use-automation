@@ -99,6 +99,19 @@ class Capability(StrictModel):
     name: str
     description: str
     status: CapabilityStatus = "draft"
+    required_role: Optional[str] = Field(
+        default=None,
+        description=(
+            "The operator privilege this capability needs, e.g. 'supervisor'. "
+            "Resolved to a credential set at run time via "
+            "AuthSpec.role_credentials.\n\n"
+            "Part of the public contract, not an implementation detail: a "
+            "calling agent has to know what privilege a capability requires "
+            "BEFORE invoking it. Discovering it from a 403 means the agent "
+            "learns by failing, and the audit trail records an attempt nobody "
+            "intended. None means the app's default operator suffices."
+        ),
+    )
     derived_from: Optional[str] = Field(
         default=None,
         description=(
@@ -129,6 +142,17 @@ class AuthSpec(StrictModel):
             "environment variable holding it. Never the value -- artifacts are committed "
             "to a public repo. Resolved at runtime by capability.validate.resolve_credentials."
         )
+    )
+    role_credentials: dict[str, dict[str, str]] = Field(
+        default_factory=dict,
+        description=(
+            "Credential sets by operator role: {'supervisor': {'username': "
+            "'MERIDIAN_SUPERVISOR', ...}}. Values are ENVIRONMENT VARIABLE "
+            "NAMES, exactly as credentials_ref -- this is the same mechanism "
+            "keyed by privilege, not a new one.\n\n"
+            "A capability's `required_role` selects the set. Without a role, "
+            "credentials_ref is used, so every existing artifact keeps working."
+        ),
     )
     parameters: dict[str, str] = Field(
         default_factory=dict,
@@ -169,6 +193,22 @@ class AuthSpec(StrictModel):
                     f"(e.g. 'CORESERV_PASSWORD'), not a credential value. Got {var_name!r}. "
                     "Artifacts are committed to source control; secrets must never appear here."
                 )
+        return v
+
+    @field_validator("role_credentials")
+    @classmethod
+    def _role_names_not_values(cls, v: dict[str, dict[str, str]]) -> dict[str, dict[str, str]]:
+        # The same rule, applied to the same kind of value in its other
+        # shape. A second credential mapping that skipped this check would be
+        # a second way to paste a password into a committed artifact.
+        for operator_role, fields in v.items():
+            for field, var_name in fields.items():
+                if not ENV_VAR_RE.match(var_name):
+                    raise ValueError(
+                        f"role_credentials[{operator_role!r}][{field!r}] must be an "
+                        f"ENVIRONMENT VARIABLE NAME, not a credential value. "
+                        f"Got {var_name!r}. Artifacts are committed to source control."
+                    )
         return v
 
 
@@ -418,6 +458,20 @@ class Step(StrictModel):
     value: Optional[str] = None
     into: Optional[str] = None
     risk: Risk = "safe"
+    retry_after_reauth: bool = Field(
+        default=False,
+        description=(
+            "May this step be retried after re-authenticating, if the session "
+            "expires while it runs?\n\n"
+            "A per-step property, not engine-wide behaviour. The question is "
+            "never 'can we re-authenticate' -- it is 'is it safe to retry a "
+            "step whose side effect may already have happened'. Reading a "
+            "balance is safe to repeat; posting a transfer is not, and a "
+            "session that expired mid-post gives no way to tell whether the "
+            "post landed first.\n\n"
+            "Default false: a step nobody has thought about is not retried."
+        ),
+    )
     checkpoint: Optional[Checkpoint] = None
     outcomes: list[str] = Field(default_factory=list)
     notes: Optional[str] = Field(
@@ -444,6 +498,19 @@ class Step(StrictModel):
             raise ValueError(f"step {self.id}: action 'extract' requires 'into'")
         if a != "extract" and self.into:
             raise ValueError(f"step {self.id}: 'into' is only valid on action 'extract'")
+        # ENFORCED, not merely defaulted. A risky step is irreversible, and a
+        # session that expired mid-step gives no way to know whether the
+        # action landed before it did -- so retrying is exactly how one
+        # transfer becomes two. Defaulting to false would leave the unsafe
+        # combination expressible by anyone editing an artifact by hand.
+        if self.risk == "risky" and self.retry_after_reauth:
+            raise ValueError(
+                f"step {self.id}: retry_after_reauth is not permitted on a step marked "
+                "risk='risky'. An irreversible action whose session expired may already "
+                "have taken effect, and re-authenticating to click it again is how one "
+                "posted transaction becomes two. Such a step fails toward escalation, "
+                "where a person can check the record."
+            )
         return self
 
 
@@ -761,6 +828,15 @@ class Artifact(StrictModel):
                         f"target.auth.elements[{field_name!r}]: references unknown element "
                         f"{element_key!r}"
                     )
+            role = self.capability.required_role
+            if role and role not in auth.role_credentials:
+                errors.append(
+                    f"capability.required_role is {role!r} but target.auth.role_credentials "
+                    f"declares no set for it (has: {sorted(auth.role_credentials) or 'none'}). "
+                    "A capability that names a privilege it cannot resolve would fall back "
+                    "to the default operator and be refused by the app at the step that "
+                    "needs the privilege -- after doing everything before it."
+                )
             if auth.submit and auth.submit not in element_keys:
                 errors.append(
                     f"target.auth.submit: references unknown element {auth.submit!r}"

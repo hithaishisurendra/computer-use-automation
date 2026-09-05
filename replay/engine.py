@@ -233,8 +233,24 @@ class ReplayEngine:
 
     # -- steps --------------------------------------------------------------
 
+    async def _replay_prefix(self, upto: int, params: dict[str, Any]) -> None:
+        """Re-walk the safe steps before `upto` on a freshly signed-on session.
+
+        Re-authenticating lands on the app's entry page, not where the flow
+        was, so retrying the failed step alone would act on the wrong screen.
+        Only steps the artifact marks safe to repeat are re-run: anything
+        else is skipped, and a flow whose prefix contains an irreversible
+        step cannot reach here at all, because that step would have failed
+        toward escalation rather than re-authenticating.
+        """
+        for earlier in self.artifact.steps[:upto]:
+            if not earlier.retry_after_reauth:
+                continue
+            await self.executor.execute(earlier, params)
+
     async def _run_step(
-        self, step: Step, params: dict[str, Any], result: ReplayResult
+        self, step: Step, params: dict[str, Any], result: ReplayResult,
+        index_of_step: int = 0,
     ) -> tuple[str, Optional[classify.Detection], Optional[str]]:
         """Run one step with recovery. Returns (status, terminal_detection, extracted).
 
@@ -246,6 +262,10 @@ class ReplayEngine:
         started = time.perf_counter()
         extracted: Optional[str] = None
         attempt = 0
+        # Once per step. A session that expires again immediately after
+        # re-authenticating is not a transient condition, and looping on it
+        # would turn a fast failure into a hung run.
+        reauthenticated = False
 
         while True:
             attempt += 1
@@ -322,6 +342,61 @@ class ReplayEngine:
             detection = classify.classify(
                 self.artifact, step.outcomes, page_text, url, self.profile, params
             )
+
+            # A session that expired is a hard failure UNLESS this step says
+            # it is safe to repeat. Deliberately not reclassified as
+            # `recoverable` in the classifier: whether it can be recovered
+            # from is a property of the step being run, not of the page, and
+            # a global reclassification would make every step retryable.
+            if (
+                detection is not None
+                and detection.name == classify.SESSION_EXPIRED
+                and step.retry_after_reauth
+                and not reauthenticated
+            ):
+                reauthenticated = True
+                trace.detections.append(detection.as_dict())
+                result.recoverable_conditions.append(
+                    {"step_id": step.id, "attempt": attempt,
+                     **detection.as_dict(), "recovery": "re-authenticated"}
+                )
+                self.evidence.log("session_reauth", {
+                    "step_id": step.id, "attempt": attempt,
+                    "why": detection.message,
+                    # Names only, never values -- the same rule everywhere
+                    # else credentials are described.
+                    "auth": self.evidence.describe_auth(),
+                })
+                await self._authenticate(self._credentials)
+                frames, page_text, url = await self._capture()
+                check = checkpoints.evaluate_once(
+                    self.artifact.target.auth.success_check,
+                    self.artifact, frames, page_text, url, params,
+                )
+                if not check.satisfied:
+                    # Re-auth did not produce a usable session. Reporting
+                    # this as a step failure would send someone debugging the
+                    # flow; it is a credentials or availability problem.
+                    failed = classify.Detection(
+                        name="reauth_failed", layer="engine",
+                        classification="hard_failure",
+                        message=(
+                            "The session expired mid-run and re-authentication did not "
+                            f"restore it: expected {check.expected}, observed "
+                            f"{check.observed}."
+                        ),
+                        escalation_eligible=True,
+                    )
+                    trace.detections.append(failed.as_dict())
+                    trace.status = "failed"
+                    trace.duration_ms = (time.perf_counter() - started) * 1000
+                    result.trace.append(trace)
+                    return "failed", failed, None
+                # The session is new, so the flow is back at the entry point
+                # rather than where the step left off. Re-running the step
+                # alone would act on the wrong page.
+                await self._replay_prefix(index_of_step, params)
+                continue
 
             if detection is not None and detection.classification == "recoverable":
                 trace.detections.append(detection.as_dict())
@@ -677,7 +752,9 @@ class ReplayEngine:
         while index < len(self.artifact.steps):
             step = self.artifact.steps[index]
             index += 1
-            status, detection, value = await self._run_step(step, params, result)
+            status, detection, value = await self._run_step(
+                step, params, result, index_of_step=index - 1
+            )
             self.evidence.log("step", result.trace[-1].as_dict() if result.trace else {})
 
             if detection is not None and detection.classification == "business_outcome":

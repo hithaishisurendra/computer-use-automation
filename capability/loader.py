@@ -405,6 +405,13 @@ def apply_profile_defaults(artifact: Artifact, profile=None) -> Artifact:
     }
     if defaults.submit:
         data["target"]["auth"]["submit"] = defaults.submit
+    if defaults.role_credentials:
+        # Same reasoning as the auth elements above: an artifact recorded
+        # before role sets existed carries none, and the profile supplies
+        # them rather than every artifact being rewritten.
+        data["target"]["auth"].setdefault("role_credentials", {})
+        for role, fields in defaults.role_credentials.items():
+            data["target"]["auth"]["role_credentials"].setdefault(role, fields)
 
     try:
         return Artifact.model_validate(data)

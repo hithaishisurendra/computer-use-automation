@@ -1,0 +1,26 @@
+{
+  "run_id": "disc_4f6baa2d",
+  "status": "goal_reached",
+  "goal": "Place a hold on member 100234's share 100234-S0001-12. Explicitly select the reason code LEGAL from the Reason Code dropdown, enter the note 'court order received', and reach the confirmation screen",
+  "provider": "anthropic",
+  "model": "claude-sonnet-5",
+  "rate_limit_retries": 0,
+  "usage": {
+    "input_tokens": 40787,
+    "output_tokens": 1204,
+    "cache_creation_input_tokens": 3033,
+    "cache_read_input_tokens": 24264,
+    "calls": 9
+  },
+  "cost_usd": 0.106049,
+  "human_interventions": [],
+  "steps_attempted": 9,
+  "outputs": {},
+  "summary": "Placed a hold on member 100234's share 100234-S0001-12 with Reason Code LEGAL and note 'court order received', and reached the confirmation screen (CONFIRM ACCOUNT HOLD) showing all entered details correctly.",
+  "message": null,
+  "duration_ms": 20328.57,
+  "artifact_valid": true,
+  "artifact": "evidence/discovery/disc_4f6baa2d/artifact.json",
+  "steps_recorded": 9,
+  "flow_completed": true
+}

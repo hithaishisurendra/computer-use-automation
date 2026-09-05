@@ -941,6 +941,10 @@ def test_a_reviewer_may_mark_a_step_risky_the_profile_does_not(tmp_path):
     def upgrade(data):
         click = next(s for s in data["steps"] if s["action"] == "click")
         click["risk"] = "risky"
+        # Marking a step risky also revokes its permission to be retried
+        # after re-auth. The schema enforces that pairing rather than
+        # trusting the reviewer to remember it.
+        click["retry_after_reauth"] = False
         click["checkpoint"] = {"type": "text_present", "text": "MEMBER RECORD",
                                "timeout_ms": 8000}
 
@@ -1173,3 +1177,164 @@ def test_every_engine_package_is_actually_scanned():
         assert scope.sources(package), f"{package} has no sources to scan"
     assert "api" in scope.engine_packages(), (
         "the API and dashboard are engine-adjacent surfaces and must be covered")
+
+
+# ---------------------------------------------------------------------------
+# Role-gated capabilities
+# ---------------------------------------------------------------------------
+
+
+def _with_role(role, role_credentials=None):
+    """The base artifact, declaring a required role."""
+    data = json.loads((CAPABILITIES / "member_savings_balance" / "1.0.0.json").read_text())
+    data["capability"]["required_role"] = role
+    if role_credentials is not None:
+        data["target"]["auth"]["role_credentials"] = role_credentials
+    return data
+
+
+def test_a_capability_declaring_a_role_resolves_that_credential_set(tmp_path):
+    from capability.schema import Artifact
+    from capability.validate import resolve_credentials
+
+    artifact = Artifact.model_validate(_with_role("supervisor", {
+        "supervisor": {"username": "SUP_USER", "password": "SUP_PASS"}}))
+    resolved = resolve_credentials(artifact, env={
+        "CORESERV_USERNAME": "teller", "CORESERV_PASSWORD": "tp",
+        "SUP_USER": "super1", "SUP_PASS": "sp"})
+    assert resolved == {"username": "super1", "password": "sp"}
+
+
+def test_a_capability_without_a_role_resolves_the_default_set():
+    """Every artifact recorded before roles existed must keep working."""
+    from capability.validate import resolve_credentials
+
+    artifact = load_resolved(CAPABILITIES, "member_savings_balance", "1.0.0")
+    assert artifact.capability.required_role is None
+    resolved = resolve_credentials(artifact, env={
+        "CORESERV_USERNAME": "teller", "CORESERV_PASSWORD": "tp"})
+    assert resolved == {"username": "teller", "password": "tp"}
+
+
+def test_a_teller_capability_does_not_get_supervisor_credentials(tmp_path):
+    """The gate is not just 'can a supervisor set be reached' -- a capability
+    that does not need the privilege must not silently run with it."""
+    from capability.schema import Artifact
+    from capability.validate import resolve_credentials
+
+    artifact = Artifact.model_validate(_with_role("teller", {
+        "teller": {"username": "TELLER_USER", "password": "TELLER_PASS"},
+        "supervisor": {"username": "SUP_USER", "password": "SUP_PASS"}}))
+    resolved = resolve_credentials(artifact, env={
+        "TELLER_USER": "teller1", "TELLER_PASS": "tp",
+        "SUP_USER": "super1", "SUP_PASS": "sp"})
+    assert resolved["username"] == "teller1"
+
+
+def test_a_role_with_no_credential_set_is_rejected_at_load(tmp_path):
+    """Falling back to the default operator would mean doing everything up to
+    the privileged step and then being refused by the app."""
+    path = tmp_path / "a.json"
+    path.write_text(json.dumps(_with_role("supervisor", {})))
+    with pytest.raises(ArtifactError) as exc:
+        load_artifact(path)
+    assert "declares no set for it" in str(exc.value)
+
+
+def test_role_credentials_may_not_contain_a_literal_secret(tmp_path):
+    """The same rule credentials_ref already enforces. A second credential
+    mapping that skipped it would be a second way to commit a password."""
+    from capability.schema import Artifact
+
+    with pytest.raises(Exception) as exc:
+        Artifact.model_validate(_with_role("supervisor", {
+            "supervisor": {"username": "super1", "password": "hunter2"}}))
+    assert "ENVIRONMENT VARIABLE NAME" in str(exc.value)
+
+
+def test_the_profile_supplies_role_sets_to_artifacts_that_predate_them():
+    artifact = load_resolved(CAPABILITIES, "member_funds_transfer", "1.0.0")
+    assert "supervisor" in artifact.target.auth.role_credentials
+
+
+def test_a_supervisor_override_is_a_business_outcome_not_a_failure():
+    """A legitimate answer: this operator cannot do this. Classifying it as a
+    hard failure would send someone debugging a flow that worked correctly."""
+    from replay import classify
+
+    page = ('SUPERVISOR OVERRIDE REQUIRED Operator profile teller1 is not '
+            'authorized to perform this function. A supervisor must sign on.')
+    detection = classify.detect_profile_outcomes(load_profile("meridian"), page)
+    assert detection is not None
+    assert detection.name == "supervisor_override_required"
+    assert detection.classification == "business_outcome"
+
+
+def test_an_engine_universal_does_not_swallow_the_override():
+    """Ordering check: a 403 page must not be mistaken for a server error."""
+    from replay import classify
+
+    page = 'SUPERVISOR OVERRIDE REQUIRED Operator profile teller1 is not authorized'
+    assert classify.detect_engine_universals(page, load_profile("meridian")) is None
+
+
+def test_the_catalogue_exposes_the_required_role():
+    from api import catalog as catalog_mod
+
+    artifact = load_resolved(CAPABILITIES, "member_savings_balance", "1.0.0")
+    assert "required_role" in catalog_mod.describe(artifact)
+
+
+def test_the_branch_parameter_is_a_declared_value_not_a_fake_credential():
+    """AuthSpec.parameters exists so a non-secret sign-on field does not have
+    to masquerade as an environment variable."""
+    defaults = load_profile("meridian").auth_defaults
+    assert defaults.parameters == {"branch": "MAIN-001"}
+    assert "branch" not in defaults.credentials_ref
+    assert "branch" in defaults.fields
+
+
+def test_the_discovery_credential_shim_carries_every_field_resolution_reads():
+    """Discovery has a target but no artifact, so it presents a stand-in to
+    `resolve_credentials`. The stand-in was an ad-hoc stub carrying
+    `capability.id` -- everything resolution read WHEN THE STUB WAS WRITTEN.
+    When resolution learned about `required_role` the stub did not, and the
+    first role-gated recording crashed inside the resolver.
+
+    Asserted structurally: whatever `resolve_credentials` reads off
+    `artifact.capability`, the stand-in must have."""
+    import ast
+    import inspect
+
+    from capability import validate
+    from discovery.loop import _DiscoveryCapability
+
+    source = inspect.getsource(validate)
+    tree = ast.parse(source)
+    read: set[str] = set()
+    for node in ast.walk(tree):
+        # artifact.capability.<attr>
+        if (isinstance(node, ast.Attribute)
+                and isinstance(node.value, ast.Attribute)
+                and node.value.attr == "capability"):
+            read.add(node.attr)
+    missing = read - set(_DiscoveryCapability.__dataclass_fields__)
+    assert not missing, (
+        f"resolve_credentials reads capability.{sorted(missing)} but the discovery "
+        "stand-in does not provide it")
+
+
+def test_place_hold_declares_the_privilege_it_needs():
+    artifact = load_resolved(CAPABILITIES, "member_place_hold", "1.0.0")
+    assert artifact.capability.required_role == "supervisor"
+    assert "supervisor" in artifact.target.auth.role_credentials
+
+
+def test_place_hold_marks_its_post_risky_via_the_commit_path():
+    """"Apply Hold" matches no commit verb -- the landing endpoint is what
+    identifies it, which is the signal added for "Open Share"."""
+    artifact = load_resolved(CAPABILITIES, "member_place_hold", "1.0.0")
+    risky = [s for s in artifact.steps if s.risk == "risky"]
+    assert len(risky) == 1
+    assert "hold/post" in (risky[0].notes or "")
+    assert risky[0].checkpoint is not None

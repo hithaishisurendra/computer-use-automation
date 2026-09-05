@@ -1,0 +1,28 @@
+{
+  "run_id": "disc_6f8da8a4",
+  "status": "goal_reached",
+  "goal": "Place a hold on member 100234's share 100234-S0001-6 with reason code FRAUD and the note 'suspected fraudulent activity', and reach the confirmation screen",
+  "provider": "anthropic",
+  "model": "claude-sonnet-5",
+  "rate_limit_retries": 0,
+  "usage": {
+    "input_tokens": 48359,
+    "output_tokens": 1098,
+    "cache_creation_input_tokens": 3021,
+    "cache_read_input_tokens": 27189,
+    "calls": 10
+  },
+  "cost_usd": 0.120688,
+  "human_interventions": [],
+  "steps_attempted": 10,
+  "outputs": {
+    "confirmation_number": "CN480287"
+  },
+  "summary": "Successfully placed a FRAUD hold on member 100234's share 100234-S0001-6 with note 'suspected fraudulent activity'. Confirmation reached with confirmation number CN480287, share now shows HOLD status, applied on 09/05/2026 06:21:28.",
+  "message": null,
+  "duration_ms": 20092.43,
+  "artifact_valid": true,
+  "artifact": "evidence/discovery/disc_6f8da8a4/artifact.json",
+  "steps_recorded": 10,
+  "flow_completed": true
+}

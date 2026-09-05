@@ -120,8 +120,10 @@ def detect_engine_universals(page_text: str, profile) -> Optional[Detection]:
             layer="engine",
             classification="hard_failure",
             message=(
-                "The application session has expired. Re-authentication mid-run is "
-                "out of scope, so the run stops here."
+                "The application session expired mid-run. A step declaring "
+                "retry_after_reauth is re-authenticated and retried once; any other "
+                "step stops here, because a step whose side effect may already have "
+                "happened must not be repeated."
             ),
             escalation_eligible=True,
         )

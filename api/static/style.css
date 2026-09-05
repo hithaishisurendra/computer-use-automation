@@ -37,6 +37,7 @@ tbody tr:hover { background: #f0f4f8; }
 .tag { font-size: 10px; text-transform: uppercase; letter-spacing: .07em;
        border: 1px solid var(--line); border-radius: 3px; padding: 1px 5px; color: var(--muted); }
 .tag.draft { color: var(--warn); border-color: currentColor; }
+.tag.role { color: var(--pause); border-color: currentColor; font-weight: 600; }
 button.act { font: inherit; padding: 6px 14px; border-radius: 4px; cursor: pointer;
              border: 1px solid var(--line); background: #fff; }
 button.go { background: var(--ok); border-color: var(--ok); color: #fff; }
@@ -54,3 +55,20 @@ img.shot { max-width: 100%; border: 1px solid var(--line); border-radius: 4px; }
 .grid { display: grid; grid-template-columns: 140px 1fr; gap: 2px 12px; font-size: 13px; }
 .grid dt { color: var(--muted); } .grid dd { margin: 0; }
 a { color: var(--info); }
+
+/* chat */
+.chat-log { min-height: 220px; margin-bottom: 12px; }
+.turn { margin-bottom: 14px; }
+.turn .said { background: #e8eef6; border-radius: 10px 10px 10px 2px;
+              padding: 8px 12px; display: inline-block; max-width: 80%; }
+.turn.you { text-align: right; }
+.turn.you .said { background: #1b2733; color: #fff; border-radius: 10px 10px 2px 10px; }
+.chose { border-left: 3px solid var(--info); background: #f2f7fc; padding: 8px 12px;
+         margin: 8px 0; font-size: 12px; }
+.chose code { font-family: ui-monospace, Menlo, monospace; }
+.chat-form { display: flex; gap: 8px; }
+.chat-form input { flex: 1; }
+.examples { margin-top: 10px; font-size: 12px; }
+.examples button { font: inherit; font-size: 12px; background: #fff; cursor: pointer;
+                   border: 1px solid var(--line); border-radius: 12px;
+                   padding: 3px 10px; margin: 0 4px 4px 0; }

@@ -13,7 +13,7 @@
  */
 const $ = (sel, el = document) => el.querySelector(sel);
 const view = $("#view");
-let current = "catalog";
+let current = "chat";
 
 const esc = (s) =>
   String(s ?? "").replace(/[&<>"']/g, (c) =>
@@ -90,6 +90,7 @@ async function renderCatalog() {
       <h2>${esc(c.name)}
         <span class="tag ${c.status === "draft" ? "draft" : ""}">${esc(c.status)}</span>
         ${c.requires_human ? '<span class="tag">needs a human</span>' : ""}
+        ${c.required_role ? `<span class="tag role">${esc(c.required_role)}</span>` : ""}
       </h2>
       <div class="muted mono">${esc(c.id)} @ ${esc(c.version)} &middot; ${esc(c.app)} / ${esc(c.tenant)}</div>
       <p>${esc(c.description)}</p>
@@ -97,6 +98,11 @@ async function renderCatalog() {
         not yet approved by a human. Its locators and its risk classification are a
         first guess for review.</div>` : ""}
       ${risky}
+      ${c.required_role ? `<div class="banner"><b>Requires a ${esc(c.required_role)}.</b>
+        This capability signs on with the ${esc(c.required_role)} credential set,
+        because the application refuses the action to a lesser operator. An agent
+        can read this from the catalogue before invoking rather than discovering
+        it from a refusal.</div>` : ""}
       ${outputs}${outcomes}
       <h3>Invoke</h3>
       <form class="invoke">${inputs}
@@ -286,7 +292,8 @@ async function refreshPending() {
   badge.hidden = n === 0;
 }
 
-const views = { catalog: renderCatalog, runs: renderRuns, interventions: renderInterventions };
+const views = { catalog: renderCatalog, runs: renderRuns,
+                interventions: renderInterventions };
 
 document.querySelectorAll("nav button").forEach((b) =>
   b.addEventListener("click", () => {
@@ -295,6 +302,83 @@ document.querySelectorAll("nav button").forEach((b) =>
     current = b.dataset.view;
     views[current]();
   }));
+
+
+
+/* ------------------------------------------------------------------- chat */
+
+const chatLog = [];
+
+function chose(c) {
+  if (!c) return "";
+  return `<div class="chose">Called <code>${esc(c.capability)}</code>
+    @ ${esc(c.version)}
+    ${c.required_role ? `<span class="tag role">${esc(c.required_role)}</span>` : ""}
+    ${c.status === "draft" ? '<span class="tag draft">draft</span>' : ""}
+    with <code>${esc(JSON.stringify(c.inputs ?? {}))}</code></div>`;
+}
+
+function renderChat() {
+  view.innerHTML = `<div class="card">
+      <h2>Chat</h2>
+      <p class="muted">A thin driver over the capability API, standing in for the
+        AI agent. It picks a capability and its arguments; the API runs it. Every
+        answer below shows which capability was chosen, so the mapping is visible
+        rather than implied.</p>
+      <div class="chat-log">${chatLog.map((t) => t.you
+        ? `<div class="turn you"><span class="said">${esc(t.you)}</span></div>`
+        : `<div class="turn"><span class="said">${esc(t.reply)}</span></div>
+           ${chose(t.chose)}
+           ${t.available ? `<div class="chose">Available:<ul>${t.available.map((a) =>
+              `<li><code>${esc(a.id)}</code> &mdash; ${esc(a.description)}
+               ${a.required_role ? `<span class="tag role">${esc(a.required_role)}</span>` : ""}</li>`
+             ).join("")}</ul></div>` : ""}
+           ${t.classification ? `<p>${pill(t.classification)}
+              ${t.run_id ? `<a href="#" data-run="${esc(t.run_id)}">open run</a>` : ""}</p>` : ""}`
+      ).join("") || '<p class="muted">Ask for something.</p>'}</div>
+      <form class="chat-form">
+        <input type="text" name="message" autocomplete="off"
+               placeholder="e.g. what is the balance of share 100234-S0001-6 for member 100234?">
+        <button class="act go" type="submit">Send</button>
+      </form>
+      <div class="examples">
+        ${["What is the balance of share 100234-S0001-6 for member 100234?",
+           "Look up member 999999's share balance",
+           "Transfer 5.00 from 100987-MMKT-5 to 100987-MMKT-6 for member 100987, memo demo",
+           "Delete all the accounts"].map((e) =>
+          `<button data-example="${esc(e)}">${esc(e)}</button>`).join("")}
+      </div>
+    </div>`;
+
+  view.querySelectorAll("[data-example]").forEach((b) =>
+    b.addEventListener("click", () => {
+      $(".chat-form input", view).value = b.dataset.example;
+    }));
+  wireRunLinks(view);
+
+  const form = $(".chat-form", view);
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const input = $("input", form);
+    const message = input.value.trim();
+    if (!message) return;
+    chatLog.push({ you: message });
+    chatLog.push({ reply: "Thinking…" });
+    renderChat();
+    const { body } = await api("/chat", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ message }) });
+    chatLog.pop();
+    chatLog.push({
+      reply: body?.reply ?? body?.error ?? "No reply.",
+      chose: body?.chose, available: body?.available,
+      classification: body?.classification, run_id: body?.run_id });
+    renderChat();
+    refreshPending();
+  });
+}
+
+views.chat = renderChat;
 
 views[current]();
 refreshPending();

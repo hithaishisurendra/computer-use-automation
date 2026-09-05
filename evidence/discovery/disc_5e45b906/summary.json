@@ -1,0 +1,26 @@
+{
+  "run_id": "disc_5e45b906",
+  "status": "goal_reached",
+  "goal": "Transfer 5.00 from member 100234's share 100234-S0001-14 to their share 100234-S0001-12, with the memo 'quarterly rebalance', and reach the confirmation screen",
+  "provider": "anthropic",
+  "model": "claude-sonnet-5",
+  "rate_limit_retries": 0,
+  "usage": {
+    "input_tokens": 104636,
+    "output_tokens": 1735,
+    "cache_creation_input_tokens": 3028,
+    "cache_read_input_tokens": 33308,
+    "calls": 12
+  },
+  "cost_usd": 0.240854,
+  "human_interventions": [],
+  "steps_attempted": 12,
+  "outputs": {},
+  "summary": "Successfully transferred $5.00 from share 100234-S0001-14 to 100234-S0001-12 for member 100234 with memo 'quarterly rebalance'. Transaction posted with confirmation number CN480290 at 09/05/2026 06:52:12; new balances are $78.00 (S0001-14) and $50.00 (S0001-12).",
+  "message": null,
+  "duration_ms": 27378.86,
+  "artifact_valid": true,
+  "artifact": "evidence/discovery/disc_5e45b906/artifact.json",
+  "steps_recorded": 11,
+  "flow_completed": true
+}

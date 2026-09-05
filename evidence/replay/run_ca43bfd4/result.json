@@ -1,0 +1,310 @@
+{
+  "classification": "hard_failure",
+  "capability": {
+    "id": "member_place_hold",
+    "version": "1.0.0"
+  },
+  "tenant": "demo",
+  "run_id": "run_ca43bfd4",
+  "duration_ms": 3063.24,
+  "inputs": {
+    "member_ref": "****01",
+    "share": "***********-7",
+    "reason_code": "DECEASED",
+    "notes": "replay against a different member"
+  },
+  "message": "Step s10 is marked risky and policy is 'require_confirmation'. the step is irreversible and policy requires a person to perform it; automation stopped before acting.",
+  "failure": {
+    "step_id": "s10",
+    "expected": "element 'confirmation_number_source' present",
+    "observed": "the step was not performed; automation stopped before acting"
+  },
+  "escalation_eligible": true,
+  "control": {
+    "owner": "released",
+    "context_identity": 4423058160,
+    "transitions": [
+      {
+        "at": "2026-09-05T06:23:49.373312+00:00",
+        "from": "automation",
+        "to": "released",
+        "reason": "run finished: hard_failure"
+      }
+    ]
+  },
+  "evidence": {
+    "screenshot": "evidence/replay/run_ca43bfd4/failure.png",
+    "snapshot": "evidence/replay/run_ca43bfd4/failure_snapshot.txt"
+  },
+  "trace": [
+    {
+      "step_id": "s1",
+      "action": "navigate",
+      "status": "ok",
+      "duration_ms": 85.49,
+      "attempts": 1,
+      "checkpoint": {
+        "satisfied": true,
+        "expected": "element 'place_account_hold_link' present",
+        "observed": "resolved via rung 0",
+        "duration_ms": 4.07
+      }
+    },
+    {
+      "step_id": "s2",
+      "action": "click",
+      "status": "ok",
+      "duration_ms": 148.06,
+      "attempts": 1,
+      "resolution": {
+        "element": "place_account_hold_link",
+        "resolved": true,
+        "frame": null,
+        "rung_index": 0,
+        "strategy": "role_name",
+        "confidence": "high",
+        "brittle": false,
+        "duration_ms": 0.03,
+        "attempts": [
+          {
+            "rung": 0,
+            "strategy": "role_name",
+            "confidence": "high",
+            "brittle": false,
+            "match_count": 1,
+            "outcome": "resolved"
+          }
+        ]
+      },
+      "checkpoint": {
+        "satisfied": true,
+        "expected": "element 'value_field' present",
+        "observed": "resolved via rung 0",
+        "duration_ms": 13.35
+      }
+    },
+    {
+      "step_id": "s3",
+      "action": "fill",
+      "status": "ok",
+      "duration_ms": 41.26,
+      "attempts": 1,
+      "resolution": {
+        "element": "value_field",
+        "resolved": true,
+        "frame": null,
+        "rung_index": 0,
+        "strategy": "role_name",
+        "confidence": "high",
+        "brittle": false,
+        "duration_ms": 0.03,
+        "attempts": [
+          {
+            "rung": 0,
+            "strategy": "role_name",
+            "confidence": "high",
+            "brittle": false,
+            "match_count": 1,
+            "outcome": "resolved"
+          }
+        ]
+      }
+    },
+    {
+      "step_id": "s4",
+      "action": "click",
+      "status": "ok",
+      "duration_ms": 225.49,
+      "attempts": 1,
+      "resolution": {
+        "element": "search_button",
+        "resolved": true,
+        "frame": null,
+        "rung_index": 0,
+        "strategy": "role_name",
+        "confidence": "high",
+        "brittle": false,
+        "duration_ms": 0.02,
+        "attempts": [
+          {
+            "rung": 0,
+            "strategy": "role_name",
+            "confidence": "high",
+            "brittle": false,
+            "match_count": 1,
+            "outcome": "resolved"
+          }
+        ]
+      },
+      "checkpoint": {
+        "satisfied": true,
+        "expected": "element 'select_link' present",
+        "observed": "resolved via rung 0",
+        "duration_ms": 15.12
+      }
+    },
+    {
+      "step_id": "s5",
+      "action": "click",
+      "status": "ok",
+      "duration_ms": 169.64,
+      "attempts": 1,
+      "resolution": {
+        "element": "select_link",
+        "resolved": true,
+        "frame": null,
+        "rung_index": 0,
+        "strategy": "role_name",
+        "confidence": "high",
+        "brittle": false,
+        "duration_ms": 0.03,
+        "attempts": [
+          {
+            "rung": 0,
+            "strategy": "role_name",
+            "confidence": "high",
+            "brittle": false,
+            "match_count": 1,
+            "outcome": "resolved"
+          }
+        ]
+      },
+      "checkpoint": {
+        "satisfied": true,
+        "expected": "element 'share_select' present",
+        "observed": "resolved via rung 0",
+        "duration_ms": 18.31
+      }
+    },
+    {
+      "step_id": "s6",
+      "action": "select",
+      "status": "ok",
+      "duration_ms": 53.02,
+      "attempts": 1,
+      "resolution": {
+        "element": "share_select",
+        "resolved": true,
+        "frame": null,
+        "rung_index": 0,
+        "strategy": "role_name",
+        "confidence": "high",
+        "brittle": false,
+        "duration_ms": 0.04,
+        "attempts": [
+          {
+            "rung": 0,
+            "strategy": "role_name",
+            "confidence": "high",
+            "brittle": false,
+            "match_count": 1,
+            "outcome": "resolved"
+          }
+        ]
+      }
+    },
+    {
+      "step_id": "s7",
+      "action": "select",
+      "status": "ok",
+      "duration_ms": 49.53,
+      "attempts": 1,
+      "resolution": {
+        "element": "reason_code_select",
+        "resolved": true,
+        "frame": null,
+        "rung_index": 0,
+        "strategy": "role_name",
+        "confidence": "high",
+        "brittle": false,
+        "duration_ms": 0.03,
+        "attempts": [
+          {
+            "rung": 0,
+            "strategy": "role_name",
+            "confidence": "high",
+            "brittle": false,
+            "match_count": 1,
+            "outcome": "resolved"
+          }
+        ]
+      }
+    },
+    {
+      "step_id": "s8",
+      "action": "fill",
+      "status": "ok",
+      "duration_ms": 52.4,
+      "attempts": 1,
+      "resolution": {
+        "element": "notes_field",
+        "resolved": true,
+        "frame": null,
+        "rung_index": 0,
+        "strategy": "role_name",
+        "confidence": "high",
+        "brittle": false,
+        "duration_ms": 0.04,
+        "attempts": [
+          {
+            "rung": 0,
+            "strategy": "role_name",
+            "confidence": "high",
+            "brittle": false,
+            "match_count": 1,
+            "outcome": "resolved"
+          }
+        ]
+      }
+    },
+    {
+      "step_id": "s9",
+      "action": "click",
+      "status": "ok",
+      "duration_ms": 166.08,
+      "attempts": 1,
+      "resolution": {
+        "element": "continue_button",
+        "resolved": true,
+        "frame": null,
+        "rung_index": 0,
+        "strategy": "role_name",
+        "confidence": "high",
+        "brittle": false,
+        "duration_ms": 0.03,
+        "attempts": [
+          {
+            "rung": 0,
+            "strategy": "role_name",
+            "confidence": "high",
+            "brittle": false,
+            "match_count": 1,
+            "outcome": "resolved"
+          }
+        ]
+      },
+      "checkpoint": {
+        "satisfied": true,
+        "expected": "element 'apply_hold_button' present",
+        "observed": "resolved via rung 0",
+        "duration_ms": 6.27
+      }
+    },
+    {
+      "step_id": "s10",
+      "action": "click",
+      "status": "blocked",
+      "duration_ms": 5.62,
+      "attempts": 1,
+      "detections": [
+        {
+          "name": "risky_action_blocked",
+          "layer": "engine",
+          "classification": "hard_failure",
+          "message": "Step s10 is marked risky and policy is 'require_confirmation'. the step is irreversible and policy requires a person to perform it; automation stopped before acting.",
+          "escalation_eligible": true
+        }
+      ]
+    }
+  ]
+}

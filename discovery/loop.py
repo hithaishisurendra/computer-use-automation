@@ -255,6 +255,7 @@ class DiscoveryLoop:
         operator=None,
         escalation_root: str | Path = "evidence/escalation",
         max_wall_clock_s: float = MAX_WALL_CLOCK_S,
+        required_role: Optional[str] = None,
     ):
         self.goal = goal
         self.policy = policy
@@ -282,6 +283,8 @@ class DiscoveryLoop:
         self.control = None
         self.human_interventions: list[dict[str, Any]] = []
         self.max_wall_clock_s = max_wall_clock_s
+        # The privilege this run signs on with, if the capability needs one.
+        self.required_role = required_role
         self.run_id = f"disc_{uuid.uuid4().hex[:8]}"
         self.evidence_dir = Path(evidence_dir) / self.run_id
         self.evidence_dir.mkdir(parents=True, exist_ok=True)
@@ -489,7 +492,7 @@ class DiscoveryLoop:
         auth = self.target.auth
         if auth is None:
             return
-        credentials = resolve_credentials_for(self.target)
+        credentials = resolve_credentials_for(self.target, self.required_role)
         self.model_scrubber.register_secrets(credentials.values())
         self.sink.register_secrets(credentials.values())
 
@@ -891,20 +894,41 @@ def _unresolvable_advice(exc: ElementUnresolvable) -> str:
     )
 
 
-def resolve_credentials_for(target: Target) -> dict[str, str]:
-    """Resolve the target's declared credentials, or raise AuthConfigError.
+@dataclass(frozen=True)
+class _CredentialSubject:
+    """The two fields `resolve_credentials` reads off an artifact.
 
-    Wrapped so discovery reuses replay's resolution (env var names only, never
-    values in the artifact) without importing an artifact it does not have.
+    Discovery has a target but no artifact -- it is discovering the flow the
+    artifact will describe -- so it presents this instead of duplicating the
+    resolution logic. Reusing that logic is the point: env var names only,
+    never values, one implementation.
+
+    Declared as a real dataclass rather than an ad-hoc stub built inside the
+    function. The stub carried `capability.id` alone, which was everything
+    `resolve_credentials` read WHEN IT WAS WRITTEN; when resolution learned
+    about `required_role` the stub did not, and discovery crashed on the
+    first role-gated recording. A named type with named fields fails at the
+    call site if the contract grows again, rather than at run time inside a
+    resolver.
     """
 
-    class _Shim:
-        def __init__(self, target):
-            self.target = target
+    target: Any
+    capability: Any
 
-            class _Cap:
-                id = "discovery"
 
-            self.capability = _Cap()
+@dataclass(frozen=True)
+class _DiscoveryCapability:
+    id: str = "discovery"
+    required_role: Optional[str] = None
 
-    return resolve_credentials(_Shim(target))
+
+def resolve_credentials_for(
+    target: Target, required_role: Optional[str] = None
+) -> dict[str, str]:
+    """Resolve the target's declared credentials, or raise AuthConfigError."""
+    return resolve_credentials(
+        _CredentialSubject(
+            target=target,
+            capability=_DiscoveryCapability(required_role=required_role),
+        )
+    )

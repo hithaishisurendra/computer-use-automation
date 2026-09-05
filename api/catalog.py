@@ -53,6 +53,10 @@ def describe(artifact: Artifact) -> dict[str, Any]:
         "name": artifact.capability.name,
         "description": artifact.capability.description,
         "status": artifact.capability.status,
+        # A calling agent has to know what privilege a capability needs
+        # before invoking it. Learning it from a 403 means the agent learns
+        # by failing, and the audit trail records an attempt nobody intended.
+        "required_role": artifact.capability.required_role,
         "app": artifact.target.app,
         "tenant": artifact.target.tenant,
         "inputs": [_describe_input(i) for i in artifact.inputs],

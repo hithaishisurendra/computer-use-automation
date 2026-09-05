@@ -173,7 +173,15 @@ class AuthDefaults(ProfileModel):
     )
     credentials_ref: dict[str, str] = Field(
         default_factory=dict,
-        description="Credential role -> environment variable NAME. Never a value.",
+        description="Credential field -> environment variable NAME. Never a value.",
+    )
+    role_credentials: dict[str, dict[str, str]] = Field(
+        default_factory=dict,
+        description=(
+            "Credential sets by operator privilege, for apps that gate "
+            "functions by role. Env var NAMES only, as above. A capability's "
+            "`required_role` selects one."
+        ),
     )
     parameters: dict[str, str] = Field(
         default_factory=dict,

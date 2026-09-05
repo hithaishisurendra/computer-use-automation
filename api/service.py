@@ -38,6 +38,7 @@ HTTP status mapping, and why:
 from __future__ import annotations
 
 import asyncio
+import json
 import time
 from pathlib import Path
 from typing import Any, Optional
@@ -47,6 +48,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from api import catalog as catalog_mod
+from api.chat import Chat, describe
 from api.runs import PendingOperator, RunManager, RunRecord
 from capability.loader import ArtifactError
 from capability.sink import null_sink
@@ -94,6 +96,19 @@ class InvokeRequest(StrictRequest):
             "for one is worse than a run that stops cleanly."
         ),
     )
+
+
+class ChatRequest(StrictRequest):
+    """A request in plain English. Nothing else.
+
+    Deliberately not `capability`, `inputs`, `policy` or `attended`: the chat
+    surface chooses a capability through the model and invokes it through the
+    same endpoint any other caller uses. A field here that let a caller name
+    the capability directly would make this a second invoke path, with its
+    own opportunity to skip a check.
+    """
+
+    message: str
 
 
 class DecisionRequest(StrictRequest):
@@ -159,6 +174,9 @@ def create_app(
     app.state.runs: dict[str, dict[str, Any]] = {}
     # Attended runs live on their own threads and can outlast a request.
     app.state.manager = RunManager()
+    # One chat mapper for the process. The model client is built lazily, so
+    # an API with no model key still serves every other endpoint.
+    app.state.chat = Chat()
 
     def _evidence_dirs(record: RunRecord) -> dict[str, Path]:
         """Both trees a run writes to, keyed by the prefix a URL uses.
@@ -414,6 +432,72 @@ def create_app(
     from api.dashboard import mount as mount_dashboard
 
     mount_dashboard(app)
+
+    @app.post("/chat")
+    def chat(body: ChatRequest) -> JSONResponse:
+        """Map a request to a capability, invoke it, and say what happened.
+
+        A thin driver over this same API: it reads the catalogue, asks the
+        model to pick, and calls the invoke endpoint. It cannot reach past
+        that -- there is no path here that loads an artifact, touches policy
+        or runs an engine.
+        """
+        catalog = catalog_mod.catalog(app.state.capabilities_root)
+        try:
+            choice = app.state.chat.choose(body.message, catalog)
+        except Exception as exc:
+            # A model that is unavailable must not look like a refusal of the
+            # request, which would send the operator rewording a fine one.
+            return JSONResponse(status_code=503, content=null_sink().payload({
+                "reply": ("I could not reach the language model to interpret that. "
+                          "The capabilities are still invocable directly from the "
+                          "Catalog tab."),
+                "error": f"{type(exc).__name__}: {exc}",
+            }))
+
+        if "capability" not in choice:
+            invocable = [c for c in catalog if c.get("invocable")]
+            return JSONResponse(status_code=200, content=null_sink().payload({
+                "reply": choice.get("message"),
+                "chose": None,
+                # Listing what exists is the useful half of declining.
+                "available": [
+                    {"id": c["id"], "description": c.get("description"),
+                     "required_role": c.get("required_role")}
+                    for c in invocable
+                ],
+            }))
+
+        entry = next((c for c in catalog if c["id"] == choice["capability"]), None)
+        if entry is None:
+            return JSONResponse(status_code=200, content=null_sink().payload({
+                "reply": (f"I picked {choice['capability']!r}, which is not in the "
+                          "catalogue. Nothing was run."),
+                "chose": choice,
+            }))
+
+        invoked = invoke(
+            entry["id"], entry["version"],
+            InvokeRequest(inputs=choice["inputs"]),
+        )
+        result = json.loads(bytes(invoked.body).decode("utf-8"))
+
+        # The mapping is shown alongside the result, so a demo viewer can see
+        # WHICH capability was chosen and with what arguments rather than
+        # inferring it from the outcome.
+        return JSONResponse(status_code=200, content=null_sink().payload({
+            "reply": describe(result, entry["id"], choice["inputs"]),
+            "chose": {
+                "capability": entry["id"],
+                "version": entry["version"],
+                "inputs": result.get("inputs", choice["inputs"]),
+                "required_role": entry.get("required_role"),
+                "status": entry.get("status"),
+            },
+            "classification": result.get("classification"),
+            "run_id": result.get("run_id"),
+            "result": result,
+        }))
 
     @app.get("/healthz")
     def healthz() -> dict[str, str]:

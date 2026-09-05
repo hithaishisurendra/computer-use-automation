@@ -1,0 +1,28 @@
+{
+  "run_id": "disc_5813b13c",
+  "status": "goal_reached",
+  "goal": "Look up member 100234, open their member record, and read the balance of their share 100234-S0001-6 from the shares and balances table",
+  "provider": "anthropic",
+  "model": "claude-sonnet-5",
+  "rate_limit_retries": 0,
+  "usage": {
+    "input_tokens": 18728,
+    "output_tokens": 629,
+    "cache_creation_input_tokens": 3003,
+    "cache_read_input_tokens": 15015,
+    "calls": 6
+  },
+  "cost_usd": 0.054256,
+  "human_interventions": [],
+  "steps_attempted": 6,
+  "outputs": {
+    "share_100234_s0001_6_balance": "$10.99"
+  },
+  "summary": "Looked up member 100234 (<redacted:pii>), opened their member record, and found that share 100234-S0001-6 (Regular Shares, status HOLD) has a balance of $10.99.",
+  "message": null,
+  "duration_ms": 12720.28,
+  "artifact_valid": true,
+  "artifact": "evidence/discovery/disc_5813b13c/artifact.json",
+  "steps_recorded": 6,
+  "flow_completed": true
+}
