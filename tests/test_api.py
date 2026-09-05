@@ -185,3 +185,36 @@ def test_an_unknown_run_is_a_404(client):
 
 def test_healthz(client):
     assert client.get("/healthz").json() == {"status": "ok"}
+
+
+def test_the_catalogue_will_not_advertise_a_capability_the_invoke_path_refuses(tmp_path):
+    """`catalog()` called load_artifact while invoke called load_resolved, so
+    a tampered artifact listed as invocable and then failed on invocation.
+    That is this audit's own pattern: a check applied at one entry point and
+    not its sibling."""
+    import json
+    import shutil
+
+    root = tmp_path / "caps"
+    shutil.copytree(CAPABILITIES, root)
+    path = root / "member_funds_transfer" / "1.0.0.json"
+    data = json.loads(path.read_text())
+    for step in data["steps"]:
+        if step["risk"] == "risky":
+            step["risk"] = "safe"
+            step.pop("checkpoint", None)
+    path.write_text(json.dumps(data))
+
+    client = TestClient(create_app(root, evidence_root=tmp_path / "ev"))
+    row = next(c for c in client.get("/capabilities").json()["capabilities"]
+               if c["id"] == "member_funds_transfer")
+    assert row["invocable"] is False
+    assert row["status"] == "unloadable"
+
+    invoked = client.post(
+        "/capabilities/member_funds_transfer/1.0.0/invoke",
+        json={"inputs": {"member_ref": "100987", "from_share": "a", "to_share": "b",
+                         "amount": "5.00", "memo": "x"}})
+    assert invoked.status_code == 404
+    # Catalogue and invoke agree about why.
+    assert "app profile" in row["error"] and "app profile" in invoked.json()["message"]

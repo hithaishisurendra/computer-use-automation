@@ -951,3 +951,343 @@ Silently ignoring it gives a caller a 200 and no way to tell the override was
 not honoured. The value was never read -- but a reader cannot distinguish
 "ignored" from "applied", and the next person to add a field may wire it up.
 A 422 says plainly that this surface does not take policy.
+
+---
+
+## One sensitivity classifier for inputs and outputs
+
+`classify_sensitivity()` decides how sensitive data read from or typed into a
+field is, and both `_infer_input` and the output declaration call it. Three
+signals, most sensitive answer wins: the field's **label** against a new
+profile `sensitive_labels`, the observed **value** through the sink's
+predicate, and what the artifact has **already declared** about that field.
+
+The leak it closes shipped in a committed artifact: `member_update_info`
+declared `e_mail` as `pii` input and the output reading *the same field* as
+`public`. Same field, same data, opposite classification — the input fix from
+the previous session simply never travelled to outputs.
+
+**This derives at the boundary.** Sensitivity is computed once, from the field,
+at the single point where any declaration is made. There is no second decision
+to drift out of agreement with the first. That is the property Finding 11
+identified: `risky_action_handling` and `catalog.risky_steps` never broke
+because they derive; the input/output split broke because it copied.
+
+Three signals rather than one, because each covers the others' blind spot. The
+label is the durable fact — a member with no e-mail recorded yields an
+innocuous sample, and value-only classification would declare the e-mail output
+public forever. The value catches a sensitive field under a label nobody
+enumerated. The declared-field ledger makes the original leak structurally
+impossible rather than merely fixed.
+
+Considered and rejected: defaulting every output to `pii`. Safest by
+construction, and it would mask `savings_balance` and `confirmation_number` —
+the answers those capabilities exist to return. A caller who gets `<redacted>`
+where they expected the answer learns to ignore the sensitivity field, which
+is worse than the problem.
+
+Considered and rejected: classifying outputs from the observed value alone,
+mirroring `_infer_input` exactly. Smaller, and it catches the live leak — but
+an output is a value that *varies per invocation*, and one benign sample would
+lock in `public`.
+
+Which labels name personal data is per-app knowledge, so `sensitive_labels`
+lives in the profile beside the app's other facts.
+
+---
+
+## Replay re-derives risk and refuses when it disagrees
+
+`check_risk_agreement()` runs in `load_resolved`. It re-derives each click
+step's risk from the app profile and refuses the artifact when the profile
+considers a step irreversible and the artifact does not.
+
+Replay read `step.risk` and believed it. A hand-edited artifact flipping
+`risky` to `safe` would have posted unattended — while the profile that would
+have caught it was in hand the whole time. The recorder's judgement is a
+*recording-time* fact and execution was treating it as gospel.
+
+**Refused, not corrected, and only in one direction.** Overriding toward
+`risky` would let a stale profile break a reviewed capability; overriding
+toward `safe` would let a tamper through. Either way the override hides the
+disagreement, and the disagreement is the information: something is wrong with
+the artifact, the profile, or both, and which one decides whether to re-record
+or to review the profile. The reverse direction — an artifact marking a step
+risky the profile does not — loads fine, because a human may mark a step risky
+for reasons no vocabulary encodes, and refusing that would punish exactly the
+review `draft -> approved` asks for.
+
+**At load, not at execution.** An element's chain carries the control's role
+and accessible name, which is what the recorder classified on, so the verb
+signal reproduces statically with no browser. That means the refusal happens
+before Chromium starts rather than three steps in with a session open — and
+every surface that loads an artifact inherits it.
+
+**This derives at the boundary**, and it is the one fix here that turns a
+copy into a derivation: the recorded label is still stored, but it is no
+longer *believed* — it is checked against a fresh derivation on every load.
+
+**A limit, stated rather than papered over.** The static derivation reproduces
+the verb signal only. `commit_paths` matches a landing URL, which is not
+observable before the click, so a commit whose label says nothing —
+MERIDIAN's `Open Share` — derives `safe` here. The artifact still marks it
+risky from the recording, and that is the tolerated direction. Finding 1's
+pre-click href check would narrow this gap.
+
+Fixing this exposed the same defect one layer up: `api/catalog.py` called
+`load_artifact` while invoke called `load_resolved`, so a tampered artifact
+listed as `invocable: true` and then failed on invocation. A catalogue that
+advertises what the invoke path refuses is worse than one that says why — an
+agent reads the flag and calls it. Both entry points now run the check.
+
+---
+
+## Every checkpoint rung is tested for discrimination, not just the fallbacks
+
+`_add_checkpoints` is one cascade — element, then URL, then heading — and each
+rung must establish that its condition was **false before the step and true
+after**. A rung that cannot establish it returns None and the next is tried.
+
+Two rungs already enforced this. The first — `element_present` on the next
+step's control, which fires for almost every step — did not. The rule had been
+applied where a bug was found rather than everywhere the property is needed,
+which is this audit's whole subject.
+
+`_element_checkpoint` resolves the candidate through the **resolver against
+the pre-step tree**, not by searching observation text. `element_present` is a
+resolver question at replay time, and answering it any other way here would
+vet a different condition than the one that will actually run.
+
+**Unproven is not proven.** No pre-step tree, or a chain that fails to resolve
+for unrelated reasons, both return None rather than emitting. A checkpoint
+nobody verified is indistinguishable from one that verifies nothing.
+
+**And that makes some risky steps unrecordable, which is correct.** A risky
+step with no checkpoint is rejected at load, so a risky step whose every
+candidate is vacuous cannot become a capability. An irreversible action nobody
+can confirm should not be one — the same reasoning as the load-time rule. The
+cascade is what keeps that from being over-strict: it refuses only when all
+three rungs fail, not when the first does.
+
+One exemption: the synthetic opening navigate `_ensure_opening_navigate`
+prepends has no observed cycle and therefore no pre-step tree. It is also the
+one step whose discrimination cannot matter — it is first, nothing preceded
+it, and asserting the flow's first control is what makes the artifact state its
+own starting precondition. Risky steps never take that path; the recorder only
+ever synthesises a navigate.
+
+**This derives at the boundary.** The property is computed from observed
+before/after state at the single point a checkpoint is produced. Nothing
+copies a checkpoint decision from one place to another.
+
+### The audit was wrong about `open_new_share`
+
+The audit reported all three recorded capabilities clean. Re-recording under
+the cascade showed `member_open_new_share` s9 falling through from
+`element_present` to `url_matches` — which means the confirmation cell **did**
+resolve against the pre-click tree. MERIDIAN's review page and its posted page
+both carry a `Confirmation` row, so that checkpoint was true before the click
+and would have passed whether or not the share was opened.
+
+The audit missed it because it string-matched the scope text `'Confirmation'`
+against the observation, and the observation is a filtered rendering rather
+than the tree the resolver walks. **A weaker check than the one being audited
+will clear things the real check catches.** All three capabilities were
+re-recorded; the corrected artifacts are committed.
+
+---
+
+## The commit signal is available before the click, and perception provides it
+
+`perception/labeling.py` records `props.action` for submit-type controls, and
+both risk decision sites — discovery's act-time gate and the loader's static
+derivation — now use the destination alongside the verb.
+
+The accessibility tree exposes a link's href as a `/url` property and a submit
+button's target **not at all**: a button's destination lives on the enclosing
+`<form>`. So the control that can commit is exactly the control whose
+destination is invisible, and that gap is not incidental — it is why the
+commit signal had to be post-hoc.
+
+**Perception reads one non-accessibility attribute, and that needs saying
+plainly.** The project's bet is that role + accessible name is the whole
+perception surface. This is a deliberate, narrow exception: the safety model
+turns on knowing whether a click commits, and the accessibility tree cannot
+answer it. The script reads the form's `action` and nothing else — not its
+method, not its fields, not their values — and a test asserts that by
+inspecting what the script accesses rather than trusting its comment.
+
+Considered and rejected: reading the DOM in the executor just before clicking.
+It has a Playwright locator in hand, so it could. Rejected because it puts
+page inspection in the layer that is supposed to *act on what perception
+reports*, and the recorder would need its own copy — two mechanisms answering
+one question, which is this audit's entire subject.
+
+**Narrower than the landing URL, deliberately.** A form's action is where the
+request is *addressed*; the landing URL is where the app *ends up*. A server
+that redirects after posting, or a form with an empty action that posts to the
+current path, both defeat it. It is kept alongside the post-hoc landing-URL
+match in the recorder rather than replacing it: the pre-click signal is the
+only one available before the click, and the post-hoc one is the more accurate.
+
+**This closes Finding 10's stated limit.** The recorded `Element.destination`
+lets the load-time derivation reproduce the commit signal without a browser, so
+a downgrade of a step the verb list cannot see — MERIDIAN's `Open Share` — is
+now refused. Verified: flipping that step to `safe` in a copied artifact is
+rejected, where before it loaded cleanly. All four shipped capabilities now
+agree between recorded and derived risk.
+
+An artifact recorded before destinations existed carries none and falls back to
+the verb signal, which is why the check refuses downgrades rather than
+asserting equality — an artifact must not be refused for missing a field it
+predates.
+
+**This derives at the boundary.** The destination is observed once, by
+perception, and every consumer reads it from there. The recorded value in the
+artifact is a cache of an observation, and the loader re-derives the *decision*
+from it on every load rather than trusting a recorded decision.
+
+---
+
+## Selects, suspect fills, and stale descriptions
+
+Three smaller findings from the same audit, and one of them was not what it
+looked like.
+
+**Selects already went through the shared classifier**, as a side effect of
+the Finding 4 fix: `_infer_select_input` takes a computed sensitivity rather
+than testing digit-shape. Nothing to do.
+
+**The extraction label had a hole the classifier could not see past.**
+`_extraction_label` read `column_header` and `row_contains` only. A model that
+names the control directly -- `{"role": "textbox", "name": "E-mail"}` with no
+scope at all -- produced an empty label, so the label signal never fired and
+an extracted e-mail was declared `public` on a capability recorded **after**
+the classifier was meant to prevent exactly that. The control's own name is
+the field's label when no scope is given, and it is now read.
+
+Worth naming, because it is this audit's pattern once more: Finding 4 built
+the right classifier and fed it from an incomplete source. A correct decision
+procedure with a lossy input is indistinguishable from a wrong one.
+
+**The suspect guard now covers fills**, with a different signature than
+selects. Currency in a select value means the page composed it; currency in a
+fill is normal, since "5.00" is what a caller types. So a fill is suspect when
+its value appears in the observation the model was looking at, does not appear
+in the goal, and is long enough that co-occurrence is not chance. All three
+conditions, because any two of them fire on ordinary flows.
+
+**This derives at the boundary** in both cases: one classifier, one label
+extractor, called at the single point a declaration is made.
+
+### A blocked re-record, and why the artifact stays stale
+
+`member_savings_balance_discovered` still carries `Value read from 8320.10.`
+in an output description. It could not be re-recorded, and the reason is a
+real interaction rather than an oversight.
+
+CoreServ's profile declares `fixture_module: coreserv.data`, so every seed
+member id is registered as a scrubber literal. The goal text goes through the
+model-facing scrubber, so `"Look up member 10001"` reaches the model as
+`"Look up member ***01"` -- and the model dutifully types `***01`, which
+matches no member. Every CoreServ lookup goal is unexpressible for the same
+reason. Measured: MERIDIAN is unaffected (its ids are not registered
+literals), which is why every MERIDIAN re-record in this pass succeeded, and
+e-mail masking affects both.
+
+This is the second sighting of the same interaction -- the first was a model
+targeting a control by the literal string `&lt;redacted:email&gt;`. **Redaction
+of model-facing text collides with the model's need to reference values.**
+The scrubber is right that a member id is an identifier; it is wrong that the
+model can work without it.
+
+The artifact is left as-is, with the staleness recorded in the test that
+checks for it: the test names it as a known exemption rather than passing
+blind over the whole directory. Fixing the interaction is a separate decision
+about what the model may see, and making it silently here -- by loosening
+redaction to unblock a re-record -- would be exactly the trade this project
+has refused five times.
+
+---
+
+## Guard scope is derived from the repository, not listed in each guard
+
+`tests/scope.py` computes which packages a structural guard covers. Four
+guards each carried their own hardcoded list; `api/` was added, none were
+updated, and four guards went on reporting clean over code they never read.
+
+That is this audit's defect wearing a test's clothes. A guard with stale scope
+is worse than no guard, because it answers the question it was asked without
+covering the ground the asker meant — and it does so silently, in green.
+
+Excluding a package now requires naming it with a reason in `_NOT_RUNTIME`. An
+omission is invisible; a named exclusion is reviewable. A meta-test fails if
+any guard reintroduces a hand-maintained package list, and distinguishes a
+list of packages to *scan* (a scope, must be derived) from a list of packages a
+module may not *import* (an assertion, deriving it would assert nothing).
+
+**This derives at the boundary.** One computation of scope, read by every
+guard.
+
+### Widening a guard is not the same as fixing it
+
+Two things surfaced only because the widened guard actually ran.
+
+**The application guard's exemption was wrong in both directions.** It stripped
+docstrings alone, so pointing it at `capability/` flagged every
+`Field(description=...)` that explains why a rule exists — prose the docstring
+already promised was exempt. Exempting *all* string literals fixed that and
+broke the guard: a planted `TENANT = "northridge"` passed. The exemption is now
+shaped to prose specifically — bare string expressions, `description=`
+keywords, multi-line strings — and a permanent test plants both a docstring and
+an assigned literal to prove the line falls between them.
+
+Worth stating plainly: the guard had been green for the whole project while
+being unable to catch an assigned literal in the packages it did read. Nobody
+had planted one.
+
+**A scope list hid inside an assertion.** `test_the_check_runs_for_every_surface`
+iterated `("replay", "api")` — written when those were the only two places risk
+could be re-implemented. Now derived.
+
+### The dashboard's source is scanned
+
+`app.js` was ~330 lines of rendering logic no guard read. It now gets the same
+treatment as Python engine code: no application names in running code, no
+locator vocabulary, no route out of the page except `fetch`, and every API path
+it builds must be one the API serves. Comments and string literals are stripped
+first, on the same reasoning.
+
+---
+
+## Load time rejects self-defeating checkpoint shapes
+
+A risky step whose checkpoint its own definition already guarantees is
+refused: an `element_present` naming the element the step acts on, or a
+`navigate` whose `url_matches` its own path. Both are checked through nested
+`any_of`/`all_of`, since one vacuous branch of an `any_of` makes the whole
+condition vacuous.
+
+Load time has no before-state, so it can only catch contradictions between the
+checkpoint and the **step beside it** — not between the checkpoint and any
+observed page. That is the honest limit: this is a backstop for a hand-written
+or hand-edited artifact, not a replacement for the record-time check, which
+has real before/after state and does the general job.
+
+**Two shapes considered and rejected as rules.** An element an earlier step's
+checkpoint already asserted, and text that appeared in an earlier checkpoint.
+Both look like vacuity and both have a legitimate counter-case: a flow that
+returns to a screen — search, open, go back, search again — asserts the same
+element twice entirely correctly. An artifact carries *steps*, not page
+states, so the two are indistinguishable at load. Rejecting a real flow to
+catch a hypothetical one is a bad trade, and the record-time check already
+catches the real case with the state to tell them apart.
+
+**Scoped to risky steps.** A safe step with a weak checkpoint is a quality
+problem; nothing irreversible rests on it, and refusing to load the artifact
+would be disproportionate.
+
+**This derives at the boundary** in the sense available to it: the judgement is
+computed from the step and its checkpoint together, at load, every time. It
+does not copy a record-time conclusion forward — which is why it catches an
+artifact edited after recording, the case the recorder cannot see.

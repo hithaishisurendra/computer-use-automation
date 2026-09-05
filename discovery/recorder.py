@@ -59,6 +59,17 @@ class RiskRules:
     near_miss_verbs: tuple[str, ...] = ()
     parameter_aliases: tuple[tuple[str, str], ...] = ()
     commit_paths: tuple[str, ...] = ()
+    sensitive_labels: tuple[str, ...] = ()
+
+    def label_is_sensitive(self, label: str) -> bool:
+        """Does this field label name personal data on this app?
+
+        Compared on the slug so "E-mail", "E-Mail:" and "e mail" agree --
+        the same normalisation the perception layer already applies to
+        accessible names, for the same reason.
+        """
+        target = _slug(label)
+        return bool(target) and any(_slug(l) == target for l in self.sensitive_labels)
 
     def commits(self, url: Optional[str]) -> Optional[str]:
         """The commit pattern this URL matches, if any.
@@ -117,6 +128,7 @@ def risk_rules_from_profile(profile) -> RiskRules:
         near_miss_verbs=tuple(profile.near_miss_verbs),
         parameter_aliases=tuple(profile.parameter_aliases.items()),
         commit_paths=tuple(profile.commit_paths),
+        sensitive_labels=tuple(profile.sensitive_labels),
     )
 
 
@@ -464,6 +476,14 @@ def _output_name(raw: str, taken: set[str]) -> str:
 _CURRENCY_RE = re.compile(r"\$\s?\d[\d,]*(?:\.\d{2})?|\b\d{1,3}(?:,\d{3})+(?:\.\d{2})?\b")
 
 
+# Actions whose recorded value could be observed page data rather than caller
+# intent. A `select` takes its value from the page by construction. A `fill`
+# usually carries what the caller typed -- but the model can read a displayed
+# value and type it back, which produces a locator that only works while the
+# page still shows what discovery saw.
+_VALUE_BEARING_ACTIONS = {"select", "fill"}
+
+
 def suspect_value(action: str, value: str) -> Optional[str]:
     """Why a recorded value looks like observed page data rather than intent.
 
@@ -472,19 +492,49 @@ def suspect_value(action: str, value: str) -> Optional[str]:
     circular, and it resolves during discovery precisely because the page
     still shows what discovery saw.
 
-    Scoped to `select` on purpose. A fill value containing currency is
-    normal -- an amount of "5.00" is exactly what the caller typed. A select
-    value containing currency cannot be caller intent, because the caller did
-    not compose it: the page did.
+    A currency amount is the signature on a `select`, because the caller does
+    not compose an option label -- the page does. On a `fill` an amount is
+    normal ("5.00" is exactly what a caller types), so the signature there is
+    different: a value that is ALSO a value visible on the page the model was
+    looking at, which means it was copied rather than supplied.
     """
-    if action != "select" or not value:
+    if action not in _VALUE_BEARING_ACTIONS or not value:
         return None
-    match = _CURRENCY_RE.search(value)
-    if not match:
+    if action == "select":
+        match = _CURRENCY_RE.search(value)
+        if not match:
+            return None
+        return (
+            f"contains the currency amount {match.group(0)!r}, which is live page data "
+            "from the option's display label rather than a stable identifier"
+        )
+    return None
+
+
+def suspect_fill(value: str, observation: Optional[str], goal: str) -> Optional[str]:
+    """Was this fill value copied off the page rather than supplied by the goal?
+
+    A value the goal names is caller intent, whatever it looks like. A value
+    the model read from the page it was looking at is observed data, and
+    recording it as a step value bakes one run's state into the capability --
+    the same circularity that suppresses name-based rungs for extraction
+    targets.
+
+    Deliberately narrow: the value must appear in the observation AND be
+    absent from the goal AND be long enough that co-occurrence is not
+    coincidence. A short token like "5" appears on any page with a table.
+    """
+    value = (value or "").strip()
+    if len(value) < 6 or not observation:
+        return None
+    if value in (goal or ""):
+        return None
+    if value not in observation:
         return None
     return (
-        f"contains the currency amount {match.group(0)!r}, which is live page data "
-        "from the option's display label rather than a stable identifier"
+        f"the value {value!r} was visible on the page when the model typed it and "
+        "does not appear in the goal, so it was read off the screen rather than "
+        "supplied -- recording it bakes one run's data into the capability"
     )
 
 
@@ -575,7 +625,9 @@ def _select_value(cycle: Cycle) -> str:
 _IDENTIFIER_SHAPE = re.compile(r"^[0-9][0-9A-Za-z_\-]*$")
 
 
-def _infer_select_input(value: str, label: str, alias: Optional[str] = None) -> dict[str, Any]:
+def _infer_select_input(
+    value: str, label: str, alias: Optional[str] = None, sensitivity: str = "public"
+) -> dict[str, Any]:
     """Declare a typed input for an option the model chose.
 
     Named from the field's label without the `_ref` suffix that identifier
@@ -587,7 +639,7 @@ def _infer_select_input(value: str, label: str, alias: Optional[str] = None) -> 
     No regex pattern: the shape of a share id is a per-tenant fact, and a
     pattern learned from one member's shares would reject another tenant's.
     """
-    identifier = bool(_IDENTIFIER_SHAPE.match(value or ""))
+    identifier = sensitivity == "identifier"
     return {
         "name": alias or (_slug(label) or "option"),
         "type": "string",
@@ -598,16 +650,79 @@ def _infer_select_input(value: str, label: str, alias: Optional[str] = None) -> 
             if identifier
             else f"Option selected in {label!r}."
         ),
-        "sensitivity": "identifier" if identifier else "public",
-        "example": value,
+        "sensitivity": sensitivity,
+        # A sensitive option is not exemplified, for the same reason a
+        # sensitive fill is not: a masked placeholder reads like data.
+        "example": None if sensitivity == "pii" else value,
     }
+
+
+def _extraction_label(cycle: Cycle) -> str:
+    """The label of the field an extract read from.
+
+    The model names a column header or a row scope; on a label/value layout
+    the row's text IS the field's label ("* E-mail"), which is exactly what
+    the profile's sensitive_labels are written against. The leading required-
+    field marker is stripped because it is presentation, not part of the name.
+    """
+    raw = (
+        cycle.tool_input.get("column_header")
+        or cycle.tool_input.get("row_contains")
+        # The model may name the control directly instead of scoping to a
+        # row -- `{"role": "textbox", "name": "E-mail"}` with no scope at all.
+        # That name IS the field's label, and omitting it here is how an
+        # extracted e-mail was declared `public` on a capability recorded
+        # AFTER the classifier was supposed to prevent exactly that.
+        or cycle.tool_input.get("name")
+        or ""
+    )
+    return re.sub(r"^[\s*]+", "", str(raw)).strip()
+
+
+def classify_sensitivity(
+    label: str,
+    value: Optional[str],
+    risk_rules: "RiskRules",
+    is_sensitive: Optional[Callable[[str], bool]] = None,
+    declared: Optional[dict[str, str]] = None,
+) -> str:
+    """How sensitive is data read from, or typed into, this field?
+
+    One function for inputs and outputs, because the alternative is what
+    shipped: `e_mail` declared `pii` as an input while the output reading the
+    SAME field was declared `public`. Same field, same data, opposite
+    classification -- the input fix simply never travelled to the output.
+
+    Three signals, most sensitive answer wins. Each covers the others' blind
+    spot:
+
+      label     the durable fact. A field named "E-mail" holds e-mail
+                addresses whether or not this member has one.
+      value     catches a sensitive value under a label nobody declared,
+                which is the general case a label list cannot enumerate.
+      declared  what the artifact already says about this field. If an input
+                filling "E-mail" is pii, an output reading "E-mail" is pii,
+                and no further evidence is needed.
+
+    Erring toward `pii` is deliberate: over-declaring costs a masked example,
+    under-declaring writes personal data to a public repo.
+    """
+    if risk_rules.label_is_sensitive(label):
+        return "pii"
+    if declared and declared.get(_slug(label)) in ("pii", "secret"):
+        return "pii"
+    if value and is_sensitive and is_sensitive(value):
+        return "pii"
+    if value and str(value).isdigit():
+        return "identifier"
+    return "public"
 
 
 def _infer_input(
     value: str,
     label: str,
     alias: Optional[str] = None,
-    is_sensitive: Optional[Callable[[str], bool]] = None,
+    sensitivity: str = "public",
 ) -> dict[str, Any]:
     """Declare a typed input for a literal the model typed.
 
@@ -629,7 +744,7 @@ def _infer_input(
     something masked.
     """
     is_identifier = value.isdigit()
-    sensitive = bool(is_sensitive and is_sensitive(value))
+    sensitive = sensitivity == "pii"
     spec: dict[str, Any] = {
         "name": alias or _parameter_name(label, is_identifier),
         "type": "string",
@@ -720,13 +835,27 @@ def record(
     # values and scope texts. Conflating the two made withholding an example
     # break parameterisation entirely.
     discovered: dict[str, str] = {}
+    # What the artifact has already decided about each labelled field. An
+    # output reading a field an input fills must not disagree with it: that
+    # exact split shipped once, with `e_mail` pii as an input and the output
+    # reading the same field public.
+    field_sensitivity: dict[str, str] = {}
     suspect: list[str] = []
     for cycle in acted:
         if cycle.tool_name == "fill":
             value = cycle.tool_input.get("value", "")
             label = cycle.tool_input.get("name") or "value"
+            reason = suspect_fill(value, cycle.observation, goal)
+            if reason:
+                suspect.append(f"fill {label!r}: {reason}")
+                emit("suspect_value", {"action": "fill", "label": label,
+                                       "value": value, "reason": reason})
             if value and value in goal:
-                spec = _infer_input(value, label, risk_rules.alias_for(label), is_sensitive)
+                spec = _infer_input(
+                    value, label, risk_rules.alias_for(label),
+                    classify_sensitivity(label, value, risk_rules, is_sensitive),
+                )
+                field_sensitivity[_slug(label)] = spec["sensitivity"]
                 inputs[spec["name"]] = spec
                 discovered[spec["name"]] = value
         elif cycle.tool_name == "select":
@@ -745,7 +874,16 @@ def record(
                 suspect.append(f"select {label!r}: recorded value {value!r} {reason}")
                 emit("suspect_value", {"action": "select", "label": label,
                                        "value": value, "reason": reason})
-            spec = _infer_select_input(value, label, risk_rules.alias_for(label))
+            spec = _infer_select_input(
+                value, label, risk_rules.alias_for(label),
+                classify_sensitivity(
+                    label, value, risk_rules, is_sensitive,
+                    # An identifier-shaped option keeps that classification
+                    # unless something stronger says pii.
+                    None,
+                ) if not _IDENTIFIER_SHAPE.match(value or "") else "identifier",
+            )
+            field_sensitivity[_slug(label)] = spec["sensitivity"]
             inputs[spec["name"]] = spec
             discovered[spec["name"]] = value
 
@@ -818,6 +956,13 @@ def record(
             or cycle.tool_input.get("row_contains")
             or "the page"
         ) if action == "extract" else (cycle.tool_input.get("name") or "")
+        # Where activating this control addresses. Recorded so a later LOAD can
+        # re-derive the commit signal without a browser: without it the static
+        # derivation sees verbs only, and a commit named "Open Share" is
+        # invisible to the check that is supposed to catch a downgrade.
+        acted_props = (node.get("props") or {})
+        destination = acted_props.get("action") or acted_props.get("url")
+
         elements[key] = {
             "description": (
                 f"{cycle.tool_input.get('role') or 'element'} "
@@ -827,6 +972,8 @@ def record(
             "chain": chain,
             "notes": "Chain built by probing which strategies uniquely resolved this element during discovery.",
         }
+        if destination:
+            elements[key]["destination"] = destination
 
         # Risk classification. Only clicks: a fill or a select changes a form,
         # the click is what sends it. The resolved control's own accessible
@@ -929,6 +1076,11 @@ def record(
         step["_before_url"] = cycle.url
         step["_before_obs"] = cycle.observation
         step["_after_obs"] = after_obs.get(id(cycle))
+        # The page as it stood BEFORE this step, as a tree rather than as
+        # text. `element_present` is a resolver question, and answering it by
+        # searching observation text would be a different, weaker check than
+        # the one replay actually performs.
+        step["_before_frames"] = cycle.frames_before
         if action in ("fill", "select"):
             value = _select_value(cycle) if action == "select" else cycle.tool_input.get("value", "")
             for param, example in params.items():
@@ -952,6 +1104,10 @@ def record(
             step["into"] = output_name
             source = (cycle.tool_input.get("column_header")
                       or cycle.tool_input.get("row_contains") or "the page")
+            # The field this value was read FROM, which is what decides how
+            # sensitive it is. A scope's row text is the field's label on a
+            # label/value layout, which is how MERIDIAN renders its record.
+            read_from = _extraction_label(cycle)
             outputs.append(
                 {
                     "name": output_name,
@@ -961,7 +1117,10 @@ def record(
                     # VALUE it read, which would put a discovered value in the
                     # contract ("Value read from CN480192.").
                     "description": f"Value read from {source}.",
-                    "sensitivity": "public",
+                    "sensitivity": classify_sensitivity(
+                        read_from, cycle.extracted, risk_rules, is_sensitive,
+                        field_sensitivity,
+                    ),
                 }
             )
         steps.append(step)
@@ -1163,6 +1322,54 @@ def _risk_summary(risk_rules: "RiskRules", notes: list[str]) -> str:
     )
 
 
+def _element_checkpoint(
+    following: Optional[dict[str, Any]],
+    elements: dict[str, dict[str, Any]],
+    before_frames: Optional[dict],
+    params: dict[str, Any],
+) -> Optional[dict[str, Any]]:
+    """Assert the next step's control, IF it was not already on the page.
+
+    A click that silently does nothing is the most common failure in UI
+    automation, and asserting the control the flow needs next is the
+    strongest thing discovery can justify from what it observed. But on a
+    page where the next control is already visible -- a form that reveals a
+    section in place, a screen whose Continue button sits beside the field
+    just filled -- the assertion is true before the click and would pass
+    whether or not the click did anything.
+
+    Resolved through the resolver against the pre-step tree, not searched for
+    in observation text: `element_present` is a resolver question at replay
+    time, and answering it any other way here would be checking a different
+    condition than the one that will actually run.
+    """
+    if following is None or not following.get("element"):
+        return None
+    key = following["element"]
+    spec = elements.get(key)
+    if spec is None:
+        return None
+    if not before_frames:
+        # No pre-step tree means the property cannot be ESTABLISHED, only
+        # assumed. Emitting anyway is the exact failure this rung exists to
+        # stop -- a checkpoint nobody verified is indistinguishable from one
+        # that verifies nothing. Fall through to a rung that can be checked.
+        return None
+    try:
+        from capability.schema import Element
+
+        resolution = resolver.resolve_element(
+            key, Element.model_validate(spec), before_frames, params
+        )
+    except Exception:
+        # An unresolvable-for-other-reasons chain is not evidence the element
+        # was absent either. Same rule: unproven is not proven.
+        return None
+    if resolution.resolved:
+        return None  # already true before the step: verifies nothing
+    return {"type": "element_present", "element": key, "timeout_ms": 8000}
+
+
 def _url_checkpoint(
     after: Optional[str], params: dict[str, Any], before: Optional[str] = None
 ) -> Optional[dict[str, Any]]:
@@ -1272,39 +1479,53 @@ def _add_checkpoints(
         before = step.pop("_before_url", None)
         before_obs = step.pop("_before_obs", None)
         after_obs = step.pop("_after_obs", None)
+        before_frames = step.pop("_before_frames", None)
         if step["action"] not in ("navigate", "click"):
             continue
+
         following = next((s for s in steps[i + 1 :] if s.get("element")), None)
-        if following is not None:
-            step["checkpoint"] = {
-                "type": "element_present",
-                "element": following["element"],
-                "timeout_ms": 8000,
-            }
-            continue
-        if step.get("risk") != "risky":
-            continue
-        # The URL first, since a path is the most stable thing available --
-        # but only when it actually changed. Otherwise a heading the step
-        # produced, which is what a post-to-self leaves behind.
-        fallback = _url_checkpoint(after, params, before) or _text_checkpoint(
-            before_obs, after_obs, is_sensitive
-        )
-        if fallback is None:
-            problems.append(
-                f"{step['id']}: marked risky but no checkpoint could be derived -- no "
-                "following control to assert and no post-action URL was observed. The "
-                "artifact will fail validation, which is the correct outcome: an "
-                "unverifiable irreversible step must not be recorded as if it were fine."
-            )
-            continue
-        step["checkpoint"] = fallback
+
+        # ONE cascade, and every rung is tested for the same property: the
+        # condition must be FALSE before the step and TRUE after. Previously
+        # only the last two rungs were tested, and the first -- which fires
+        # for almost every step -- was not. The rule was applied where a bug
+        # had been found rather than everywhere the property is needed.
+        # A synthetic opening navigate has no observed cycle, so no pre-step
+        # tree exists to test against. It is also the one step whose
+        # discrimination does not matter: it is the FIRST step, nothing
+        # preceded it, and asserting the flow's first control is what makes
+        # the artifact state its own starting precondition. Risky steps never
+        # take this path -- the recorder only ever synthesises a navigate.
+        synthetic_opening = i == 0 and step["action"] == "navigate" and \
+            before_frames is None and step.get("risk") != "risky"
+
+        for candidate in (
+            {"type": "element_present", "element": following["element"],
+             "timeout_ms": 8000} if synthetic_opening and following else None,
+            _element_checkpoint(following, elements, before_frames, params),
+            _url_checkpoint(after, params, before),
+            _text_checkpoint(before_obs, after_obs, is_sensitive),
+        ):
+            if candidate is not None:
+                step["checkpoint"] = candidate
+                break
+        else:
+            if step.get("risk") == "risky":
+                problems.append(
+                    f"{step['id']}: marked risky and NO DISCRIMINATING CHECKPOINT could "
+                    "be derived. Every candidate was either unavailable or already true "
+                    "before the step ran, and a checkpoint that cannot fail verifies "
+                    "nothing. The artifact will not load, which is the correct outcome: "
+                    "an irreversible action nobody can confirm must not become a "
+                    "capability."
+                )
 
     # Steps that never reached the loop body's pop (navigate steps added by
     # _ensure_opening_navigate carry no _after_url) are cleaned here so the
     # private key can never survive into the artifact.
     for step in steps:
-        for key in ("_after_url", "_before_url", "_before_obs", "_after_obs"):
+        for key in ("_after_url", "_before_url", "_before_obs", "_after_obs",
+                    "_before_frames"):
             step.pop(key, None)
 
     return steps, problems

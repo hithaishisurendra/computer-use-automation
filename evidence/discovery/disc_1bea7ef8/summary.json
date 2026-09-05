@@ -1,0 +1,25 @@
+{
+  "run_id": "disc_1bea7ef8",
+  "status": "failure_limit",
+  "goal": "Update member 102777's email address to <redacted:email> and phone to <redacted:phone>, reach the confirmation screen, and read back the saved email address",
+  "provider": "anthropic",
+  "model": "claude-sonnet-5",
+  "rate_limit_retries": 0,
+  "usage": {
+    "input_tokens": 132436,
+    "output_tokens": 4136,
+    "cache_creation_input_tokens": 3012,
+    "cache_read_input_tokens": 48192,
+    "calls": 17
+  },
+  "cost_usd": 0.3234,
+  "human_interventions": [],
+  "steps_attempted": 17,
+  "outputs": {
+    "saved_email": "E-mail"
+  },
+  "summary": null,
+  "message": "3 consecutive failed actions",
+  "duration_ms": 59599.62,
+  "artifact": null
+}

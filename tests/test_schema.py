@@ -688,3 +688,102 @@ def test_the_shipped_cascade_overlay_declares_only_permitted_keys():
         "notes",
     }
     assert set(raw) <= permitted
+
+
+# ---------------------------------------------------------------------------
+# Finding 3: statically self-defeating checkpoints
+#
+# The recorder tests discrimination against real before/after state. Load time
+# has no before-state, so only shapes a step's OWN definition already
+# guarantees can be caught here -- a backstop for a hand-written or edited
+# artifact, not a replacement for the record-time check.
+# ---------------------------------------------------------------------------
+
+
+def _risky(base_data, checkpoint, action="click"):
+    """A risky step carrying the given checkpoint."""
+    data = json.loads(json.dumps(base_data))
+    step = data["steps"][3]
+    step["action"] = action
+    step["risk"] = "risky"
+    step["checkpoint"] = checkpoint
+    if action == "navigate":
+        step["path"] = "/search"
+        step.pop("element", None)
+        step.pop("value", None)
+    return data, step
+
+
+def test_a_checkpoint_asserting_the_element_the_step_clicks_is_rejected(tmp_path, base_data):
+    """It had to be present for the step to run, so the condition is true
+    before the step and verifies nothing."""
+    data, step = _risky(base_data, None)
+    step["checkpoint"] = {"type": "element_present", "element": step["element"],
+                          "timeout_ms": 8000}
+    with pytest.raises(ArtifactError) as exc:
+        load_artifact(write(tmp_path, data))
+    assert "the element the step itself acts on" in str(exc.value)
+
+
+def test_a_navigate_asserting_its_own_path_is_rejected(tmp_path, base_data):
+    """Arriving where the step was told to go is not evidence of an effect."""
+    data, _ = _risky(base_data, {"type": "url_matches", "pattern": "/search$",
+                                 "timeout_ms": 8000}, action="navigate")
+    with pytest.raises(ArtifactError) as exc:
+        load_artifact(write(tmp_path, data))
+    assert "already satisfies" in str(exc.value)
+
+
+def test_a_vacuous_condition_nested_in_an_any_of_is_rejected(tmp_path, base_data):
+    """An any_of is satisfied by any branch, so one vacuous branch makes the
+    whole checkpoint vacuous."""
+    data, step = _risky(base_data, None)
+    step["checkpoint"] = {"type": "any_of", "timeout_ms": 8000, "conditions": [
+        {"type": "text_present", "text": "Transfer posted"},
+        {"type": "element_present", "element": step["element"]}]}
+    with pytest.raises(ArtifactError):
+        load_artifact(write(tmp_path, data))
+
+
+def test_a_discriminating_checkpoint_on_a_risky_step_loads(tmp_path, base_data):
+    """The rule must not reject a real one."""
+    data, step = _risky(base_data, {"type": "text_present", "text": "Transfer posted",
+                                    "timeout_ms": 8000})
+    artifact = load_artifact(write(tmp_path, data))
+    assert any(s.risk == "risky" for s in artifact.steps)
+
+
+def test_the_rule_only_applies_to_risky_steps(tmp_path, base_data):
+    """A safe step with a weak checkpoint is a quality problem, not a safety
+    one -- nothing irreversible rests on it, and rejecting the artifact would
+    be disproportionate."""
+    data = json.loads(json.dumps(base_data))
+    step = data["steps"][3]
+    step["checkpoint"] = {"type": "element_present", "element": step["element"],
+                          "timeout_ms": 8000}
+    load_artifact(write(tmp_path, data))
+
+
+def test_every_shipped_capability_survives_the_rule():
+    """If this fails, a committed capability carries a self-defeating
+    checkpoint on an irreversible step."""
+    for capability_id in ("member_funds_transfer", "member_open_new_share",
+                          "member_update_info", "member_share_balance",
+                          "member_savings_balance"):
+        load_resolved(CAPABILITIES, capability_id, "1.0.0")
+
+
+def test_re_asserting_an_earlier_element_is_deliberately_allowed(tmp_path, base_data):
+    """Considered and rejected as a rule. A flow that returns to a screen --
+    search, open, go back, search again -- asserts the same element twice
+    legitimately, and an artifact carries steps rather than page states, so
+    the two cases are indistinguishable. Rejecting a real flow to catch a
+    hypothetical one is a bad trade; the record-time check has the state to
+    tell them apart."""
+    data = json.loads(json.dumps(base_data))
+    first = next(s for s in data["steps"] if (s.get("checkpoint") or {}).get("element"))
+    later = data["steps"][3]
+    later["risk"] = "risky"
+    later["checkpoint"] = dict(first["checkpoint"])
+    artifact = load_artifact(write(tmp_path, data))
+    assert any(s.risk == "risky" for s in artifact.steps)

@@ -41,6 +41,24 @@ from typing import Optional
 # would just be doing extra work to confirm what's already known.
 AUGMENTABLE_ROLES = {"textbox", "combobox", "radio", "checkbox"}
 
+# Controls whose activation submits a form. For these, and only these, the
+# augmentation pass also records where that submission GOES.
+#
+# This is the one place perception reads something that is not an
+# accessibility property, and it needs justifying rather than sneaking in.
+# The safety model turns on knowing whether a click commits, and the
+# accessibility tree cannot answer that: a link exposes its href as a `/url`
+# property, but a submit button exposes nothing at all -- its destination
+# lives on the enclosing <form>. So a control that can commit is the exact
+# control whose target is invisible, and the gap is not incidental.
+#
+# The alternative was a DOM read in the executor, which would put page
+# inspection in the layer that is supposed to act on what perception reports,
+# and would need duplicating in the recorder. One attribute, read in the pass
+# that already resolves nodes to live elements, keeps perception the single
+# surface through which the page is seen.
+SUBMIT_ROLES = {"button"}
+
 _WHITESPACE_RE = re.compile(r"\s+")
 _TRAILING_COLON_RE = re.compile(r"\s*:+\s*$")
 
@@ -187,10 +205,36 @@ def apply_platform_names(node: Optional[dict]) -> None:
         apply_platform_names(child)
 
 
+_ACTION_JS = r"""
+(el) => {
+    // Where activating this control would send the page. Only the form's
+    // action -- not its method, fields or values. A control outside a form
+    // submits nothing, and reports nothing.
+    const form = el.form || el.closest("form");
+    if (!form) return null;
+    return form.getAttribute("action") || null;
+}
+"""
+
+
+async def _resolve_action(frame, ref: str) -> Optional[str]:
+    try:
+        locator = frame.locator(f"aria-ref={ref}")
+        if await locator.count() != 1:
+            return None
+        return await locator.evaluate(_ACTION_JS)
+    except Exception:
+        return None
+
+
 async def augment_tree(node: Optional[dict], frame) -> None:
     """Second pass: for every still-nameless node in an augmentable role,
     resolve its aria_snapshot ref back to the live DOM element and run the
-    rule chain against it. Mutates the tree in place."""
+    rule chain against it. Mutates the tree in place.
+
+    Also records `props.action` for submit-type controls -- see SUBMIT_ROLES
+    for why perception reads that one non-accessibility attribute.
+    """
     if node is None:
         return
 
@@ -206,6 +250,11 @@ async def augment_tree(node: Optional[dict], frame) -> None:
             node["name_source"] = resolved["source"]
         else:
             node["name_source"] = "none"
+
+    if role in SUBMIT_ROLES and ref:
+        action = await _resolve_action(frame, ref)
+        if action:
+            node.setdefault("props", {})["action"] = action
 
     for child in node.get("children") or []:
         await augment_tree(child, frame)

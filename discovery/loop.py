@@ -418,9 +418,15 @@ class DiscoveryLoop:
     def _classify_risk(self, action: str, tool_input: dict[str, Any], resolution) -> str:
         """Is this action irreversible, as far as the app profile can tell?
 
-        Only clicks: a fill or a select changes a form, the click is what
-        sends it. The resolved control's own accessible name is authoritative
-        over what the model said it was targeting, matching the recorder.
+        Two signals, matching the recorder's: the control's name against the
+        profile's commit verbs, and where activating it would send the page
+        against the profile's commit paths. Both narrowed to submit-type
+        controls, because only those commit.
+
+        The path signal here is the pre-click one -- a form's action or a
+        link's href -- rather than the landing URL the recorder sees
+        afterwards. That is strictly narrower and the docstring on the
+        destination below says how.
         """
         if action != "click":
             return "safe"
@@ -432,22 +438,49 @@ class DiscoveryLoop:
         name = name or (tool_input.get("name") or "").strip()
         role = role or (tool_input.get("role") or "").strip().lower()
 
+        # Where activating this control would send the page, from
+        # perception. For a submit button that is its form's action; for a
+        # link it is the href. This is the pre-click stand-in for the landing
+        # URL the recorder matches after the fact -- NARROWER, deliberately:
+        # it is where the request is addressed, not where the app ends up.
+        # A server that redirects after posting, or a form whose action is
+        # empty and posts to the current URL, both defeat it. It catches a
+        # commit whose LABEL says nothing, which is the case the verb list
+        # cannot reach, and it is the only such signal available before the
+        # click has happened.
+        props = (resolution.node.get("props") or {}) if (
+            resolution is not None and resolution.resolved and resolution.node
+        ) else {}
+        destination = props.get("action") or props.get("url")
+
         matched = self.risk_rules.match(name)
-        if not matched:
-            return "safe"
+        commits = self.risk_rules.commits(destination)
+
         # Only a submit-type control can commit. Navigation links share the
         # commit vocabulary -- MERIDIAN's member record has a link named
         # "Funds Transfer" that merely opens the form, and the first live
         # recording marked it risky. The distinction is the role: a <button>
         # or <input type=submit> is role "button"; an <a> is role "link".
+        # The same narrowing applies to BOTH signals: MERIDIAN serves its
+        # update form from the path it posts to, so the link opening that
+        # form addresses a committing endpoint with a GET.
         if role != "button":
-            self.log("risk_classified", {
-                "control": name, "role": role, "decision": "safe",
-                "near_miss_verb": matched,
-                "why": "matched a commit verb but is not a submit-type control",
-            })
+            if matched or commits:
+                self.log("risk_classified", {
+                    "control": name, "role": role, "decision": "safe",
+                    "near_miss_verb": matched, "near_miss_path": commits,
+                    "why": "addresses a committing endpoint but is not a submit control"
+                           if commits else
+                           "matched a commit verb but is not a submit-type control",
+                })
             return "safe"
-        self.log("risk_blocked_candidate", {"control": name, "matched_verb": matched})
+
+        if not matched and not commits:
+            return "safe"
+        self.log("risk_blocked_candidate", {
+            "control": name, "matched_verb": matched, "matched_path": commits,
+            "destination": destination,
+        })
         return "risky"
 
     # -- authentication (never reaches the model) ---------------------------

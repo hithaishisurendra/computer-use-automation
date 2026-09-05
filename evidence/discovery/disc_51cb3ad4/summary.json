@@ -1,0 +1,23 @@
+{
+  "run_id": "disc_51cb3ad4",
+  "status": "failure_limit",
+  "goal": "Look up member ***01 and read their current savings balance",
+  "provider": "anthropic",
+  "model": "claude-sonnet-5",
+  "rate_limit_retries": 0,
+  "usage": {
+    "input_tokens": 2094,
+    "output_tokens": 531,
+    "cache_creation_input_tokens": 3382,
+    "cache_read_input_tokens": 6764,
+    "calls": 3
+  },
+  "cost_usd": 0.019306,
+  "human_interventions": [],
+  "steps_attempted": 3,
+  "outputs": {},
+  "summary": null,
+  "message": "3 consecutive failed actions",
+  "duration_ms": 8532.77,
+  "artifact": null
+}

@@ -324,6 +324,19 @@ class LocatorRung(StrictModel):
 
 class Element(StrictModel):
     description: str
+    destination: Optional[str] = Field(
+        default=None,
+        description=(
+            "Where activating this control addresses -- a form's action or a "
+            "link's href, observed at record time. Recorded so risk can be "
+            "re-derived at LOAD time without a browser: without it the static "
+            "derivation sees the profile's commit verbs only, and a commit "
+            "button whose label says nothing (MERIDIAN's 'Open Share') is "
+            "invisible to the check that catches a tampered artifact.\n\n"
+            "Narrower than the landing URL: it is where the request is sent, "
+            "not where the app ends up after any redirect."
+        ),
+    )
     frame: Optional[str] = Field(
         default=None,
         description=(
@@ -432,6 +445,67 @@ class Step(StrictModel):
         if a != "extract" and self.into:
             raise ValueError(f"step {self.id}: 'into' is only valid on action 'extract'")
         return self
+
+
+def _vacuous_checkpoint(step: "Step") -> list[str]:
+    """Checkpoint shapes a step's own definition already guarantees.
+
+    Detectable without a page, because the contradiction is between the
+    checkpoint and the step beside it -- not between the checkpoint and any
+    observed state.
+
+    Considered and REJECTED as rules here:
+
+      * an element an earlier step's checkpoint already asserted. A flow that
+        returns to a screen -- search, open, go back, search again -- asserts
+        the same element twice entirely legitimately, and an artifact carries
+        steps rather than page states, so the two cases are indistinguishable.
+        Rejecting a real flow to catch a hypothetical one is a bad trade.
+      * text that appears in an earlier checkpoint, for the same reason.
+
+    Both are caught at record time, where before/after state exists. This is
+    the backstop for a hand-written or hand-edited artifact, not a
+    replacement for it.
+    """
+    checkpoint = step.checkpoint
+    problems: list[str] = []
+    if checkpoint is None:
+        return problems
+
+    def walk(condition: "Condition") -> list["Condition"]:
+        found = [condition]
+        for sub in condition.conditions or []:
+            found.extend(walk(sub))
+        return found
+
+    for condition in walk(checkpoint):
+        # The step acted on this element, so it was present before the step.
+        # Asserting it afterwards proves the page did not change, which is
+        # the opposite of what a checkpoint is for.
+        if (
+            condition.type == "element_present"
+            and step.element
+            and condition.element == step.element
+        ):
+            problems.append(
+                f"its checkpoint asserts element {condition.element!r}, which is the "
+                "element the step itself acts on -- it had to be present for the step "
+                "to run, so this condition is true before the step and verifies nothing"
+            )
+        # A navigate goes to `path`; asserting it arrived there restates the
+        # instruction rather than confirming an effect.
+        if (
+            condition.type == "url_matches"
+            and step.action == "navigate"
+            and step.path
+            and re.search(condition.pattern, step.path)
+        ):
+            problems.append(
+                f"its checkpoint asserts a url matching {condition.pattern!r}, which "
+                f"the step's own path {step.path!r} already satisfies -- arriving where "
+                "the step was told to go is not evidence the action took effect"
+            )
+    return problems
 
 
 class Outcome(StrictModel):
@@ -632,6 +706,20 @@ class Artifact(StrictModel):
                 errors.append(f"{where}: references unknown element {step.element!r}")
             if step.into and step.into not in output_names:
                 errors.append(f"{where}: extracts into undeclared output {step.into!r}")
+            # A risky step's checkpoint is what the escalation model rests on:
+            # it is how the system confirms a human actually performed the
+            # irreversible action. A checkpoint that cannot fail is worse than
+            # none, because the schema accepts it, a reviewer reads it as
+            # verification, and it certifies nothing.
+            #
+            # The recorder tests discrimination against real before/after
+            # state. Load time has no before-state, so only shapes that are
+            # SELF-DEFEATING can be caught here -- conditions the step's own
+            # definition already guarantees. Two qualify; two more were
+            # considered and rejected below.
+            if step.risk == "risky" and step.checkpoint is not None:
+                for problem in _vacuous_checkpoint(step):
+                    errors.append(f"{where}: {problem}")
             if step.risk == "risky" and step.checkpoint is None and self.provenance.flow_completed:
                 # An irreversible step with no checkpoint is unverifiable, and
                 # the escalation model depends on verification: a human

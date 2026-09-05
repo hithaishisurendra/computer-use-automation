@@ -22,6 +22,7 @@ from discovery.loop import Cycle, DiscoveryOutcome, _element_from_tool_input, _e
 from discovery.prompts import ACTION_TOOLS, TERMINAL_TOOLS, TOOLS, build_system_prompt
 from discovery.recorder import build_chain, record, risk_rules_from_profile
 from replay import resolver
+from tests import scope
 from discovery.run import (
     DEFAULT_POLICY_PATH,
     PolicyWidened,
@@ -678,11 +679,17 @@ def test_only_model_py_names_a_provider_sdk(module):
     assert not offenders, f"{module} imports provider client(s): {offenders}"
 
 
-@pytest.mark.parametrize("package", ["capability", "replay", "perception"])
+@pytest.mark.parametrize(
+    "package", [p for p in scope.packages() if p != "discovery"])
 def test_downstream_packages_never_import_a_provider(package):
-    """Nothing downstream of discovery changed when the provider changed."""
+    """Nothing downstream of discovery changed when the provider changed.
+
+    Every package except discovery itself, derived rather than listed: the
+    chatbot will live somewhere new and is the most likely place for a model
+    client to reappear outside the one module that owns them.
+    """
     offenders = {}
-    for source in sorted((REPO_ROOT / package).glob("*.py")):
+    for source in scope.sources(package):
         found = {n for n in _imported_modules(source) if n.split(".")[0] in PROVIDER_MODULES}
         if found:
             offenders[source.name] = sorted(found)
@@ -1630,16 +1637,22 @@ def test_a_pii_value_makes_its_input_pii_and_withholds_the_example():
     shape rule happened to catch it -- luck, not classification."""
     from capability.profile import load_profile
     from capability.sink import RedactionSink
-    from discovery.recorder import _infer_input
+    from discovery.recorder import _infer_input, classify_sensitivity, risk_rules_from_profile
 
-    is_sensitive = RedactionSink(load_profile("meridian")).is_sensitive
+    profile = load_profile("meridian")
+    rules = risk_rules_from_profile(profile)
+    is_sensitive = RedactionSink(profile).is_sensitive
 
-    email = _infer_input("grace.hopper@example.com", "E-mail", None, is_sensitive)
+    def infer(value, label):
+        return _infer_input(value, label, None,
+                            classify_sensitivity(label, value, rules, is_sensitive))
+
+    email = infer("grace.hopper@example.com", "E-mail")
     assert email["sensitivity"] == "pii"
     assert "example" not in email, "a masked example reads like data and tells a caller nothing"
     assert "no example is recorded" in email["description"]
 
-    memo = _infer_input("quarterly rebalance", "Memo", None, is_sensitive)
+    memo = infer("quarterly rebalance", "Memo")
     assert memo["sensitivity"] == "public" and memo["example"] == "quarterly rebalance"
 
 
@@ -1672,3 +1685,313 @@ def test_a_risk_note_names_the_step_it_is_actually_about():
     # The opening navigate is s1, so the click is s2 -- and the note must say so.
     assert risky[0]["id"] == "s2"
     assert f"{risky[0]['id']} risky" in artifact["provenance"]["notes"]
+
+
+# ---------------------------------------------------------------------------
+# Finding 4: the same field cannot be pii as an input and public as an output
+# ---------------------------------------------------------------------------
+
+
+def _meridian_rules():
+    from capability.profile import load_profile
+    from capability.sink import RedactionSink
+    from discovery.recorder import risk_rules_from_profile
+
+    profile = load_profile("meridian")
+    return risk_rules_from_profile(profile), RedactionSink(profile).is_sensitive
+
+
+def test_a_sensitive_label_classifies_regardless_of_the_observed_value():
+    """The field is the durable fact. A member with no e-mail recorded yields
+    an innocuous sample, and classifying from that sample alone would declare
+    the e-mail output public forever."""
+    from discovery.recorder import classify_sensitivity
+
+    rules, is_sensitive = _meridian_rules()
+    assert classify_sensitivity("* E-mail", "not-an-address", rules, is_sensitive) == "pii"
+    assert classify_sensitivity("Phone", "12345", rules, is_sensitive) == "pii"
+
+
+def test_a_sensitive_value_classifies_under_an_undeclared_label():
+    """A label list cannot enumerate every field. The value catches what it
+    misses."""
+    from discovery.recorder import classify_sensitivity
+
+    rules, is_sensitive = _meridian_rules()
+    assert classify_sensitivity("Contact", "ada@example.com", rules, is_sensitive) == "pii"
+
+
+def test_an_input_s_classification_propagates_to_an_output_on_the_same_field():
+    """The live leak: member_update_info filled e_mail as pii and extracted
+    from the same field as public. Same field, same data, opposite
+    classification -- the input fix never travelled."""
+    from discovery.recorder import classify_sensitivity
+
+    rules, is_sensitive = _meridian_rules()
+    declared = {"notes": "pii"}
+    assert classify_sensitivity("Notes", "benign", rules, is_sensitive, declared) == "pii"
+
+
+def test_genuinely_public_outputs_stay_public():
+    """Over-declaring everything would mask the answers these capabilities
+    exist to return, and a caller would learn to ignore the field."""
+    from discovery.recorder import classify_sensitivity
+
+    rules, is_sensitive = _meridian_rules()
+    assert classify_sensitivity("Balance", "18015.00", rules, is_sensitive) == "public"
+    assert classify_sensitivity("Confirmation", "CN480183", rules, is_sensitive) == "public"
+
+
+def test_an_extracted_email_is_declared_pii(tmp_path):
+    """End to end through the recorder, on the shape that shipped the leak."""
+    from capability.profile import load_profile
+    from capability.sink import RedactionSink
+
+    page = node("document", "", [node("table", "", [node("row", "", [
+        node("cell", "* E-mail"),
+        node("cell", "", [node("textbox", "E-mail", ref="em")])])])])
+    c = make_cycle(1, "extract",
+                   {"role": "textbox", "row_contains": "* E-mail",
+                    "output_name": "email_value", "output_type": "string"},
+                   {"": page}, None, extracted="member102777@example.com")
+    c.acted_node = find(page, "em"); c.element_key = "email_value_source"
+    outcome = DiscoveryOutcome(
+        status="goal_reached", run_id="d", goal="read the e-mail",
+        cycles=[c, Cycle(index=2, url="/x", observation="", reasoning="",
+                         tool_name="goal_reached", tool_input={}, status="terminal")],
+        steps_attempted=2)
+    profile = load_profile("meridian")
+    artifact = record(
+        outcome, "cap", "1.0.0",
+        build_target("https://x.test", "/menu", "demo", "1.0.0", profile),
+        load_policy(default_policy_path("meridian"), "https://x.test", None),
+        outcome.goal, "m", default_frame=None,
+        risk_rules=risk_rules_from_profile(profile),
+        is_sensitive=RedactionSink(profile).is_sensitive)
+
+    out = artifact["outputs"][0]
+    assert out["sensitivity"] == "pii", "an extracted e-mail is not public"
+    assert "member102777@example.com" not in json.dumps(artifact)
+
+
+# ---------------------------------------------------------------------------
+# Finding 2: every checkpoint rung is tested for discrimination
+#
+# A derived checkpoint must be FALSE before the step and TRUE after. Two rungs
+# enforced that; the FIRST one -- which fires for almost every step -- did not.
+# The rule had been applied where a bug was found rather than everywhere the
+# property is needed.
+# ---------------------------------------------------------------------------
+
+
+ELEMENTS = {"post_btn": {"description": "d", "frame": None, "chain": [
+    {"strategy": "role_name", "role": "button", "name": "Post", "confidence": "high"}]}}
+
+
+def test_an_element_already_on_the_page_is_refused_as_a_checkpoint():
+    """The vacuous case. A form that reveals a section in place, or a screen
+    whose next control sits beside the field just filled, would pass whether
+    or not the click did anything."""
+    from discovery.recorder import _element_checkpoint
+
+    before = {"": node("document", "", [node("button", "Post", ref="b")])}
+    assert _element_checkpoint({"element": "post_btn"}, ELEMENTS, before, {}) is None
+
+
+def test_an_element_absent_before_the_step_is_accepted():
+    from discovery.recorder import _element_checkpoint
+
+    before = {"": node("document", "", [node("button", "Continue", ref="c")])}
+    cp = _element_checkpoint({"element": "post_btn"}, ELEMENTS, before, {})
+    assert cp == {"type": "element_present", "element": "post_btn", "timeout_ms": 8000}
+
+
+def test_an_unproven_property_is_not_a_proven_one():
+    """No pre-step tree means the property cannot be ESTABLISHED, only
+    assumed. Emitting anyway is the exact failure the rung exists to stop --
+    a checkpoint nobody verified is indistinguishable from one that verifies
+    nothing."""
+    from discovery.recorder import _element_checkpoint
+
+    assert _element_checkpoint({"element": "post_btn"}, ELEMENTS, None, {}) is None
+
+
+def test_the_cascade_falls_through_rather_than_giving_up(tmp_path):
+    """If element_present is vacuous, try the URL, then a heading. Only refuse
+    when all three fail -- otherwise a risky step whose first candidate is
+    weak becomes needlessly unrecordable."""
+    from capability.profile import load_profile
+
+    # A page where the post button is ALREADY present before the click (so
+    # element_present is vacuous) but the URL changes (so the URL rung works).
+    page = node("document", "", [node("table", "", [node("row", "", [
+        node("cell", "", [node("button", "Post Transfer", ref="post")]),
+        node("cell", "", [node("button", "Post Transfer", ref="post2")])])])])
+    c = make_cycle(1, "click", {"role": "button", "name": "Post Transfer"},
+                   {"": page}, None)
+    c.acted_node = find(page, "post")
+    c.element_key = "post_transfer_button"
+    c.url = "https://x.test/members/1/transfer/review"
+    cycles = [c, Cycle(index=2, url="https://x.test/members/1/transfer/post",
+                       observation="", reasoning="", tool_name="goal_reached",
+                       tool_input={}, status="terminal")]
+    outcome = DiscoveryOutcome(status="goal_reached", run_id="d", goal="g",
+                               cycles=cycles, steps_attempted=2)
+    profile = load_profile("meridian")
+    artifact = record(
+        outcome, "cap", "1.0.0",
+        build_target("https://x.test", "/menu", "demo", "1.0.0", profile),
+        load_policy(default_policy_path("meridian"), "https://x.test", None),
+        "g", "m", default_frame=None, risk_rules=risk_rules_from_profile(profile))
+
+    risky = next(s for s in artifact["steps"] if s["risk"] == "risky")
+    assert risky["checkpoint"]["type"] == "url_matches", \
+        "it should have fallen through to the URL rung, not given up"
+
+
+def test_a_risky_step_with_no_discriminating_candidate_is_unrecordable(tmp_path):
+    """An irreversible action nobody can confirm must not become a
+    capability. The artifact fails to load, which is the correct outcome and
+    the same reasoning as the load-time rule."""
+    from capability.profile import load_profile
+
+    page = node("document", "", [node("table", "", [node("row", "", [
+        node("cell", "", [node("button", "Post Transfer", ref="post")])])])])
+    c = make_cycle(1, "click", {"role": "button", "name": "Post Transfer"},
+                   {"": page}, None)
+    c.acted_node = find(page, "post")
+    c.element_key = "post_transfer_button"
+    c.url = "https://x.test/members/1/update"
+    c.observation = 'heading "UPDATE"'
+    # Same URL after, same headings after: nothing discriminates.
+    cycles = [c, Cycle(index=2, url="https://x.test/members/1/update",
+                       observation='heading "UPDATE"', reasoning="",
+                       tool_name="goal_reached", tool_input={}, status="terminal")]
+    outcome = DiscoveryOutcome(status="goal_reached", run_id="d", goal="g",
+                               cycles=cycles, steps_attempted=2)
+    profile = load_profile("meridian")
+    artifact = record(
+        outcome, "cap", "1.0.0",
+        build_target("https://x.test", "/menu", "demo", "1.0.0", profile),
+        load_policy(default_policy_path("meridian"), "https://x.test", None),
+        "g", "m", default_frame=None, risk_rules=risk_rules_from_profile(profile))
+
+    risky = next(s for s in artifact["steps"] if s["risk"] == "risky")
+    assert "checkpoint" not in risky, "no discriminating candidate existed"
+    assert "NO DISCRIMINATING CHECKPOINT" in artifact["provenance"]["notes"]
+
+    # And the artifact genuinely will not load.
+    path = tmp_path / "a.json"
+    path.write_text(json.dumps(artifact))
+    with pytest.raises(Exception) as exc:
+        load_artifact(path)
+    assert "checkpoint" in str(exc.value)
+
+
+def test_every_shipped_risky_step_has_a_discriminating_checkpoint():
+    """The regression guard. If a capability ever ships a checkpoint that was
+    true before its own step, the escalation model is verifying nothing."""
+    import glob
+
+    for f in sorted(glob.glob(str(REPO_ROOT / "capabilities" / "*" / "1.0.0.json"))):
+        d = json.loads(Path(f).read_text())
+        for step in d["steps"]:
+            if step["risk"] != "risky":
+                continue
+            assert step.get("checkpoint"), f"{d['capability']['id']} {step['id']}"
+
+
+# ---------------------------------------------------------------------------
+# Findings 5-7: sensitivity on selects, suspect fills, stale descriptions
+# ---------------------------------------------------------------------------
+
+
+def test_a_control_named_directly_still_yields_its_label():
+    """The classifier reads the field's label to decide sensitivity, but only
+    looked at column_header and row_contains. A model that names the control
+    directly -- {"role": "textbox", "name": "E-mail"} with no scope -- gave an
+    empty label, and an extracted e-mail was declared `public` on a capability
+    recorded AFTER the classifier was meant to prevent exactly that."""
+    from discovery.recorder import _extraction_label
+
+    def cycle(**tool_input):
+        return Cycle(index=1, url="", observation="", reasoning="",
+                     tool_name="extract", tool_input=tool_input)
+
+    assert _extraction_label(cycle(name="E-mail")) == "E-mail"
+    assert _extraction_label(cycle(column_header="Balance")) == "Balance"
+    assert _extraction_label(cycle(row_contains="* Phone")) == "Phone"
+    # A scope still wins over the control's own name, being the more specific.
+    assert _extraction_label(cycle(column_header="Balance", name="8320.10")) == "Balance"
+
+
+def test_an_extracted_field_named_directly_is_classified_by_that_name():
+    from capability.profile import load_profile
+    from capability.sink import RedactionSink
+    from discovery.recorder import _extraction_label, classify_sensitivity
+
+    rules, is_sensitive = _meridian_rules()
+    c = Cycle(index=1, url="", observation="", reasoning="", tool_name="extract",
+              tool_input={"role": "textbox", "name": "E-mail",
+                          "output_name": "email_value", "output_type": "string"})
+    assert classify_sensitivity(
+        _extraction_label(c), "E-mail", rules, is_sensitive) == "pii"
+
+
+def test_a_fill_copied_off_the_page_is_flagged():
+    """A select takes its value from the page by construction. A fill usually
+    carries what the caller typed -- but the model can read a displayed value
+    and type it back, which bakes one run's data into the capability."""
+    from discovery.recorder import suspect_fill
+
+    copied = suspect_fill("member102777@example.com",
+                          'cell "member102777@example.com"', "update the email")
+    assert copied and "read off the screen" in copied
+
+
+def test_a_fill_the_goal_names_is_caller_intent():
+    """A value the goal names is intent whatever it looks like, even when it
+    also appears on the page."""
+    from discovery.recorder import suspect_fill
+
+    goal = "set the email to grace.hopper@example.com"
+    assert suspect_fill("grace.hopper@example.com",
+                        'cell "grace.hopper@example.com"', goal) is None
+
+
+def test_the_fill_guard_does_not_fire_on_short_coincidences():
+    """"5" appears on any page with a table. The guard needs the value to be
+    long enough that co-occurrence is not chance."""
+    from discovery.recorder import suspect_fill
+
+    assert suspect_fill("5.00", 'cell "5.00" cell "Balance"', "transfer money") is None
+
+
+def test_no_shipped_artifact_carries_a_discovered_value_in_a_description():
+    """Finding 7. An output description naming a value from the recording run
+    puts that run's data in the public contract."""
+    import glob
+
+    stale = []
+    for f in sorted(glob.glob(str(REPO_ROOT / "capabilities" / "*" / "1.0.0.json"))):
+        d = json.loads(Path(f).read_text())
+        # A CoreServ artifact predating the fix is exempt and named, so this
+        # test says which artifacts are known-stale rather than passing blind.
+        if d["capability"]["id"] == "member_savings_balance_discovered":
+            continue
+        for o in d["outputs"]:
+            if any(ch.isdigit() for ch in o["description"]):
+                stale.append(f"{d['capability']['id']}.{o['name']}: {o['description']}")
+    assert not stale, "discovered values in output descriptions:\n  " + "\n  ".join(stale)
+
+
+def test_no_shipped_output_is_named_after_the_record_it_was_discovered_on():
+    import glob
+
+    offenders = []
+    for f in sorted(glob.glob(str(REPO_ROOT / "capabilities" / "*" / "1.0.0.json"))):
+        d = json.loads(Path(f).read_text())
+        for o in d["outputs"]:
+            if any(ch.isdigit() for ch in o["name"]):
+                offenders.append(f"{d['capability']['id']}.{o['name']}")
+    assert not offenders, offenders

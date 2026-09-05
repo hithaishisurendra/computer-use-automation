@@ -1,0 +1,462 @@
+{
+  "schema_version": "1.0",
+  "capability": {
+    "id": "member_funds_transfer",
+    "version": "1.0.0",
+    "name": "Transfer 5.00 from member 100234's share 100234-S0001-6 to their share 100234...",
+    "description": "Transfer 5.00 from member 100234's share 100234-S0001-6 to their share 100234-S0001-13, with the memo 'quarterly rebalance', and reach the confirmation screen",
+    "status": "draft"
+  },
+  "target": {
+    "surface": "web",
+    "app": "meridian",
+    "app_version": "4.2.1",
+    "tenant": "demo",
+    "base_url": "https://web-sample.interface-hiring.com",
+    "entry_path": "/menu",
+    "auth": {
+      "mode": "form_login",
+      "path": "/signon",
+      "credentials_ref": {
+        "username": "MERIDIAN_OPERATOR",
+        "password": "MERIDIAN_PASSWORD"
+      },
+      "parameters": {
+        "branch": "MAIN-001"
+      },
+      "elements": {},
+      "success_check": {
+        "type": "url_matches",
+        "pattern": "/menu"
+      }
+    }
+  },
+  "inputs": [
+    {
+      "name": "member_ref",
+      "type": "string",
+      "required": true,
+      "description": "The identifier used to locate the record, entered into 'Value'.",
+      "example": "100234",
+      "pattern": "^[0-9]{6}$",
+      "sensitivity": "identifier"
+    },
+    {
+      "name": "from_share",
+      "type": "string",
+      "required": true,
+      "description": "Option selected in 'From Share'. Must be valid for the record this capability is invoked against.",
+      "sensitivity": "identifier",
+      "example": "100234-S0001-6"
+    },
+    {
+      "name": "to_share",
+      "type": "string",
+      "required": true,
+      "description": "Option selected in 'To Share'. Must be valid for the record this capability is invoked against.",
+      "sensitivity": "identifier",
+      "example": "100234-S0001-13"
+    },
+    {
+      "name": "amount",
+      "type": "string",
+      "required": true,
+      "description": "Value supplied for 'Amount'.",
+      "example": "5.00",
+      "sensitivity": "public"
+    },
+    {
+      "name": "memo",
+      "type": "string",
+      "required": true,
+      "description": "Value supplied for 'Memo'.",
+      "example": "quarterly rebalance",
+      "sensitivity": "public"
+    }
+  ],
+  "outputs": [
+    {
+      "name": "confirmation_number",
+      "type": "string",
+      "required": true,
+      "description": "Value read from Confirmation.",
+      "sensitivity": "public"
+    }
+  ],
+  "elements": {
+    "funds_transfer_link": {
+      "description": "link Funds Transfer",
+      "frame": null,
+      "chain": [
+        {
+          "strategy": "role_name",
+          "role": "link",
+          "name": "Funds Transfer",
+          "confidence": "high"
+        }
+      ],
+      "notes": "Chain built by probing which strategies uniquely resolved this element during discovery."
+    },
+    "value_field": {
+      "description": "textbox Value",
+      "frame": null,
+      "chain": [
+        {
+          "strategy": "role_name",
+          "role": "textbox",
+          "name": "Value",
+          "confidence": "high"
+        },
+        {
+          "strategy": "role_ordinal",
+          "role": "textbox",
+          "index": 0,
+          "scope": {
+            "role": "row",
+            "contains": "Value"
+          },
+          "confidence": "low",
+          "brittle": true,
+          "notes": "Positional, but scoped to its own row: if that row goes this fails rather than selecting whatever moved into the position."
+        }
+      ],
+      "notes": "Chain built by probing which strategies uniquely resolved this element during discovery."
+    },
+    "search_button": {
+      "description": "button Search",
+      "frame": null,
+      "chain": [
+        {
+          "strategy": "role_name",
+          "role": "button",
+          "name": "Search",
+          "confidence": "high"
+        },
+        {
+          "strategy": "role_ordinal",
+          "role": "button",
+          "index": 0,
+          "scope": {
+            "role": "row",
+            "contains": "Value"
+          },
+          "confidence": "low",
+          "brittle": true,
+          "notes": "Positional, but scoped to its own row: if that row goes this fails rather than selecting whatever moved into the position."
+        }
+      ],
+      "notes": "Chain built by probing which strategies uniquely resolved this element during discovery."
+    },
+    "select_link": {
+      "description": "link Select",
+      "frame": null,
+      "chain": [
+        {
+          "strategy": "role_name",
+          "role": "link",
+          "name": "Select",
+          "confidence": "high"
+        },
+        {
+          "strategy": "role_ordinal",
+          "role": "link",
+          "index": 0,
+          "scope": {
+            "role": "row",
+            "contains": "{{member_ref}}"
+          },
+          "confidence": "low",
+          "brittle": true,
+          "notes": "Positional, but scoped to its own row: if that row goes this fails rather than selecting whatever moved into the position."
+        }
+      ],
+      "notes": "Chain built by probing which strategies uniquely resolved this element during discovery."
+    },
+    "from_share_select": {
+      "description": "combobox From Share",
+      "frame": null,
+      "chain": [
+        {
+          "strategy": "role_name",
+          "role": "combobox",
+          "name": "From Share",
+          "confidence": "high"
+        }
+      ],
+      "notes": "Chain built by probing which strategies uniquely resolved this element during discovery."
+    },
+    "to_share_select": {
+      "description": "combobox To Share",
+      "frame": null,
+      "chain": [
+        {
+          "strategy": "role_name",
+          "role": "combobox",
+          "name": "To Share",
+          "confidence": "high"
+        }
+      ],
+      "notes": "Chain built by probing which strategies uniquely resolved this element during discovery."
+    },
+    "amount_field": {
+      "description": "textbox Amount",
+      "frame": null,
+      "chain": [
+        {
+          "strategy": "role_name",
+          "role": "textbox",
+          "name": "Amount",
+          "confidence": "high"
+        },
+        {
+          "strategy": "role_ordinal",
+          "role": "textbox",
+          "index": 0,
+          "scope": {
+            "role": "row",
+            "contains": "* Amount"
+          },
+          "confidence": "low",
+          "brittle": true,
+          "notes": "Positional, but scoped to its own row: if that row goes this fails rather than selecting whatever moved into the position."
+        }
+      ],
+      "notes": "Chain built by probing which strategies uniquely resolved this element during discovery."
+    },
+    "memo_field": {
+      "description": "textbox Memo",
+      "frame": null,
+      "chain": [
+        {
+          "strategy": "role_name",
+          "role": "textbox",
+          "name": "Memo",
+          "confidence": "high"
+        },
+        {
+          "strategy": "role_ordinal",
+          "role": "textbox",
+          "index": 0,
+          "scope": {
+            "role": "row",
+            "contains": "Memo"
+          },
+          "confidence": "low",
+          "brittle": true,
+          "notes": "Positional, but scoped to its own row: if that row goes this fails rather than selecting whatever moved into the position."
+        }
+      ],
+      "notes": "Chain built by probing which strategies uniquely resolved this element during discovery."
+    },
+    "continue_button": {
+      "description": "button Continue",
+      "frame": null,
+      "chain": [
+        {
+          "strategy": "role_name",
+          "role": "button",
+          "name": "Continue",
+          "confidence": "high"
+        }
+      ],
+      "notes": "Chain built by probing which strategies uniquely resolved this element during discovery."
+    },
+    "post_transfer_button": {
+      "description": "button Post Transfer",
+      "frame": null,
+      "chain": [
+        {
+          "strategy": "role_name",
+          "role": "button",
+          "name": "Post Transfer",
+          "confidence": "high"
+        }
+      ],
+      "notes": "Chain built by probing which strategies uniquely resolved this element during discovery."
+    },
+    "confirmation_number_source": {
+      "description": "cell Confirmation",
+      "frame": null,
+      "chain": [
+        {
+          "strategy": "cell_in_row",
+          "scope": {
+            "role": "row",
+            "cell_equals": "CN480253"
+          },
+          "column_index": 0,
+          "confidence": "medium"
+        },
+        {
+          "strategy": "cell_in_row",
+          "scope": {
+            "role": "row",
+            "contains": "CN480253"
+          },
+          "column_index": 0,
+          "confidence": "low"
+        },
+        {
+          "strategy": "role_ordinal",
+          "role": "cell",
+          "index": 0,
+          "scope": {
+            "role": "row",
+            "contains": "CN480253"
+          },
+          "confidence": "low",
+          "brittle": true,
+          "notes": "Positional, but scoped to its own row: if that row goes this fails rather than selecting whatever moved into the position."
+        }
+      ],
+      "notes": "Chain built by probing which strategies uniquely resolved this element during discovery."
+    }
+  },
+  "steps": [
+    {
+      "id": "s1",
+      "action": "navigate",
+      "path": "/menu",
+      "frame": null,
+      "risk": "safe",
+      "notes": "Added at record time: the session was already at /menu when the first action ran, so no navigation was observed. Recorded explicitly so the flow declares where it starts instead of inheriting it from wherever the surface happened to open.",
+      "checkpoint": {
+        "type": "element_present",
+        "element": "funds_transfer_link",
+        "timeout_ms": 8000
+      }
+    },
+    {
+      "id": "s2",
+      "action": "click",
+      "element": "funds_transfer_link",
+      "risk": "safe",
+      "checkpoint": {
+        "type": "element_present",
+        "element": "value_field",
+        "timeout_ms": 8000
+      }
+    },
+    {
+      "id": "s3",
+      "action": "fill",
+      "element": "value_field",
+      "risk": "safe",
+      "value": "{{member_ref}}"
+    },
+    {
+      "id": "s4",
+      "action": "click",
+      "element": "search_button",
+      "risk": "safe",
+      "checkpoint": {
+        "type": "element_present",
+        "element": "select_link",
+        "timeout_ms": 8000
+      }
+    },
+    {
+      "id": "s5",
+      "action": "click",
+      "element": "select_link",
+      "risk": "safe",
+      "checkpoint": {
+        "type": "element_present",
+        "element": "from_share_select",
+        "timeout_ms": 8000
+      }
+    },
+    {
+      "id": "s6",
+      "action": "select",
+      "element": "from_share_select",
+      "risk": "safe",
+      "value": "{{from_share}}"
+    },
+    {
+      "id": "s7",
+      "action": "select",
+      "element": "to_share_select",
+      "risk": "safe",
+      "value": "{{to_share}}"
+    },
+    {
+      "id": "s8",
+      "action": "fill",
+      "element": "amount_field",
+      "risk": "safe",
+      "value": "{{amount}}"
+    },
+    {
+      "id": "s9",
+      "action": "fill",
+      "element": "memo_field",
+      "risk": "safe",
+      "value": "{{memo}}"
+    },
+    {
+      "id": "s10",
+      "action": "click",
+      "element": "continue_button",
+      "risk": "safe",
+      "checkpoint": {
+        "type": "element_present",
+        "element": "post_transfer_button",
+        "timeout_ms": 8000
+      }
+    },
+    {
+      "id": "s11",
+      "action": "click",
+      "element": "post_transfer_button",
+      "risk": "risky",
+      "notes": "Marked risky by the recorder: this click landed on '/members/*/transfer/post', an endpoint app profile 'meridian' declares as committing. Observed, not inferred from the control's name ('Post Transfer').",
+      "checkpoint": {
+        "type": "element_present",
+        "element": "confirmation_number_source",
+        "timeout_ms": 8000
+      }
+    },
+    {
+      "id": "s12",
+      "action": "extract",
+      "element": "confirmation_number_source",
+      "risk": "safe",
+      "into": "confirmation_number"
+    }
+  ],
+  "outcomes": [],
+  "policy": {
+    "allowed_origins": [
+      "https://web-sample.interface-hiring.com"
+    ],
+    "allowed_paths": [
+      "/signon",
+      "/menu",
+      "/members",
+      "/members/*"
+    ],
+    "allowed_actions": [
+      "click",
+      "extract",
+      "fill",
+      "navigate",
+      "select"
+    ],
+    "risky_action_handling": "require_confirmation",
+    "max_steps": 25,
+    "timeout_ms": 300000
+  },
+  "provenance": {
+    "source": "discovery",
+    "discovered_at": "2026-09-05T04:16:55.589195Z",
+    "goal": "Transfer 5.00 from member 100234's share 100234-S0001-6 to their share 100234-S0001-13, with the memo 'quarterly rebalance', and reach the confirmation screen",
+    "model": "anthropic:claude-sonnet-5",
+    "discovery_run_id": "disc_f8355695",
+    "steps_attempted": 12,
+    "steps_recorded": 12,
+    "human_interventions": 0,
+    "flow_completed": true,
+    "notes": "Emitted by discovery/recorder.py. Locator chains were built by probing which strategies uniquely resolved each element at the moment it was acted on; ambiguous strategies were discarded rather than recorded. outcomes[] is empty because a happy-path run observes no business outcomes. Risk heuristic (app profile 'meridian'; a first guess for review, not a determination): s2 near-miss: 'Funds Transfer' matched 'Transfer' but is a link, not a submit control; s10 near-miss: 'Continue' contains 'Continue', which the profile does not treat as a commit; s11 risky: 'Post Transfer' via 'Post'."
+  }
+}

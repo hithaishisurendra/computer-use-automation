@@ -1,0 +1,500 @@
+{
+  "schema_version": "1.0",
+  "capability": {
+    "id": "member_update_info",
+    "version": "1.0.0",
+    "name": "Update member 102777's email address to <redacted:email> and phone to...",
+    "description": "Update member 102777's email address to <redacted:email> and phone to <redacted:phone>, reach the confirmation screen, then read the E-mail field back",
+    "status": "draft"
+  },
+  "target": {
+    "surface": "web",
+    "app": "meridian",
+    "app_version": "4.2.1",
+    "tenant": "demo",
+    "base_url": "https://web-sample.interface-hiring.com",
+    "entry_path": "/menu",
+    "auth": {
+      "mode": "form_login",
+      "path": "/signon",
+      "credentials_ref": {
+        "username": "MERIDIAN_OPERATOR",
+        "password": "MERIDIAN_PASSWORD"
+      },
+      "parameters": {
+        "branch": "MAIN-001"
+      },
+      "elements": {},
+      "success_check": {
+        "type": "url_matches",
+        "pattern": "/menu"
+      }
+    }
+  },
+  "inputs": [
+    {
+      "name": "member_ref",
+      "type": "string",
+      "required": true,
+      "description": "The identifier used to locate the record, entered into 'Value'.",
+      "example": "102777",
+      "pattern": "^[0-9]{6}$",
+      "sensitivity": "identifier"
+    },
+    {
+      "name": "e_mail",
+      "type": "string",
+      "required": true,
+      "description": "Value supplied for 'E-mail'. Personal data: no example is recorded, because the only example available is the real value from the run that discovered this.",
+      "sensitivity": "pii"
+    },
+    {
+      "name": "phone",
+      "type": "string",
+      "required": true,
+      "description": "Value supplied for 'Phone'. Personal data: no example is recorded, because the only example available is the real value from the run that discovered this.",
+      "sensitivity": "pii"
+    }
+  ],
+  "outputs": [
+    {
+      "name": "email",
+      "type": "string",
+      "required": true,
+      "description": "Value read from the page.",
+      "sensitivity": "pii"
+    },
+    {
+      "name": "email_value",
+      "type": "string",
+      "required": true,
+      "description": "Value read from E-mail.",
+      "sensitivity": "pii"
+    },
+    {
+      "name": "email_field",
+      "type": "string",
+      "required": true,
+      "description": "Value read from the page.",
+      "sensitivity": "pii"
+    },
+    {
+      "name": "email_readback",
+      "type": "string",
+      "required": true,
+      "description": "Value read from E-mail.",
+      "sensitivity": "pii"
+    }
+  ],
+  "elements": {
+    "update_member_information_link": {
+      "description": "link Update Member Information",
+      "frame": null,
+      "chain": [
+        {
+          "strategy": "role_name",
+          "role": "link",
+          "name": "Update Member Information",
+          "confidence": "high"
+        }
+      ],
+      "notes": "Chain built by probing which strategies uniquely resolved this element during discovery.",
+      "destination": "/members/102777/update"
+    },
+    "value_field": {
+      "description": "textbox Value",
+      "frame": null,
+      "chain": [
+        {
+          "strategy": "role_name",
+          "role": "textbox",
+          "name": "Value",
+          "confidence": "high"
+        },
+        {
+          "strategy": "role_ordinal",
+          "role": "textbox",
+          "index": 0,
+          "scope": {
+            "role": "row",
+            "contains": "Value"
+          },
+          "confidence": "low",
+          "brittle": true,
+          "notes": "Positional, but scoped to its own row: if that row goes this fails rather than selecting whatever moved into the position."
+        }
+      ],
+      "notes": "Chain built by probing which strategies uniquely resolved this element during discovery."
+    },
+    "search_button": {
+      "description": "button Search",
+      "frame": null,
+      "chain": [
+        {
+          "strategy": "role_name",
+          "role": "button",
+          "name": "Search",
+          "confidence": "high"
+        },
+        {
+          "strategy": "role_ordinal",
+          "role": "button",
+          "index": 0,
+          "scope": {
+            "role": "row",
+            "contains": "Value"
+          },
+          "confidence": "low",
+          "brittle": true,
+          "notes": "Positional, but scoped to its own row: if that row goes this fails rather than selecting whatever moved into the position."
+        }
+      ],
+      "notes": "Chain built by probing which strategies uniquely resolved this element during discovery.",
+      "destination": "/members"
+    },
+    "select_link": {
+      "description": "link Select",
+      "frame": null,
+      "chain": [
+        {
+          "strategy": "role_name",
+          "role": "link",
+          "name": "Select",
+          "confidence": "high"
+        },
+        {
+          "strategy": "role_ordinal",
+          "role": "link",
+          "index": 0,
+          "scope": {
+            "role": "row",
+            "contains": "{{member_ref}}"
+          },
+          "confidence": "low",
+          "brittle": true,
+          "notes": "Positional, but scoped to its own row: if that row goes this fails rather than selecting whatever moved into the position."
+        }
+      ],
+      "notes": "Chain built by probing which strategies uniquely resolved this element during discovery.",
+      "destination": "/members/102777/update"
+    },
+    "e_mail_field": {
+      "description": "textbox E-mail",
+      "frame": null,
+      "chain": [
+        {
+          "strategy": "role_name",
+          "role": "textbox",
+          "name": "E-mail",
+          "confidence": "high"
+        },
+        {
+          "strategy": "role_ordinal",
+          "role": "textbox",
+          "index": 0,
+          "scope": {
+            "role": "row",
+            "contains": "* E-mail"
+          },
+          "confidence": "low",
+          "brittle": true,
+          "notes": "Positional, but scoped to its own row: if that row goes this fails rather than selecting whatever moved into the position."
+        }
+      ],
+      "notes": "Chain built by probing which strategies uniquely resolved this element during discovery."
+    },
+    "phone_field": {
+      "description": "textbox Phone",
+      "frame": null,
+      "chain": [
+        {
+          "strategy": "role_name",
+          "role": "textbox",
+          "name": "Phone",
+          "confidence": "high"
+        },
+        {
+          "strategy": "role_ordinal",
+          "role": "textbox",
+          "index": 0,
+          "scope": {
+            "role": "row",
+            "contains": "* Phone"
+          },
+          "confidence": "low",
+          "brittle": true,
+          "notes": "Positional, but scoped to its own row: if that row goes this fails rather than selecting whatever moved into the position."
+        }
+      ],
+      "notes": "Chain built by probing which strategies uniquely resolved this element during discovery."
+    },
+    "save_changes_button": {
+      "description": "button Save Changes",
+      "frame": null,
+      "chain": [
+        {
+          "strategy": "role_name",
+          "role": "button",
+          "name": "Save Changes",
+          "confidence": "high"
+        }
+      ],
+      "notes": "Chain built by probing which strategies uniquely resolved this element during discovery.",
+      "destination": "/members/102777/update"
+    },
+    "return_to_member_record_link": {
+      "description": "link Return to Member Record",
+      "frame": null,
+      "chain": [
+        {
+          "strategy": "role_name",
+          "role": "link",
+          "name": "Return to Member Record",
+          "confidence": "high"
+        }
+      ],
+      "notes": "Chain built by probing which strategies uniquely resolved this element during discovery.",
+      "destination": "/members/102777"
+    },
+    "email_source": {
+      "description": "textbox the page",
+      "frame": null,
+      "chain": [
+        {
+          "strategy": "role_ordinal",
+          "role": "textbox",
+          "index": 0,
+          "scope": {
+            "role": "row",
+            "contains": "* E-mail"
+          },
+          "confidence": "low",
+          "brittle": true,
+          "notes": "Positional, but scoped to its own row: if that row goes this fails rather than selecting whatever moved into the position."
+        }
+      ],
+      "notes": "Chain built by probing which strategies uniquely resolved this element during discovery."
+    },
+    "email_value_source": {
+      "description": "textbox E-mail",
+      "frame": null,
+      "chain": [
+        {
+          "strategy": "role_ordinal",
+          "role": "textbox",
+          "index": 0,
+          "scope": {
+            "role": "row",
+            "contains": "* E-mail"
+          },
+          "confidence": "low",
+          "brittle": true,
+          "notes": "Positional, but scoped to its own row: if that row goes this fails rather than selecting whatever moved into the position."
+        }
+      ],
+      "notes": "Chain built by probing which strategies uniquely resolved this element during discovery."
+    },
+    "email_field_source": {
+      "description": "textbox the page",
+      "frame": null,
+      "chain": [
+        {
+          "strategy": "role_ordinal",
+          "role": "textbox",
+          "index": 0,
+          "scope": {
+            "role": "row",
+            "contains": "* E-mail"
+          },
+          "confidence": "low",
+          "brittle": true,
+          "notes": "Positional, but scoped to its own row: if that row goes this fails rather than selecting whatever moved into the position."
+        }
+      ],
+      "notes": "Chain built by probing which strategies uniquely resolved this element during discovery."
+    },
+    "email_readback_source": {
+      "description": "textbox E-mail",
+      "frame": null,
+      "chain": [
+        {
+          "strategy": "role_ordinal",
+          "role": "textbox",
+          "index": 0,
+          "scope": {
+            "role": "row",
+            "contains": "* E-mail"
+          },
+          "confidence": "low",
+          "brittle": true,
+          "notes": "Positional, but scoped to its own row: if that row goes this fails rather than selecting whatever moved into the position."
+        }
+      ],
+      "notes": "Chain built by probing which strategies uniquely resolved this element during discovery."
+    }
+  },
+  "steps": [
+    {
+      "id": "s1",
+      "action": "navigate",
+      "path": "/menu",
+      "frame": null,
+      "risk": "safe",
+      "notes": "Added at record time: the session was already at /menu when the first action ran, so no navigation was observed. Recorded explicitly so the flow declares where it starts instead of inheriting it from wherever the surface happened to open.",
+      "checkpoint": {
+        "type": "element_present",
+        "element": "update_member_information_link",
+        "timeout_ms": 8000
+      }
+    },
+    {
+      "id": "s2",
+      "action": "click",
+      "element": "update_member_information_link",
+      "risk": "safe",
+      "checkpoint": {
+        "type": "element_present",
+        "element": "value_field",
+        "timeout_ms": 8000
+      }
+    },
+    {
+      "id": "s3",
+      "action": "fill",
+      "element": "value_field",
+      "risk": "safe",
+      "value": "{{member_ref}}"
+    },
+    {
+      "id": "s4",
+      "action": "click",
+      "element": "search_button",
+      "risk": "safe",
+      "checkpoint": {
+        "type": "element_present",
+        "element": "select_link",
+        "timeout_ms": 8000
+      }
+    },
+    {
+      "id": "s5",
+      "action": "click",
+      "element": "select_link",
+      "risk": "safe",
+      "checkpoint": {
+        "type": "element_present",
+        "element": "e_mail_field",
+        "timeout_ms": 8000
+      }
+    },
+    {
+      "id": "s6",
+      "action": "fill",
+      "element": "e_mail_field",
+      "risk": "safe",
+      "value": "{{e_mail}}"
+    },
+    {
+      "id": "s7",
+      "action": "fill",
+      "element": "phone_field",
+      "risk": "safe",
+      "value": "{{phone}}"
+    },
+    {
+      "id": "s8",
+      "action": "click",
+      "element": "save_changes_button",
+      "risk": "risky",
+      "notes": "Marked risky by the recorder: this click landed on '/members/*/update', an endpoint app profile 'meridian' declares as committing. Observed, not inferred from the control's name ('Save Changes').",
+      "checkpoint": {
+        "type": "element_present",
+        "element": "return_to_member_record_link",
+        "timeout_ms": 8000
+      }
+    },
+    {
+      "id": "s9",
+      "action": "click",
+      "element": "return_to_member_record_link",
+      "risk": "safe",
+      "checkpoint": {
+        "type": "element_present",
+        "element": "update_member_information_link",
+        "timeout_ms": 8000
+      }
+    },
+    {
+      "id": "s10",
+      "action": "click",
+      "element": "update_member_information_link",
+      "risk": "safe",
+      "checkpoint": {
+        "type": "element_present",
+        "element": "email_source",
+        "timeout_ms": 8000
+      }
+    },
+    {
+      "id": "s11",
+      "action": "extract",
+      "element": "email_source",
+      "risk": "safe",
+      "into": "email"
+    },
+    {
+      "id": "s12",
+      "action": "extract",
+      "element": "email_value_source",
+      "risk": "safe",
+      "into": "email_value"
+    },
+    {
+      "id": "s13",
+      "action": "extract",
+      "element": "email_field_source",
+      "risk": "safe",
+      "into": "email_field"
+    },
+    {
+      "id": "s14",
+      "action": "extract",
+      "element": "email_readback_source",
+      "risk": "safe",
+      "into": "email_readback"
+    }
+  ],
+  "outcomes": [],
+  "policy": {
+    "allowed_origins": [
+      "https://web-sample.interface-hiring.com"
+    ],
+    "allowed_paths": [
+      "/signon",
+      "/menu",
+      "/members",
+      "/members/*"
+    ],
+    "allowed_actions": [
+      "click",
+      "extract",
+      "fill",
+      "navigate"
+    ],
+    "risky_action_handling": "require_confirmation",
+    "max_steps": 25,
+    "timeout_ms": 300000
+  },
+  "provenance": {
+    "source": "discovery",
+    "discovered_at": "2026-09-05T04:46:05.674806Z",
+    "goal": "Update member 102777's email address to <redacted:email> and phone to <redacted:phone>, reach the confirmation screen, then read the E-mail field back",
+    "model": "anthropic:claude-sonnet-5",
+    "discovery_run_id": "disc_087bda73",
+    "steps_attempted": 15,
+    "steps_recorded": 14,
+    "human_interventions": 0,
+    "flow_completed": true,
+    "notes": "Emitted by discovery/recorder.py. Locator chains were built by probing which strategies uniquely resolved each element at the moment it was acted on; ambiguous strategies were discarded rather than recorded. outcomes[] is empty because a happy-path run observes no business outcomes. Risk heuristic (app profile 'meridian'; a first guess for review, not a determination): s10 near-miss: 'Update Member Information' contains 'Update', which the profile does not treat as a commit; s5 near-miss: 'Select' navigated to a committing endpoint but is a link, so it is a GET; s8 risky: 'Save Changes' via 'Save'; s10 near-miss: 'Update Member Information' navigated to a committing endpoint but is a link, so it is a GET; s10 near-miss: 'Update Member Information' contains 'Update', which the profile does not treat as a commit."
+  }
+}

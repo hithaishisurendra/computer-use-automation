@@ -28,6 +28,7 @@ from capability.loader import load_artifact, load_resolved
 from capability.profile import load_profile
 from capability.schema import Artifact, Element, LocatorRung, Scope
 from replay import classify, resolver
+from tests import scope
 from escalation.operator import Decision, OperatorDecision
 from replay.executor import PolicyViolation, check_action, check_destination
 
@@ -86,12 +87,15 @@ def test_no_model_client_is_imported_by_replay():
     """Replay is deterministic by construction: the LLM is not in the loop,
     and this asserts that structurally rather than by convention."""
     offenders = {}
-    for source in sorted((REPO_ROOT / "replay").glob("*.py")):
+    for source in (s for p in scope.packages() if p != "discovery"
+                   for s in scope.sources(p)):
         for name in _imported_names(source):
             root = name.split(".")[0]
             if root in MODEL_CLIENT_MODULES or name in MODEL_CLIENT_MODULES:
                 offenders.setdefault(source.name, []).append(name)
-    assert not offenders, f"model client imported in replay/: {offenders}"
+    assert not offenders, (
+        "a model client is imported outside discovery/, so the LLM is in a "
+        f"decision path it should not be in: {offenders}")
 
 
 def test_replay_package_imports_with_model_clients_blocked():

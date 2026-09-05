@@ -177,5 +177,12 @@
     "/members/*/open-share/post",
     "/members/*/hold/post",
     "/members/*/update"
+  ],
+  "sensitive_labels": [
+    "E-mail",
+    "Phone",
+    "Mailing Address",
+    "Address",
+    "Name"
   ]
 }

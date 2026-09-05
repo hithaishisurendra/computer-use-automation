@@ -25,13 +25,13 @@ import pytest
 
 from capability.profile import AppProfile, load_profile
 from capability.sink import RedactionSink, null_sink
+from tests import scope
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-# `api` is scanned too. The dashboard and the capability API are output
-# surfaces, and this project has leaked at every new surface -- an HTTP
-# response body is not a safer destination than a file.
-SCANNED = ("capability", "replay", "discovery", "escalation", "perception",
-           "scripts", "api")
+# Derived, not listed. `api` had to be added by hand after the dashboard
+# shipped, and widening it immediately found two live gaps -- which is the
+# argument for never maintaining this list again.
+SCANNED = tuple(scope.packages())
 CHOKEPOINT = REPO_ROOT / "capability" / "sink.py"
 
 # Writers that put bytes somewhere outside the process.
@@ -80,7 +80,7 @@ def _sinked_names(tree: ast.AST) -> set[str]:
 
 def _python_files():
     for package in SCANNED:
-        for path in sorted((REPO_ROOT / package).rglob("*.py")):
+        for path in scope.sources(package):
             if path == CHOKEPOINT:
                 continue
             yield path
@@ -386,3 +386,73 @@ def test_the_dashboard_module_reaches_nothing():
         assert not any(m.split(".")[0] == banned for m in imported), (
             f"api/dashboard.py imports {banned}: it must serve files, not reach the engine"
         )
+
+
+# ---------------------------------------------------------------------------
+# Finding 8: no guard carries a hand-maintained scope
+# ---------------------------------------------------------------------------
+
+
+def test_no_structural_guard_hardcodes_its_package_list():
+    """The defect this whole audit is about, in the tests themselves.
+
+    Four guards each carried their own list. `api/` was added, none were
+    updated, and four guards went on reporting clean over code they never
+    read. Scope is now derived from the repository, so a package added
+    tomorrow is covered the moment it exists.
+    """
+    import ast
+
+    literals = {"replay", "perception", "escalation", "capability",
+                "discovery", "api", "scripts"}
+    offenders = []
+    for path in sorted((REPO_ROOT / "tests").glob("test_*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            # A list or tuple of two or more package names is a scope list.
+            if not isinstance(node, (ast.List, ast.Tuple)):
+                continue
+            names = {e.value for e in node.elts
+                     if isinstance(e, ast.Constant) and isinstance(e.value, str)}
+            if len(names & literals) < 2:
+                continue
+            # A list of packages to SCAN is a scope list and must be derived.
+            # A list of packages a module may not IMPORT is a different thing
+            # that happens to name the same strings -- it is the assertion
+            # itself, not the ground it covers, and deriving it would assert
+            # nothing. `playwright` in the list is the tell.
+            if names - literals:
+                continue
+            offenders.append(
+                f"{path.name}:{node.lineno}: {sorted(names & literals)}")
+    assert not offenders, (
+        "a guard maintains its own package list; use tests.scope instead:\n  "
+        + "\n  ".join(offenders))
+
+
+def test_scope_covers_every_first_party_package():
+    from tests import scope
+
+    covered = set(scope.packages())
+    on_disk = {
+        p.name for p in REPO_ROOT.iterdir()
+        if p.is_dir() and not p.name.startswith(".") and any(p.glob("*.py"))
+    }
+    missing = on_disk - covered - set(scope._NOT_RUNTIME)
+    assert not missing, f"packages no guard would read: {missing}"
+
+
+def test_excluding_a_package_from_scope_requires_a_reason():
+    """An omission is invisible; a named exclusion is reviewable."""
+    from tests import scope
+
+    for name, reason in scope._NOT_RUNTIME.items():
+        assert reason and reason.strip(), f"{name} is excluded without a reason"
+
+
+def test_scope_reads_nested_modules_too():
+    """A guard that reads only a package's top level misses a subpackage --
+    the same stale-scope failure one directory down."""
+    from tests import scope
+
+    assert "rglob" in (REPO_ROOT / "tests" / "scope.py").read_text()

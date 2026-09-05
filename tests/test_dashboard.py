@@ -468,3 +468,91 @@ def test_a_decision_waits_for_the_run_to_actually_finish(tmp_path):
     manager.decide("run_settle", Decision.ABORT, "done", "dashboard")
     assert record.finished, "decide() returned before the run reached a final status"
     assert record.status() != "running"
+
+
+# ---------------------------------------------------------------------------
+# Finding 9: the dashboard's own source is scanned
+#
+# app.js is ~330 lines of rendering logic that no structural guard read. The
+# existing dashboard tests check specific strings; these check classes of
+# violation, which is what catches the thing nobody thought to assert.
+# ---------------------------------------------------------------------------
+
+APP_NAMES = ("coreserv", "meridian", "northridge", "cascade")
+
+
+def _js_code_lines() -> list[tuple[int, str]]:
+    """app.js with comments and string literals stripped.
+
+    Same exemption the Python guards make: prose may name an application,
+    running code may not. Crude by comparison -- there is no JS parser here --
+    but it strips the two forms this file actually uses.
+    """
+    import re
+
+    source = (STATIC / "app.js").read_text()
+    source = re.sub(r"/\*.*?\*/", "", source, flags=re.S)
+    out = []
+    for i, line in enumerate(source.splitlines(), 1):
+        code = re.sub(r"//.*$", "", line)
+        code = re.sub(r'"[^"]*"|\'[^\']*\'|`[^`]*`', '""', code)
+        if code.strip():
+            out.append((i, code))
+    return out
+
+
+def test_the_dashboard_names_no_application():
+    """It renders whatever the API returns. A capability id or app name in its
+    logic would mean it knows something about the target, which is the seam
+    the API exists to keep it on the far side of."""
+    offenders = [
+        f"app.js:{lineno}: {code.strip()}"
+        for lineno, code in _js_code_lines()
+        for app in APP_NAMES
+        if app in code.lower()
+    ]
+    assert not offenders, "application knowledge in the dashboard:\n  " + "\n  ".join(offenders)
+
+
+def test_the_dashboard_contains_no_locator_vocabulary():
+    """If the page ever learns what a rung or a frame is, it has stopped
+    reading a contract and started reading an implementation."""
+    banned = ("aria-ref", "querySelector", "xpath", "role_name", "cell_in_row",
+              "input[name=", "playwright")
+    offenders = [
+        f"app.js:{lineno}: {code.strip()}"
+        for lineno, code in _js_code_lines()
+        for token in banned
+        if token in code.lower()
+    ]
+    assert not offenders, offenders
+
+
+def test_the_dashboard_has_no_second_route_out_of_the_page():
+    """Its only capability is fetch(). Anything else is a way to reach data
+    the API did not hand it."""
+    source = (STATIC / "app.js").read_text()
+    for escape in ("XMLHttpRequest", "WebSocket", "EventSource", "import(",
+                   "new Function", "eval(", "document.write"):
+        assert escape not in source, escape
+
+
+def test_the_dashboard_never_builds_a_capability_specific_path():
+    """Every API path it requests must be one the API serves, built from
+    values the API returned -- not assembled from knowledge of the target."""
+    import re
+
+    source = (STATIC / "app.js").read_text()
+    for path in re.findall(r'api\(\s*[`"\']([^`"\']*)', source):
+        assert path.startswith("/"), path
+        head = path.split("/")[1].split("$")[0]
+        assert head in {"capabilities", "runs", "interventions"}, path
+
+
+def test_the_scan_would_catch_a_violation(tmp_path, monkeypatch):
+    """A structural test that cannot fail is decoration."""
+    import re
+
+    bad = 'const x = coreservDefaults;\nfetch("/x");\n'
+    stripped = re.sub(r'"[^"]*"', '""', bad)
+    assert "coreserv" in stripped.lower(), "the stripper must not hide identifiers"

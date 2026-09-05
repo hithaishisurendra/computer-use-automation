@@ -132,5 +132,13 @@
       "message": "The member record exists but is restricted."
     }
   ],
-  "commit_paths": []
+  "commit_paths": [],
+  "sensitive_labels": [
+    "Email",
+    "Phone",
+    "Address",
+    "Name",
+    "SSN",
+    "Date of Birth"
+  ]
 }

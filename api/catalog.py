@@ -16,7 +16,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Optional
 
-from capability.loader import ArtifactError, load_artifact, load_resolved
+from capability.loader import ArtifactError, check_risk_agreement, load_artifact, load_resolved
+from capability.profile import ProfileError, profile_for
 from capability.schema import Artifact
 
 DEFAULT_ROOT = Path(__file__).resolve().parent.parent / "capabilities"
@@ -93,8 +94,16 @@ def catalog(root: str | Path = DEFAULT_ROOT) -> list[dict[str, Any]]:
     entries: list[dict[str, Any]] = []
     for capability_id, version, path in iter_versions(root):
         try:
-            entries.append(describe(load_artifact(path)))
-        except ArtifactError as exc:
+            artifact = load_artifact(path)
+            # The same agreement check `load_resolved` runs. Listing has to
+            # apply it too: a catalogue that advertises a capability the
+            # invoke path refuses is worse than one that says why -- an agent
+            # would read `invocable: true` and call something that cannot run.
+            # This is the audit's own pattern, one entry point checked and its
+            # sibling not.
+            check_risk_agreement(artifact, profile_for(artifact.target))
+            entries.append(describe(artifact))
+        except (ArtifactError, ProfileError) as exc:
             entries.append({
                 "id": capability_id, "version": version, "status": "unloadable",
                 "invocable": False, "error": str(exc),

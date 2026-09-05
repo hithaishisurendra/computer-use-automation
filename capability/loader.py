@@ -273,6 +273,99 @@ def capability_paths(
     return base_path, overlay_path
 
 
+class RiskDisagreement(ArtifactError):
+    """The artifact's recorded risk labels disagree with the app profile.
+
+    Not a warning and not silently corrected in either direction. Overriding
+    toward `risky` would let a stale profile break a reviewed capability;
+    overriding toward `safe` would let a tampered artifact post unattended.
+    Either way the override hides the disagreement, and the disagreement is
+    the information: something is wrong with the artifact, the profile, or
+    both, and a person needs to look.
+    """
+
+
+def derive_risk(artifact: Artifact, profile) -> dict[str, str]:
+    """What the app profile says each step's risk SHOULD be.
+
+    Derived from the artifact alone -- no browser, no page. An element's
+    chain carries the control's role and accessible name, which is exactly
+    what the recorder classified on, so the verb signal reproduces
+    statically. `commit_paths` cannot: the landing URL is only observable
+    after the click, so this covers one of the two signals and says so.
+
+    Only the highest-confidence rung is consulted. A fallback rung exists
+    because the first might not resolve; it describes the same control, and
+    reading them all would let a brittle positional rung with no name mask a
+    named one.
+    """
+    from discovery.recorder import risk_rules_from_profile
+
+    rules = risk_rules_from_profile(profile)
+    derived: dict[str, str] = {}
+    for step in artifact.steps:
+        if step.action != "click" or not step.element:
+            derived[step.id] = "safe"
+            continue
+        element = artifact.elements.get(step.element)
+        rung = element.chain[0] if element and element.chain else None
+        role = (rung.role or "").strip().lower() if rung else ""
+        name = (rung.name or "").strip() if rung else ""
+        matched = rules.match(name)
+        # The recorded destination lets the commit-path signal reproduce here
+        # too, so this is no longer verb-only. An artifact recorded before
+        # destinations were captured simply has none, and falls back to the
+        # verb signal alone -- which is why the check refuses downgrades
+        # rather than asserting equality.
+        commits = rules.commits(element.destination) if element else None
+        # Same narrowing both signals get everywhere else: only a submit-type
+        # control can commit, because navigation links share both the commit
+        # vocabulary AND, on an app that serves a form from the path it posts
+        # to, the committing path.
+        derived[step.id] = (
+            "risky" if (matched or commits) and role == "button" else "safe"
+        )
+    return derived
+
+
+def check_risk_agreement(artifact: Artifact, profile) -> None:
+    """Refuse an artifact whose risk labels the profile contradicts.
+
+    Replay used to read `step.risk` and trust it. A hand-edited artifact
+    flipping `risky` to `safe` would post unattended, and replay had the
+    profile in hand the whole time -- the recorder's judgement is a
+    recording-time fact that execution treated as gospel.
+
+    Checked at load rather than mid-run, because the element chain carries
+    everything needed and a browser is not. Every surface that loads an
+    artifact -- replay, the API catalogue, the dashboard -- gets the refusal
+    for free.
+    """
+    derived = derive_risk(artifact, profile)
+    disagreements = [
+        f"step {step.id!r} ({step.element or step.action}): artifact says "
+        f"{step.risk!r}, app profile {profile.name!r} derives {derived[step.id]!r}"
+        for step in artifact.steps
+        # One direction only. A step the artifact calls risky that the
+        # profile does not is NOT a disagreement worth refusing: a human
+        # reviewer may mark a step risky for reasons no vocabulary
+        # encodes, and refusing that would punish exactly the review the
+        # draft->approved model asks for. The dangerous direction is the
+        # other one.
+        if derived[step.id] == "risky" and step.risk != "risky"
+    ]
+    if disagreements:
+        raise RiskDisagreement(
+            f"capability {artifact.capability.id!r} has step(s) the app profile "
+            "considers irreversible but the artifact does not:\n  "
+            + "\n  ".join(disagreements)
+            + "\n\nThis is refused rather than corrected. Either the artifact was "
+            "edited after recording, or the profile changed since -- and which one "
+            "it is decides whether to re-record or to review the profile. "
+            "Correcting it silently would hide that."
+        )
+
+
 def apply_profile_defaults(artifact: Artifact, profile=None) -> Artifact:
     """Fill in auth targeting the artifact did not declare, from the app profile.
 
@@ -336,8 +429,12 @@ def load_resolved(
     the base flow unmodified, which is the expected case for the tenant the
     capability was recorded against.
     """
+    from .profile import profile_for
+
     base_path, overlay_path = capability_paths(root, capability_id, version, tenant)
     artifact = load_artifact(base_path)
     if overlay_path is not None and overlay_path.exists():
         artifact = apply_overlay(artifact, load_overlay(overlay_path))
-    return apply_profile_defaults(artifact, profile)
+    resolved = apply_profile_defaults(artifact, profile)
+    check_risk_agreement(resolved, profile or profile_for(resolved.target))
+    return resolved

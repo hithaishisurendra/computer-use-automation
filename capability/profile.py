@@ -229,6 +229,20 @@ class AppProfile(ProfileModel):
         ),
     )
 
+    sensitive_labels: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Field labels that name personal data on this app, matched case- "
+            "and punctuation-insensitively.\n\n"
+            "The FIELD is the durable fact; the value observed during one "
+            "discovery run is not. A member with no e-mail recorded yields an "
+            "innocuous sample, and classifying from that sample alone would "
+            "declare the e-mail output public forever. Which labels name "
+            "personal data is knowledge about an application, so it lives "
+            "with the application's other knowledge."
+        ),
+    )
+
     parameter_aliases: dict[str, str] = Field(
         default_factory=dict,
         description=(
