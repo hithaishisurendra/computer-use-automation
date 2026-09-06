@@ -1438,3 +1438,49 @@ recorder now substitutes each discovered value with the parameter carrying it,
 so the description reads *"Look up member `<member_ref>`…"*. Not a chatbot
 bug: an artifact whose description disagrees with its own inputs is wrong for
 every reader, and the chatbot was the first one to say so out loud.
+
+---
+
+## Every entry point that can reach a browser loads `.env` itself
+
+**Decided:** `discovery/run.py`, `api/service.py` and `replay/run.py` each call
+`load_dotenv()` at their own entry. This *copies across a boundary* — three
+call sites, one line each — rather than deriving at one.
+
+The alternative was to derive it: call `load_dotenv()` once at import of some
+shared module every path already touches (`capability.loader`, say). Rejected
+because it makes reading a file a side effect of an import, which is the kind
+of thing that is invisible until it is wrong, and because it would fire inside
+the test suite and in any process that merely imports the package to inspect
+an artifact. Reading process configuration is an entry point's job; three
+explicit calls are honest about that.
+
+An earlier entry in this file said "the CLIs call `load_dotenv` themselves."
+That was true of exactly one CLI. `replay/run.py` never did, which meant the
+three replay commands in the README could not run from a clean shell — they
+reported `auth_failure`, the classification that specifically tells an operator
+the credentials are wrong, on a machine where the credentials were correct and
+present. That comment is corrected in `api/service.py`.
+
+**How it was found:** by running the README's own commands verbatim in a shell
+with nothing exported, instead of in the shell where the work had been done.
+Every one of these had been "verified" before, in a session that happened to
+have the variables exported. The environment a developer tests in is not the
+environment the instructions describe, and the gap between them is invisible
+from inside it.
+
+## The chat cannot open an intervention, and the README said it could
+
+The demo path claimed the transfer chat message produces `202
+escalation_required` and then told the reader to open **Interventions** and
+press Abort. The first half is right; the second half cannot happen. `/chat`
+invokes unattended, and the unattended branch of `invoke` sets
+`escalate=False` deliberately — "there is no operator behind a plain HTTP
+request, and offering one would be a lie the audit trail keeps." So the run
+stops, reports, and releases control; nothing is ever parked.
+
+Reaching the operator surface needs `attended: true`, which only the
+Capabilities form sends and which `/chat` is deliberately forbidden to pass.
+The README now documents both as separate steps rather than one. Nothing in
+the code changed — the behaviour was correct and the description of it was
+not, which is the same defect class as the capability descriptions above.

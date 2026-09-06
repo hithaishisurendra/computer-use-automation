@@ -153,6 +153,25 @@ def _run_record(result, artifact) -> dict[str, Any]:
     return payload
 
 
+def _load_environment() -> None:
+    """Read `.env` once, at app construction.
+
+    Every entry point that can reach a browser has to do this. This one was
+    found by running the README's own quick start: it served every endpoint
+    and then failed every invocation with `auth_failure`, on a machine where
+    the credentials were sitting in `.env` the whole time -- and
+    `auth_failure` is precisely the classification that tells an operator it
+    is NOT their fault, which was true and unhelpful. `replay/run.py` had the
+    same hole and is fixed the same way.
+
+    Existing environment variables win, so an explicitly exported value is
+    never overridden by a stale file.
+    """
+    from discovery.model import load_dotenv
+
+    load_dotenv()
+
+
 def create_app(
     capabilities_root: str | Path = catalog_mod.DEFAULT_ROOT,
     evidence_root: str | Path = "evidence/replay",
@@ -165,6 +184,7 @@ def create_app(
         ),
         version="1.0.0",
     )
+    _load_environment()
     app.state.capabilities_root = Path(capabilities_root)
     app.state.evidence_root = Path(evidence_root)
     # Every run this process has served, so a caller can fetch a result and

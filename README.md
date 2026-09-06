@@ -2,15 +2,22 @@
 
 An LLM drives a legacy back-office UI to accomplish a goal, the successful run
 is recorded as a typed capability artifact, and that artifact replays
-deterministically with **no model in the loop**.
+deterministically with **no model in the loop**. Recorded capabilities are
+exposed as a callable API, driven by a chatbot, and watched on a dashboard.
 
-The target is **CoreServ**, a purpose-written credit-union servicing console
-in this repo: real `<frameset>`, tables nested three deep, server-generated
-element ids that rotate on every render, no test ids, and seven injectable
-faults. It is deliberately hostile.
+Two targets ship, and pointing at a second one was a configuration exercise
+rather than a rewrite:
 
-Design write-up: [`REPORT.md`](REPORT.md). Runs and logs:
-[`evidence/README.md`](evidence/README.md).
+- **MERIDIAN CORE** — a live, externally hosted credit-union console at
+  `web-sample.interface-hiring.com`. Server-rendered, table layout, no test
+  ids, a numbered menu, a per-transaction hidden token, and injectable faults.
+- **CoreServ** — a purpose-written console in this repo (`coreserv/`), used
+  for offline work. Real `<frameset>`, tables nested three deep, ids that
+  rotate every render.
+
+Design write-up: [`REPORT.md`](REPORT.md). Decisions and their rejected
+alternatives: [`docs/phase2-decisions.md`](docs/phase2-decisions.md). Runs and
+logs: [`evidence/README.md`](evidence/README.md).
 
 ---
 
@@ -25,242 +32,404 @@ pip install -r requirements.txt
 playwright install chromium          # ~300MB, one time
 ```
 
-### Environment variables
+### Environment
 
-| Variable | Needed for | Notes |
-|---|---|---|
-| `GEMINI_API_KEY` | Discovery only | Free tier is enough. [aistudio.google.com/apikey](https://aistudio.google.com/apikey) |
-| `CORESERV_USERNAME` | Discovery, replay | Any non-empty string — CoreServ accepts any password |
-| `CORESERV_PASSWORD` | Discovery, replay | Any non-empty string |
-| `ANTHROPIC_API_KEY` | Optional | Only if running discovery with `--provider anthropic` |
-
-Put them in `.env` (gitignored, loaded automatically by discovery):
+Everything goes in `.env` (gitignored, loaded automatically). Artifacts store
+the **names** of credential variables, never values — a pasted secret fails
+schema validation.
 
 ```bash
 cat > .env <<'EOF'
-GEMINI_API_KEY=your-key-here
-EOF
-export CORESERV_USERNAME=operator CORESERV_PASSWORD=devpassword
-```
+# Model. Anthropic is the default provider; Gemini is fully wired as an
+# alternative and both stay, which is what makes the provider seam real.
+ANTHROPIC_API_KEY=sk-ant-...
+ANTHROPIC_WORKSPACE_ID=...      # only if your key is identity-linked
+GEMINI_API_KEY=...              # optional, for --provider gemini
 
-Artifacts store the **names** of credential variables, never values; a pasted
-secret fails schema validation.
+# MERIDIAN operators. Public demo credentials, no real PII.
+MERIDIAN_OPERATOR=teller1
+MERIDIAN_PASSWORD=password
+MERIDIAN_SUPERVISOR=super1
+MERIDIAN_SUPERVISOR_PASSWORD=password
+
+# CoreServ accepts any non-empty pair.
+CORESERV_USERNAME=operator
+CORESERV_PASSWORD=devpassword
+EOF
+```
 
 ---
 
-## Run CoreServ
-
-In a separate terminal, and leave it running:
+## Quick start — the whole system in one command
 
 ```bash
-source .venv/bin/activate
-uvicorn coreserv.main:app --port 8800
+uvicorn api.service:app --port 8900
 ```
 
-Open <http://localhost:8800> — log in with any username and password.
+Open **<http://127.0.0.1:8900/ui>**. Four tabs:
 
-Faults are server-side flags, so the same artifact with the same inputs
-produces a different outcome because the world changed, not because the run
-was edited:
+| Tab | What it is |
+|---|---|
+| **Chat** | Plain English → a capability invocation. Shows which capability it chose and with what arguments. |
+| **Catalog** | Every capability: typed inputs and outputs, declared business outcomes, whether it needs a supervisor, whether it contains an irreversible step. Invoke one directly. |
+| **Runs** | Every run this process served, colour-coded by classification. |
+| **Interventions** | Runs paused at an irreversible step, with the captured state and Resume / Abort. |
+
+Try, in the Chat tab:
+
+```
+What is the balance of share 100234-S0001-12 for member 100234?
+Look up the share balance for member 999999
+Transfer 5.00 from 100987-MMKT-5 to 100987-MMKT-7 for member 100987, memo demo
+```
+
+The first returns a balance. The second returns **"No member exists with the
+supplied identifier"** — a business outcome, an answer rather than an error.
+The third stops at the irreversible post step and hands you to Interventions.
+
+---
+
+## Pointing this at a different application
+
+This is the part worth reading. Adapting to a new target is **a profile, a
+policy and a recording** — no engine changes. A test enforces that: it fails
+if any application name or app-shaped selector appears in executable code
+under `replay/`, `perception/`, `escalation/`, `capability/` or `api/`.
+
+### 1. Write an app profile
+
+`config/app_profiles/<yourapp>.json`. Everything the engine needs to know
+about *this specific application* lives here:
+
+| Field | What it answers |
+|---|---|
+| `error_markers` | What text means session expired / server error / maintenance on this app |
+| `recovery` | What clearing each condition *does* — `dismiss_control` (click, stay put) vs `reload_step_url` (re-request the step's URL). CoreServ's interstitial is a button that re-renders in place; MERIDIAN's is a link that navigates away and loses your position |
+| `version_pattern` | Regex reading the app version off the page, for drift detection. Rejected at load if it cannot match |
+| `content_frame` | Frame holding the working area, or `null` for a single-document app |
+| `entry_path` | Where a flow starts, post-authentication |
+| `commit_paths` | Endpoints that commit. A click that *lands* on one is irreversible whatever the button was called |
+| `risk_verbs` / `near_miss_verbs` | Labels that suggest a commit. A first guess for review, not a determination |
+| `sensitive_labels` | Field labels naming personal data, e.g. `E-mail`, `Phone` |
+| `chrome_literals` | Values the app prints into its own furniture (a session id, the operator name) that must be scrubbed from evidence |
+| `redaction` | Where known-sensitive literals come from. A profile with none reports itself **degraded**, loudly |
+| `auth_defaults` | Sign-on path, the control elements, credential variable names, non-secret parameters like a branch code, and per-role credential sets |
+| `business_outcomes` | Answers this app gives that are results, not faults — "no records matched", "insufficient funds" |
+| `parameter_aliases` | Field labels too generic to name a parameter after (MERIDIAN labels its member search `Value`) |
+
+Copy `config/app_profiles/meridian.json` and edit. Nothing else is required to
+make the engine understand a new app.
+
+### 2. Write a discovery policy
+
+`config/discovery_policies/<yourapp>.json` — the allowlist the agent runs
+under. Deliberately a separate file: a profile describes what the app **is**,
+a policy declares what the agent may **do** to it.
+
+```json
+{
+  "allowed_origins": ["https://yourapp.example.com"],
+  "allowed_paths": ["/signon", "/menu", "/members", "/members/*"],
+  "allowed_actions": ["navigate", "click", "fill", "select", "check", "extract"],
+  "risky_action_handling": "require_confirmation",
+  "max_steps": 25,
+  "timeout_ms": 300000
+}
+```
+
+Note `fnmatch`'s `*` crosses `/`, so `/members/*` permits everything beneath
+it including post endpoints. That is intentional — the control over
+irreversible actions is the risky-step gate, not this list — and
+`config/discovery_policies/meridian.json` says so at length.
+
+### 3. Check what perception sees, before recording anything
 
 ```bash
-curl -X POST localhost:8800/_faults -H 'Content-Type: application/json' \
+python -m scripts.a11y_diagnostic_meridian --base-url https://yourapp.example.com
+```
+
+Writes per-page accessibility dumps and a `findings.json` to
+`evidence/a11y_diagnostic_meridian/`: accessible-name coverage per control,
+which labelling rule produced each name, anything nameless, raw vs filtered
+token counts, and whether hidden tokens or a live clock reach the tree. Worth
+running first — it is how the frame model, the missing `columnheader` nodes
+and the DOM-only token were all found on MERIDIAN before a line was adapted.
+
+### 4. Record a capability
+
+```bash
+python -m discovery.run \
+  --app yourapp \
+  --target https://yourapp.example.com \
+  --goal "Look up member 100234 and read the balance of share 100234-S0001-12" \
+  --capability-id member_share_balance \
+  --tenant demo --app-version 1.0.0
+```
+
+Writes `evidence/discovery/{run_id}/` with `cycles.jsonl` (every observe →
+decide → act cycle and the model's reasoning), `artifact.json`, per-step
+screenshots, and a `summary.json` carrying token usage and cost. The artifact
+is validated by loading it back before the run reports success.
+
+Useful flags:
+
+| Flag | Why |
+|---|---|
+| `--role supervisor` | Record under a privileged operator. Writes `capability.required_role`, which the catalogue exposes so an agent knows before invoking |
+| `--policy config/discovery_policies/yourapp-recording.json` | A relaxed policy for recording an irreversible flow — see below |
+| `--provider gemini` | The other model client |
+| `--max-seconds 420` | Wall-clock budget. Provider backoff is not counted against it |
+
+**Goals are specifications. Write them precisely.** Two real failures: a loose
+goal produced a capability that read a *share count* and called it a balance,
+and "reach the confirmation screen" was satisfied by a review page. Name the
+screen and name the values.
+
+Install a recorded artifact:
+
+```bash
+mkdir -p capabilities/member_share_balance
+cp evidence/discovery/<run_id>/artifact.json \
+   capabilities/member_share_balance/1.0.0.json
+```
+
+The capability id inside the artifact must match the directory name.
+
+### 5. Recording an irreversible flow
+
+You cannot record a review→post flow without posting once, so a gate that
+blocks discovery makes every capability ending in a post unrecordable. The
+gate is relaxed *for recording*, by a person, in a named file:
+
+```bash
+python -m discovery.run --app meridian \
+  --policy config/discovery_policies/meridian-recording.json \
+  --role supervisor \
+  --goal "Place a hold on member 100234's share ... and click Apply Hold" \
+  --capability-id member_place_hold --target https://web-sample.interface-hiring.com
+```
+
+The **emitted artifact never inherits that posture** — the recorder always
+writes `risky_action_handling: "require_confirmation"`, so a relaxed recording
+session cannot produce a capability that posts unattended.
+
+### 6. Replay it
+
+```bash
+python -m replay.run --capability member_share_balance --version 1.0.0 \
+  --input member_ref=100234
+```
+
+A capability generalises exactly as far as its declared inputs. This one takes
+`member_ref` only — the share suffix came from the goal and is fixed in the
+locator — so it works for any member holding an `-S0001-12` share and returns
+a business outcome for one who does not. Naming the share in the goal *as a
+value the caller supplies* is what would make it a parameter; the goal is the
+specification.
+
+Replay exit codes: `0` success **and** business outcome, `1` hard failure,
+`2` caller error, `3` auth failure. "No such member" is an answer, not a
+crash, which is why it shares an exit code with success.
+
+Discovery adds `4`: the run produced a valid artifact but stopped at an
+irreversible step, so a script must not read "artifact written" as "flow
+proven".
+
+---
+
+## Demo path (MERIDIAN, no local server needed)
+
+```bash
+uvicorn api.service:app --port 8900        # then open /ui
+```
+
+**1. A capability that answers.** Chat: *"What is the balance of share
+100234-S0001-12 for member 100234?"* → `success`, the balance stated plainly.
+The chosen capability and its arguments are shown beside the answer.
+
+**2. A business outcome.** Chat: *"Look up the share balance for member
+999999"* → `business_outcome`, *"No member exists with the supplied
+identifier."* Never phrased as a failure.
+
+**3. An irreversible step stopping for a human.** Chat: *"Transfer 5.00 from
+100987-MMKT-5 to 100987-MMKT-7 for member 100987, memo demo"* →
+`escalation_required`. Ten steps complete, `s11` (`post_transfer_button`)
+blocks, and the reply says what would have to happen for the run to continue.
+Nothing was posted.
+
+The chat stops there and does **not** open an intervention, because it cannot:
+chat invokes unattended, and an unattended request has no operator behind it to
+hand the browser to. That is the same reason `/chat` cannot pass `attended`.
+
+**3b. Handing the blocked step to a person.** To reach the operator surface,
+run the same capability from **Capabilities** with **attended** ticked (or
+`POST .../invoke` with `{"attended": true}`). It returns `202`, opens a headed
+window, and parks the run. **Interventions** then shows the blocked step, why,
+what the checkpoint will verify on resume (`element
+'confirmation_number_source' present`), and the stuck screenshot. Press
+**Abort** unless you intend to move money — the transfer is real.
+
+**4. A supervisor-gated action.** `member_place_hold` declares
+`required_role: supervisor`; the catalogue and dashboard show it. Run it with
+`MERIDIAN_SUPERVISOR` pointed at `teller1` and it returns
+`business_outcome / supervisor_override_required` — "this operator cannot do
+this" is an answer.
+
+**5. Injected faults.** MERIDIAN takes `?inject=<kind>` per request or a
+global setting at `/settings`:
+
+```
+validation 400 · notfound 404 · permission 403 · timeout 440
+maintenance 503 · server 500
+```
+
+A session timeout mid-flow is re-authenticated and retried **only** for steps
+declaring `retry_after_reauth` — never for a risky one, which fails toward
+escalation instead, because a post that may already have landed must not be
+repeated.
+
+### Offline, on CoreServ
+
+```bash
+uvicorn coreserv.main:app --port 8800      # separate terminal
+
+python -m discovery.run --app coreserv --target http://localhost:8800 \
+  --goal "Look up member 10003 and read their current savings balance" \
+  --capability-id member_savings_balance_discovered
+
+python -m replay.run --capability member_savings_balance --version 1.0.0 \
+  --input member_ref=10003
+```
+
+CoreServ's faults are server-side flags:
+
+```bash
+curl -sX POST localhost:8800/_faults -H 'Content-Type: application/json' \
      -d '{"fault":"member_not_found","enabled":true}'
-curl -X POST localhost:8800/_faults/reset
+curl -sX POST localhost:8800/_faults/reset
 ```
 
-Faults: `member_not_found`, `restricted_member`, `maintenance_interstitial`,
+`member_not_found`, `restricted_member`, `maintenance_interstitial`,
 `slow_response`, `session_expired`, `validation_error`, `server_error`.
 
 ---
 
-## Demo path
+## The capability API
 
-### 1. Discovery — an LLM drives the app and emits an artifact
+Under the dashboard, and callable on its own. Every invocation runs a
+deterministic replay; `api/` imports no engine module, asserted structurally.
 
-```bash
-python -m discovery.run \
-  --goal "Look up member 10001 and read their current savings balance" \
-  --target http://localhost:8800 --entry /search
+```
+GET  /capabilities                              the catalogue
+GET  /capabilities/{id}/{version}               one contract
+POST /capabilities/{id}/{version}/invoke        run it
+GET  /runs · /runs/{id} · /runs/{id}/evidence   history and evidence
+GET  /interventions                             runs awaiting a person
+POST /runs/{id}/resume · /runs/{id}/abort       hand control back
+POST /chat                                      plain English → an invocation
 ```
 
-Takes ~40s. Writes `evidence/discovery/{run_id}/` containing `cycles.jsonl`
-(every observe → decide → act cycle with the model's reasoning),
-`artifact.json`, `summary.json` and per-step screenshots. The emitted artifact
-is validated by loading it back before the run reports success.
-
-### 2. Replay — the same artifact, no model
-
-An artifact emitted by a real discovery run is already committed at
-`capabilities/member_savings_balance_discovered/`, so this needs no API key
-and no prior step. Run it **for a different member than it was discovered
-on** — discovery saw 10001; this asks for 10003:
-
 ```bash
-python -m replay.run \
-  --capability member_savings_balance_discovered --version 1.0.0 \
-  --input member_ref=10003
+curl -s localhost:8900/capabilities | python3 -m json.tool
+curl -sX POST localhost:8900/capabilities/member_share_balance/1.0.0/invoke \
+     -H 'content-type: application/json' \
+     -d '{"inputs":{"member_ref":"100234"}}'
 ```
 
-Prints a structured result. Exit codes: `0` success **and** business outcome,
-`1` hard failure, `2` caller error, `3` auth failure — "no such member" is an
-answer, not a crash.
+HTTP status carries the result contract: `success` and `business_outcome` are
+both **200** — the caller asked a question and got an answer — `202` is
+accepted-and-awaiting-a-human, `400` a caller error, `502` a system or app
+failure. Add `{"attended": true}` to run with a headed browser so an
+irreversible step pauses for you instead of failing.
 
-Members with a savings account: `10001` (8320.10), `10003` (15230.44),
-`10006` (3305.90), `10010` (640.75).
+---
 
-**If you ran discovery yourself in step 1**, replay your own artifact by
-copying it where the loader can address it by capability id:
+## Escalation from the CLI
 
-```bash
-mkdir -p capabilities/my_discovered_capability
-cp evidence/discovery/<run_id>/artifact.json \
-   capabilities/my_discovered_capability/1.0.0.json
-```
-
-The capability id inside the artifact must match the directory name — set it
-with `--capability-id my_discovered_capability` when you run discovery, or
-use the committed copy above.
-
-### 3. Error and outcome handling
-
-```bash
-# business outcome, exit 0 — a legitimate answer
-curl -sX POST localhost:8800/_faults -H 'Content-Type: application/json' \
-     -d '{"fault":"member_not_found","enabled":true}'
-python -m replay.run --capability member_savings_balance --version 1.0.0 \
-  --input member_ref=10001
-
-# hard failure, exit 1, escalation-eligible
-curl -sX POST localhost:8800/_faults/reset
-curl -sX POST localhost:8800/_faults -H 'Content-Type: application/json' \
-     -d '{"fault":"session_expired","enabled":true}'
-python -m replay.run --capability member_savings_balance --version 1.0.0 \
-  --input member_ref=10001
-
-# caller error, exit 2 — no browser is ever opened
-curl -sX POST localhost:8800/_faults/reset
-python -m replay.run --capability member_savings_balance --version 1.0.0 \
-  --input member_ref=not-an-id
-```
-
-### 4. Escalation — a human takes over the live session
-
-`--escalate` is **off by default** so unattended replay stays unattended. It
+`--escalate` is off by default so unattended replay stays unattended. It
 implies `--headed`, since a human cannot drive a headless browser.
 
 ```bash
-curl -sX POST localhost:8800/_faults -H 'Content-Type: application/json' \
-     -d '{"fault":"session_expired","enabled":true}'
-
-python -m replay.run --capability member_savings_balance --version 1.0.0 \
-  --input member_ref=10001 --escalate
+python -m replay.run --capability member_funds_transfer --version 1.0.0 \
+  --input member_ref=100987 --input from_share=100987-MMKT-5 \
+  --input to_share=100987-MMKT-7 --input amount=5.00 --input memo=demo \
+  --escalate
 ```
 
-The run pauses, prints an intervention request (capability, step, expected vs
-observed, URL, screenshot path), and waits. Automation is locked out — the
-executor asserts ownership before every action. Drive the **already-open**
-browser window; it is the same session, not a fresh one. Then press `r` to
-resume or `a` to abort.
+The run pauses and prints the intervention request. Automation is locked out —
+the executor asserts ownership before every action. Drive the **already-open**
+window; it is the same session. Press `r` to resume or `a` to abort. On resume
+the blocked step's checkpoint is re-evaluated before the run continues.
 
-On resume the failed step's checkpoint is re-evaluated and the run continues
-from there — it does not restart. Writes `evidence/escalation/{run_id}/` with
-the request, the control-transfer log, and a diff of what changed while the
-human held control.
+The dashboard's Interventions tab is a second operator surface over the same
+mechanism — it signals resume; **it does not drive the browser**.
 
-Discovery has the same flag; there it triggers when the model calls `stuck`.
+---
 
-### 5. Cross-tenant — one artifact, two tenants
+## Cross-tenant — one artifact, two tenants
 
 ```bash
-TENANT=cascade uvicorn coreserv.main:app --port 8800     # in place of northridge
+TENANT=cascade uvicorn coreserv.main:app --port 8800
 
 python -m replay.run --capability member_savings_balance --version 1.0.0 \
   --tenant cascade --input member_ref=4471820019
 ```
 
-Same artifact resolved through `capabilities/member_savings_balance/tenants/cascade.json`.
-Cascade searches by ten-digit account number, relabels the field and reorders
-the results grid; the overlay is two element chains, one input pattern and one
-version string.
+Resolved through `capabilities/member_savings_balance/tenants/cascade.json`.
+Cascade searches by ten-digit account number and relabels the field; the
+overlay is two element chains, one input pattern and one version string.
 
-An overlay may now move a tenant to a different **host**, not just a
-different port. `policy.allowed_origins` is derived from `target.base_url`
-rather than stored beside it, so an overlay that sets `base_url` moves the
-origin allowlist with it. Previously the two were independent and
-`allowed_origins` was a forbidden overlay key, so a repointed artifact failed
-its own origin check — which is why the cascade demo runs on 8800 in place of
-northridge rather than alongside it. `evidence/README.md` records both runs.
+An overlay may move a tenant to a different **host**: `allowed_origins` is
+derived from `target.base_url` rather than stored beside it, so moving the URL
+moves the allowlist with it.
 
 ---
 
-## App profiles
-
-Everything the engine knows about a *specific application* lives in
-`config/app_profiles/{name}.json`, resolved from `target.app_profile`
-(defaulting to `target.app`). Two ship: `coreserv` and `meridian`.
-
-A profile carries the error markers that identify a session bounce, a server
-error and a maintenance interstitial on that app; what recovering from each
-actually means (`dismiss_control` vs `reload_step_url` — CoreServ's
-interstitial is a button that re-renders in place, MERIDIAN's is a link that
-navigates away and loses your position); the regex that reads the app version
-off the page; whether the app uses frames and which one holds the working
-area; the verbs the recorder treats as irreversible; the values the app
-prints into its own chrome that must be scrubbed from evidence; and where its
-known-sensitive literals come from.
-
-Pointing at a new application should be writing one of these, not editing
-`replay/` or `discovery/`. `tests/test_profile.py` asserts that structurally:
-it fails if any application name or app-shaped selector appears in executable
-code under `replay/`, `perception/` or `escalation/`.
+## Tests
 
 ```bash
-python -m discovery.run --app coreserv --goal "..." --target http://localhost:8800
+python -m pytest tests/ -q
 ```
 
----
+**465 pass with nothing running**, 21 skip. With CoreServ up on 8800 all
+**486** pass. No test needs an API key — model calls are exercised by real runs
+in `evidence/`, and the loop's logic is tested against synthetic accessibility
+trees.
 
-## Running without live services
+Several tests are structural rather than behavioural, and they are the ones
+worth knowing about:
 
-**Most of the suite needs nothing running.** Tests that require CoreServ skip
-rather than fail:
-
-```bash
-python -m pytest tests/ -q          # 178 passed, 21 skipped with nothing running
-```
-
-With CoreServ up on 8800, all **199** pass. No test needs an API key — the
-model call is exercised by real runs in `evidence/`, not by unit tests, and
-`tests/test_discovery.py` verifies the loop's logic against synthetic
-accessibility trees.
-
-The perception diagnostic needs CoreServ but no model:
-
-```bash
-python -m scripts.a11y_diagnostic --base-url http://localhost:8800
-```
+- **`tests/test_redaction_chokepoint.py`** parses every first-party package
+  and fails if anything writes a file or returns an HTTP body without going
+  through `capability/sink.py`. Redaction has failed at every *new surface*
+  this project added, so the number of places able to emit data is capped.
+- **`tests/test_profile.py`** fails if an application name or app-shaped
+  selector appears in engine code — the adapter seam, asserted.
+- **`tests/scope.py`** derives which packages those guards cover from the
+  repository, so a package added tomorrow is covered the moment it exists.
+  Four guards previously carried hand-maintained lists and went stale.
 
 ---
 
 ## Layout
 
 ```
-coreserv/     the target app (proxy for a legacy back office)
+api/          capability API, dashboard, chatbot  ← wrapper only, no engine
 perception/   accessibility-tree snapshot, filtering, label augmentation
-capability/   artifact schema, loading, validation, redaction
+capability/   artifact schema, loading, profiles, redaction sink
 discovery/    LLM loop + recorder      ─┐ both use perception;
 replay/       deterministic engine     ─┘ neither imports the other
-escalation/   control transfer, operator surface
+escalation/   control transfer, operator surfaces
+config/       app profiles + discovery policies   ← per-app knowledge
 capabilities/ saved artifacts + tenant overlays
+coreserv/     the offline target app
 evidence/     runs, logs, findings  ← start at evidence/README.md
-docs/         schema spec, decisions log
+docs/         schema spec, decisions logs, the MERIDIAN diagnostic
 ```
 
 ## Evidence
 
 [`evidence/README.md`](evidence/README.md) maps each directory to the
-requirement it demonstrates: a real Gemini discovery run with its transcript,
-the emitted artifact replaying for a different member, business outcomes, a
-hard failure, a caller error, the escalation handoff, and the cascade tenant
-run — plus two findings the exercise produced.
+requirement it demonstrates. [`docs/phase2-diagnostic.md`](docs/phase2-diagnostic.md)
+is the measurement pass taken against MERIDIAN *before* any adaptation, plus
+an honest account of what adapting actually took.

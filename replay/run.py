@@ -17,6 +17,7 @@ import sys
 from pathlib import Path
 
 from capability.loader import ArtifactError, load_resolved
+from discovery.model import load_dotenv
 from capability.sink import null_sink
 from replay.engine import ReplayEngine
 
@@ -58,6 +59,13 @@ def main() -> None:
         ),
     )
     args = parser.parse_args()
+
+    # Credentials live in `.env`, and replay is the entry point most likely to
+    # be run from a bare shell -- by a scheduler, or by someone following the
+    # README. Without this it reports `auth_failure` on a machine where the
+    # credentials were present the whole time, which reads as "your account is
+    # wrong" rather than "this process never looked".
+    load_dotenv()
 
     try:
         artifact = load_resolved(

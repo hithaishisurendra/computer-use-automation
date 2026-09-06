@@ -1,0 +1,15 @@
+{
+  "classification": "auth_failure",
+  "capability": {
+    "id": "member_savings_balance",
+    "version": "1.0.0"
+  },
+  "tenant": "northridge",
+  "run_id": "run_4611858b",
+  "duration_ms": 0.18,
+  "inputs": {
+    "member_ref": "***03"
+  },
+  "message": "cannot authenticate for capability 'member_savings_balance': unset environment variable(s) ['CORESERV_USERNAME', 'CORESERV_PASSWORD'] (checked ['CORESERV_USERNAME', 'CORESERV_PASSWORD']). No browser action was attempted.",
+  "trace": []
+}
