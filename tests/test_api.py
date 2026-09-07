@@ -237,3 +237,39 @@ def test_the_catalogue_will_not_advertise_a_capability_the_invoke_path_refuses(t
     assert invoked.status_code == 404
     # Catalogue and invoke agree about why.
     assert "app profile" in row["error"] and "app profile" in invoked.json()["message"]
+
+
+def test_an_older_version_is_marked_superseded_but_stays_invocable():
+    """A catalogue that quietly drops old versions hides that a contract
+    changed, and an agent pinned to one needs to still find it."""
+    from api import catalog as catalog_mod
+
+    entries = catalog_mod.catalog()
+    by_version = {
+        e["version"]: e for e in entries if e["id"] == "member_share_balance"
+    }
+    assert by_version["1.0.0"]["superseded_by"] == "1.1.0"
+    assert by_version["1.0.0"]["invocable"] is True
+    assert "superseded_by" not in by_version["1.1.0"]
+
+
+def test_the_chatbot_cannot_choose_a_superseded_version():
+    """Choosing by NAME must land on the current contract.
+
+    `member_share_balance` 1.0.0 reads only the share its recording goal
+    named, so a chat request routed there would answer confidently about the
+    wrong account. The model's vocabulary is built from the current version's
+    schema; resolving the name to an older entry would also hand it arguments
+    that version does not declare.
+    """
+    from api import catalog as catalog_mod
+    from api.chat import capability_tools
+
+    tools = capability_tools(catalog_mod.catalog())
+    names = [t.name for t in tools]
+    assert names.count("member_share_balance") == 1
+
+    tool = next(t for t in tools if t.name == "member_share_balance")
+    assert "share_ref" in tool.parameters["properties"], (
+        "the chatbot is describing the superseded contract"
+    )

@@ -1,0 +1,213 @@
+{
+  "classification": "success",
+  "capability": {
+    "id": "member_share_balance",
+    "version": "1.1.0"
+  },
+  "tenant": "demo",
+  "run_id": "run_a0639d8e",
+  "duration_ms": 4616.94,
+  "inputs": {
+    "member_ref": "****87",
+    "share_ref": "************5 "
+  },
+  "outputs": {
+    "share_balance": "0.49"
+  },
+  "control": {
+    "owner": "released",
+    "context_identity": 4547107472,
+    "transitions": [
+      {
+        "at": "2026-09-07T02:22:03.890190+00:00",
+        "from": "automation",
+        "to": "released",
+        "reason": "run finished: success"
+      }
+    ]
+  },
+  "trace": [
+    {
+      "step_id": "s1",
+      "action": "navigate",
+      "status": "ok",
+      "duration_ms": 103.54,
+      "attempts": 1,
+      "checkpoint": {
+        "satisfied": true,
+        "expected": "element 'member_inquiry_selection_link' present",
+        "observed": "resolved via rung 0",
+        "duration_ms": 3.83
+      }
+    },
+    {
+      "step_id": "s2",
+      "action": "click",
+      "status": "ok",
+      "duration_ms": 151.07,
+      "attempts": 1,
+      "resolution": {
+        "element": "member_inquiry_selection_link",
+        "resolved": true,
+        "frame": null,
+        "rung_index": 0,
+        "strategy": "role_name",
+        "confidence": "high",
+        "brittle": false,
+        "duration_ms": 0.03,
+        "attempts": [
+          {
+            "rung": 0,
+            "strategy": "role_name",
+            "confidence": "high",
+            "brittle": false,
+            "match_count": 1,
+            "outcome": "resolved"
+          }
+        ]
+      },
+      "checkpoint": {
+        "satisfied": true,
+        "expected": "element 'value_field' present",
+        "observed": "resolved via rung 0",
+        "duration_ms": 13.08
+      }
+    },
+    {
+      "step_id": "s3",
+      "action": "fill",
+      "status": "ok",
+      "duration_ms": 41.79,
+      "attempts": 1,
+      "resolution": {
+        "element": "value_field",
+        "resolved": true,
+        "frame": null,
+        "rung_index": 0,
+        "strategy": "role_name",
+        "confidence": "high",
+        "brittle": false,
+        "duration_ms": 0.03,
+        "attempts": [
+          {
+            "rung": 0,
+            "strategy": "role_name",
+            "confidence": "high",
+            "brittle": false,
+            "match_count": 1,
+            "outcome": "resolved"
+          }
+        ]
+      }
+    },
+    {
+      "step_id": "s4",
+      "action": "click",
+      "status": "ok",
+      "duration_ms": 192.77,
+      "attempts": 1,
+      "resolution": {
+        "element": "search_button",
+        "resolved": true,
+        "frame": null,
+        "rung_index": 0,
+        "strategy": "role_name",
+        "confidence": "high",
+        "brittle": false,
+        "duration_ms": 0.02,
+        "attempts": [
+          {
+            "rung": 0,
+            "strategy": "role_name",
+            "confidence": "high",
+            "brittle": false,
+            "match_count": 1,
+            "outcome": "resolved"
+          }
+        ]
+      },
+      "checkpoint": {
+        "satisfied": true,
+        "expected": "element 'select_link' present",
+        "observed": "resolved via rung 0",
+        "duration_ms": 19.41
+      }
+    },
+    {
+      "step_id": "s5",
+      "action": "click",
+      "status": "ok",
+      "duration_ms": 136.19,
+      "attempts": 1,
+      "resolution": {
+        "element": "select_link",
+        "resolved": true,
+        "frame": null,
+        "rung_index": 0,
+        "strategy": "role_name",
+        "confidence": "high",
+        "brittle": false,
+        "duration_ms": 0.03,
+        "attempts": [
+          {
+            "rung": 0,
+            "strategy": "role_name",
+            "confidence": "high",
+            "brittle": false,
+            "match_count": 1,
+            "outcome": "resolved"
+          }
+        ]
+      },
+      "checkpoint": {
+        "satisfied": true,
+        "expected": "element 'share_balance_source' present",
+        "observed": "resolved via rung 2",
+        "duration_ms": 7.43
+      }
+    },
+    {
+      "step_id": "s6",
+      "action": "extract",
+      "status": "ok",
+      "duration_ms": 18.51,
+      "attempts": 1,
+      "resolution": {
+        "element": "share_balance_source",
+        "resolved": true,
+        "frame": null,
+        "rung_index": 2,
+        "strategy": "cell_in_row",
+        "confidence": "medium",
+        "brittle": false,
+        "duration_ms": 0.62,
+        "attempts": [
+          {
+            "rung": 0,
+            "strategy": "cell_in_row",
+            "confidence": "high",
+            "brittle": false,
+            "match_count": 0,
+            "outcome": "no_match"
+          },
+          {
+            "rung": 1,
+            "strategy": "cell_in_row",
+            "confidence": "medium",
+            "brittle": false,
+            "match_count": 0,
+            "outcome": "no_match"
+          },
+          {
+            "rung": 2,
+            "strategy": "cell_in_row",
+            "confidence": "medium",
+            "brittle": false,
+            "match_count": 1,
+            "outcome": "resolved"
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "classification": "caller_error",
+  "capability": {
+    "id": "member_savings_balance",
+    "version": "1.0.0"
+  },
+  "tenant": "northridge",
+  "run_id": "run_5ef069bb",
+  "duration_ms": 0.05,
+  "inputs": {},
+  "message": "invalid inputs for capability 'member_savings_balance': member_ref: value ****87 does not match required pattern '^[0-9]{5}$'",
+  "violations": [
+    {
+      "input": "member_ref",
+      "code": "pattern_mismatch",
+      "message": "value ****87 does not match required pattern '^[0-9]{5}$'"
+    }
+  ],
+  "trace": []
+}

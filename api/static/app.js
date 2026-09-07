@@ -92,9 +92,14 @@ async function renderCatalog() {
         <span class="tag ${c.status === "draft" ? "draft" : ""}">${esc(c.status)}</span>
         ${c.requires_human ? '<span class="tag">needs a human</span>' : ""}
         ${c.required_role ? `<span class="tag role">${esc(c.required_role)}</span>` : ""}
+        ${c.superseded_by ? `<span class="tag">superseded by ${esc(c.superseded_by)}</span>` : ""}
       </h2>
       <div class="muted mono">${esc(c.id)} @ ${esc(c.version)} &middot; ${esc(c.app)} / ${esc(c.tenant)}</div>
       <p>${esc(c.description)}</p>
+      ${c.superseded_by ? `<div class="banner"><b>Superseded by ${esc(c.superseded_by)}.</b>
+        Still invocable by pinning this version, which is what versions are for. It is
+        not offered for selection by name &mdash; a caller asking for this capability
+        gets the current contract.</div>` : ""}
       ${c.status === "draft" ? `<div class="banner"><b>Draft.</b> Recorded by discovery and
         not yet approved by a human. Its locators and its risk classification are a
         first guess for review.</div>` : ""}

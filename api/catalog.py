@@ -112,6 +112,42 @@ def catalog(root: str | Path = DEFAULT_ROOT) -> list[dict[str, Any]]:
                 "id": capability_id, "version": version, "status": "unloadable",
                 "invocable": False, "error": str(exc),
             })
+    return _mark_superseded(entries)
+
+
+def _version_key(version: str) -> tuple:
+    """Sortable form of a semantic version, tolerant of anything that is not one."""
+    parts = []
+    for piece in str(version).split("."):
+        parts.append((0, int(piece)) if piece.isdigit() else (1, 0))
+    return tuple(parts)
+
+
+def _mark_superseded(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Say which version of each capability is current.
+
+    Older versions stay in the listing -- a catalogue that quietly drops them
+    hides the fact that a contract changed, and an agent pinned to 1.0.0 needs
+    to still find it. But a caller choosing a capability BY NAME must land on
+    the current contract, so every superseded entry says what replaced it and
+    the chatbot's vocabulary skips them.
+
+    Concretely: `member_share_balance` 1.0.0 could only read the one share its
+    recording goal named. 1.1.0 makes the share an input. A chat request that
+    picked 1.0.0 would silently answer about a different share, which is the
+    narrower-than-it-looks failure the version bump exists to fix.
+    """
+    newest: dict[str, str] = {}
+    for e in entries:
+        current = newest.get(e["id"])
+        if current is None or _version_key(e["version"]) > _version_key(current):
+            newest[e["id"]] = e["version"]
+    for e in entries:
+        latest = newest[e["id"]]
+        if e["version"] != latest:
+            # Still invocable: pinning a version is what versions are FOR.
+            # This only removes it from name-based selection.
+            e["superseded_by"] = latest
     return entries
 
 

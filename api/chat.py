@@ -80,10 +80,17 @@ def capability_tools(catalog: list[dict[str, Any]]) -> list[ToolSpec]:
     the model cannot see a capability the API would not serve, or an argument
     the artifact does not declare. A capability that will not load, or whose
     flow never completed, is simply absent -- there is nothing to call.
+
+    Superseded versions are absent too. Choosing by NAME must land on the
+    current contract: `member_share_balance` 1.0.0 reads only the share its
+    recording goal happened to name, and a chat request routed there would
+    answer confidently about the wrong account. Pinning an old version stays
+    possible for a caller who asks for it by version -- that is what versions
+    are for -- but it is not something a model should pick by accident.
     """
     tools: list[ToolSpec] = []
     for entry in catalog:
-        if not entry.get("invocable"):
+        if not entry.get("invocable") or entry.get("superseded_by"):
             continue
         properties: dict[str, Any] = {}
         required: list[str] = []

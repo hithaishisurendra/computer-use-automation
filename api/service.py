@@ -489,7 +489,17 @@ def create_app(
                 ],
             }))
 
-        entry = next((c for c in catalog if c["id"] == choice["capability"]), None)
+        # The CURRENT version, not merely the first one with this id. The
+        # model's vocabulary was built from the current contract, so resolving
+        # the name to an older entry would hand it arguments that version does
+        # not declare -- and for member_share_balance specifically it would
+        # answer about whichever share the 1.0.0 recording goal happened to
+        # name, silently and confidently.
+        entry = next(
+            (c for c in catalog
+             if c["id"] == choice["capability"] and not c.get("superseded_by")),
+            None,
+        )
         if entry is None:
             return JSONResponse(status_code=200, content=null_sink().payload({
                 "reply": (f"I picked {choice['capability']!r}, which is not in the "
