@@ -92,10 +92,17 @@ def test_every_status_the_api_can_return_is_styled():
 
 
 def test_draft_capabilities_are_shown_as_draft():
-    """Invocable, but a reviewer must see the artifact has not been approved."""
+    """Invocable, but a reviewer must see the artifact has not been approved.
+
+    The badge, not a paragraph. The explanation used to sit on the card and
+    was cut as clutter -- what has to survive is that the status is VISIBLE,
+    because an unapproved capability being indistinguishable from an approved
+    one is what would make `draft` meaningless. The status itself still comes
+    from the artifact and is still rendered.
+    """
     js = (STATIC / "app.js").read_text()
     assert 'c.status === "draft"' in js
-    assert "not yet approved by a human" in js
+    assert '"Draft"' in js
 
 
 def test_the_ui_says_it_does_not_drive_the_browser():

@@ -172,3 +172,17 @@ def make_artifact(steps: list[dict], *, risky_handling: str = "require_confirmat
 @pytest.fixture
 def observations():
     return Observations()
+
+
+def shipped_capabilities():
+    """Every artifact actually on disk, as (capability_id, version).
+
+    Derived, not listed. Three tests carried the same hand-written tuple of
+    capability ids paired with a hardcoded "1.0.0", so retiring one version
+    broke all three and adding a capability would have left them silently
+    covering less than they claimed. This is the `tests/scope.py` rule applied
+    to fixtures: a list of things to SCAN must be computed from the repository.
+    """
+    from api.catalog import DEFAULT_ROOT, iter_versions
+
+    return [(cid, version) for cid, version, _ in iter_versions(DEFAULT_ROOT)]

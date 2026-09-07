@@ -291,10 +291,8 @@ async function renderCatalog() {
       : "";
 
     const risky = c.risky_steps?.length
-      ? `<div class="banner stop"><b>Contains an irreversible step</b> (${esc(c.risky_steps.join(", "))}).
-         The run stops there, keeps the live session open and waits for a person.
-         It appears under <b>Interventions</b> until someone finishes with it or the
-         pause deadline passes.</div>`
+      ? `<div class="banner stop"><b>Irreversible step</b> (${esc(c.risky_steps.join(", "))}) &mdash;
+         the run stops there and waits for a person under <b>Interventions</b>.</div>`
       : "";
 
     return `<div class="card" data-cap="${esc(c.id)}" data-ver="${esc(c.version)}">
@@ -308,19 +306,12 @@ async function renderCatalog() {
       </div>
       <div class="muted mono">${esc(c.id)} @ ${esc(c.version)} &middot; ${esc(c.app)} / ${esc(c.tenant)}</div>
       <p>${esc(c.description)}</p>
-      ${c.superseded_by ? `<div class="banner"><b>Superseded by ${esc(c.superseded_by)}.</b>
-        Still invocable by pinning this version, which is what versions are for. It is
-        not offered for selection by name &mdash; a caller asking for this capability
-        gets the current contract.</div>` : ""}
-      ${c.status === "draft" ? `<div class="banner"><b>Draft.</b> Recorded by discovery and
-        not yet approved by a human. Its locators and its risk classification are a
-        first guess for review.</div>` : ""}
+      ${c.superseded_by ? `<div class="banner"><b>Superseded by ${esc(c.superseded_by)}</b> &mdash;
+        still invocable by pinning this version, but not offered by name.</div>` : ""}
       ${risky}
-      ${c.required_role ? `<div class="banner"><b>Requires a ${esc(c.required_role)}.</b>
-        This capability signs on with the ${esc(c.required_role)} credential set,
-        because the application refuses the action to a lesser operator. An agent
-        can read this from the catalogue before invoking rather than discovering
-        it from a refusal.</div>` : ""}
+      ${c.required_role ? `<div class="banner"><b>Requires a ${esc(c.required_role)}</b> &mdash;
+        signs on with that credential set; the application refuses a lesser
+        operator.</div>` : ""}
       ${outputs}${outcomes}
       <h3>Invoke</h3>
       <form class="invoke">${inputs}

@@ -767,10 +767,10 @@ def test_the_rule_only_applies_to_risky_steps(tmp_path, base_data):
 def test_every_shipped_capability_survives_the_rule():
     """If this fails, a committed capability carries a self-defeating
     checkpoint on an irreversible step."""
-    for capability_id in ("member_funds_transfer", "member_open_new_share",
-                          "member_update_info", "member_share_balance",
-                          "member_savings_balance"):
-        load_resolved(CAPABILITIES, capability_id, "1.0.0")
+    from tests.conftest import shipped_capabilities
+
+    for capability_id, version in shipped_capabilities():
+        load_resolved(CAPABILITIES, capability_id, version)
 
 
 def test_re_asserting_an_earlier_element_is_deliberately_allowed(tmp_path, base_data):

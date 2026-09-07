@@ -66,7 +66,7 @@ def test_a_capability_with_an_irreversible_step_says_so_up_front(client):
     that it cannot complete unattended -- finding out from a failed
     invocation is worse for the caller and worse for the audit trail."""
     risky = client.get("/capabilities/member_funds_transfer/1.0.0").json()
-    safe = client.get("/capabilities/member_share_balance/1.0.0").json()
+    safe = client.get("/capabilities/member_share_balance/1.1.0").json()
     assert risky["requires_human"] is True and risky["risky_steps"] == ["s11"]
     assert safe["requires_human"] is False and safe["risky_steps"] == []
 
@@ -92,8 +92,9 @@ def test_an_unloadable_artifact_appears_in_the_catalogue_with_its_error(tmp_path
 
 def test_bad_arguments_are_a_400_with_the_violations(client):
     """A caller error is not a failed run: no browser was ever opened."""
-    r = client.post("/capabilities/member_share_balance/1.0.0/invoke",
-                    json={"inputs": {"member_ref": "not-an-id"}})
+    r = client.post("/capabilities/member_share_balance/1.1.0/invoke",
+                    json={"inputs": {"member_ref": "not-an-id",
+                                     "share_ref": "not-an-id-either"}})
     assert r.status_code == 400
     body = r.json()
     assert body["classification"] == "caller_error"
@@ -101,7 +102,7 @@ def test_bad_arguments_are_a_400_with_the_violations(client):
 
 
 def test_a_missing_required_argument_is_a_400(client):
-    r = client.post("/capabilities/member_share_balance/1.0.0/invoke", json={"inputs": {}})
+    r = client.post("/capabilities/member_share_balance/1.1.0/invoke", json={"inputs": {}})
     assert r.status_code == 400
     assert r.json()["violations"][0]["code"] == "missing_required"
 
@@ -109,15 +110,16 @@ def test_a_missing_required_argument_is_a_400(client):
 def test_an_incomplete_recording_cannot_be_invoked(tmp_path):
     """A capability whose flow never completed is a record for a human to
     finish, not something to run."""
-    src = json.loads((CAPABILITIES / "member_share_balance" / "1.0.0.json").read_text())
+    src = json.loads((CAPABILITIES / "member_share_balance" / "1.1.0.json").read_text())
     src["provenance"]["flow_completed"] = False
     d = tmp_path / "caps" / "member_share_balance"
     d.mkdir(parents=True)
-    (d / "1.0.0.json").write_text(json.dumps(src))
+    (d / "1.1.0.json").write_text(json.dumps(src))
     client = TestClient(create_app(tmp_path / "caps", evidence_root=tmp_path / "ev",
                                    runs_store=tmp_path / "runs.json"))
-    r = client.post("/capabilities/member_share_balance/1.0.0/invoke",
-                    json={"inputs": {"member_ref": "100234"}})
+    r = client.post("/capabilities/member_share_balance/1.1.0/invoke",
+                    json={"inputs": {"member_ref": "100234",
+                                     "share_ref": "100234-S0001-12"}})
     assert r.status_code == 409
     assert "did not complete" in r.json()["message"]
 
@@ -190,8 +192,9 @@ def test_every_response_goes_through_a_sink():
 def test_declared_sensitive_inputs_are_masked_in_the_response(client):
     """member_ref is declared `identifier`. A caller gets a correlatable
     suffix, not the value they sent back in full."""
-    r = client.post("/capabilities/member_share_balance/1.0.0/invoke",
-                    json={"inputs": {"member_ref": "not-an-id"}})
+    r = client.post("/capabilities/member_share_balance/1.1.0/invoke",
+                    json={"inputs": {"member_ref": "not-an-id",
+                                     "share_ref": "not-an-id-either"}})
     assert "not-an-id" not in r.text
 
 
@@ -242,18 +245,51 @@ def test_the_catalogue_will_not_advertise_a_capability_the_invoke_path_refuses(t
     assert "app profile" in row["error"] and "app profile" in invoked.json()["message"]
 
 
-def test_an_older_version_is_marked_superseded_but_stays_invocable():
+def test_an_older_version_is_marked_superseded_but_stays_invocable(tmp_path):
     """A catalogue that quietly drops old versions hides that a contract
-    changed, and an agent pinned to one needs to still find it."""
+    changed, and an agent pinned to one needs to still find it.
+
+    Built from a synthetic pair rather than from whatever happens to be on
+    disk. The repository ships one version of each capability today -- the
+    superseded `member_share_balance` 1.0.0 was retired once 1.1.0 replaced
+    it -- and a test that depended on two being present would have been
+    testing the contents of a directory rather than the rule.
+    """
+    import shutil
+
     from api import catalog as catalog_mod
 
-    entries = catalog_mod.catalog()
+    root = tmp_path / "caps"
+    shutil.copytree(CAPABILITIES, root)
+    older = root / "member_share_balance" / "0.9.0.json"
+    data = json.loads((root / "member_share_balance" / "1.1.0.json").read_text())
+    data["capability"]["version"] = "0.9.0"
+    older.write_text(json.dumps(data))
+
     by_version = {
-        e["version"]: e for e in entries if e["id"] == "member_share_balance"
+        e["version"]: e for e in catalog_mod.catalog(root)
+        if e["id"] == "member_share_balance"
     }
-    assert by_version["1.0.0"]["superseded_by"] == "1.1.0"
-    assert by_version["1.0.0"]["invocable"] is True
+    assert by_version["0.9.0"]["superseded_by"] == "1.1.0"
+    assert by_version["0.9.0"]["invocable"] is True, "pinning an old version must work"
     assert "superseded_by" not in by_version["1.1.0"]
+
+
+def test_a_superseded_version_is_not_offered_to_the_model(tmp_path):
+    """Choosing by NAME must land on the current contract."""
+    import shutil
+
+    from api import catalog as catalog_mod
+    from api.chat import capability_tools
+
+    root = tmp_path / "caps"
+    shutil.copytree(CAPABILITIES, root)
+    data = json.loads((root / "member_share_balance" / "1.1.0.json").read_text())
+    data["capability"]["version"] = "0.9.0"
+    (root / "member_share_balance" / "0.9.0.json").write_text(json.dumps(data))
+
+    names = [t.name for t in capability_tools(catalog_mod.catalog(root))]
+    assert names.count("member_share_balance") == 1
 
 
 def test_the_chatbot_cannot_choose_a_superseded_version():

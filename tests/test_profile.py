@@ -887,15 +887,21 @@ def test_an_artifact_never_inherits_a_relaxed_recording_posture():
 
 
 def _tampered(tmp_path, capability_id, mutate):
+    """A copy of the shipped capabilities with one artifact edited.
+
+    The version is found rather than assumed: these helpers hardcoded
+    "1.0.0", so retiring a superseded version broke tests that had nothing to
+    do with versioning.
+    """
     import shutil
 
     root = tmp_path / "caps"
     shutil.copytree(CAPABILITIES, root)
-    path = root / capability_id / "1.0.0.json"
+    path = sorted((root / capability_id).glob("*.json"))[-1]
     data = json.loads(path.read_text())
     mutate(data)
     path.write_text(json.dumps(data))
-    return root
+    return root, path.stem
 
 
 def test_an_artifact_downgraded_to_safe_is_refused(tmp_path):
@@ -909,9 +915,9 @@ def test_an_artifact_downgraded_to_safe_is_refused(tmp_path):
                 step["risk"] = "safe"
                 step.pop("checkpoint", None)
 
-    root = _tampered(tmp_path, "member_funds_transfer", downgrade)
+    root, version = _tampered(tmp_path, "member_funds_transfer", downgrade)
     with pytest.raises(RiskDisagreement) as exc:
-        load_resolved(root, "member_funds_transfer", "1.0.0")
+        load_resolved(root, "member_funds_transfer", version)
     message = str(exc.value)
     assert "Post Transfer" in message or "post_transfer_button" in message
     assert "refused rather than corrected" in message
@@ -929,9 +935,9 @@ def test_the_disagreement_is_refused_not_silently_corrected(tmp_path):
                 step["risk"] = "safe"
                 step.pop("checkpoint", None)
 
-    root = _tampered(tmp_path, "member_funds_transfer", downgrade)
+    root, version = _tampered(tmp_path, "member_funds_transfer", downgrade)
     with pytest.raises(RiskDisagreement):
-        load_resolved(root, "member_funds_transfer", "1.0.0")
+        load_resolved(root, "member_funds_transfer", version)
 
 
 def test_a_reviewer_may_mark_a_step_risky_the_profile_does_not(tmp_path):
@@ -948,16 +954,17 @@ def test_a_reviewer_may_mark_a_step_risky_the_profile_does_not(tmp_path):
         click["checkpoint"] = {"type": "text_present", "text": "MEMBER RECORD",
                                "timeout_ms": 8000}
 
-    root = _tampered(tmp_path, "member_share_balance", upgrade)
-    artifact = load_resolved(root, "member_share_balance", "1.0.0")
+    root, version = _tampered(tmp_path, "member_share_balance", upgrade)
+    artifact = load_resolved(root, "member_share_balance", version)
     assert any(s.risk == "risky" for s in artifact.steps)
 
 
 def test_every_shipped_capability_agrees_with_its_profile():
     """If this fails, a committed artifact disagrees with the app it drives."""
-    for capability_id in ("member_funds_transfer", "member_open_new_share",
-                          "member_update_info", "member_share_balance"):
-        load_resolved(CAPABILITIES, capability_id, "1.0.0")
+    from tests.conftest import shipped_capabilities
+
+    for capability_id, version in shipped_capabilities():
+        load_resolved(CAPABILITIES, capability_id, version)
 
 
 def test_the_static_derivation_reproduces_the_verb_signal():
@@ -1123,9 +1130,10 @@ def test_a_downgrade_of_a_label_less_commit_is_refused(tmp_path):
 def test_every_shipped_capability_agrees_after_the_change():
     from capability.loader import derive_risk
 
-    for capability_id in ("member_funds_transfer", "member_open_new_share",
-                          "member_update_info", "member_share_balance"):
-        artifact = load_resolved(CAPABILITIES, capability_id, "1.0.0")
+    from tests.conftest import shipped_capabilities
+
+    for capability_id, version in shipped_capabilities():
+        artifact = load_resolved(CAPABILITIES, capability_id, version)
         derived = derive_risk(artifact, load_profile(artifact.target.app))
         recorded = {s.id for s in artifact.steps if s.risk == "risky"}
         assert recorded == {k for k, v in derived.items() if v == "risky"}, capability_id

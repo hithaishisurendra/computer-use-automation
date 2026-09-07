@@ -3,8 +3,8 @@
   "capability": {
     "id": "member_update_info",
     "version": "1.0.0",
-    "name": "Update member 102777's email address to <redacted:email> and phone to...",
-    "description": "Update member 102777's email address to <redacted:email> and phone to <redacted:phone>, and reach the confirmation screen",
+    "name": "Update member contact details",
+    "description": "Update member <member_ref>'s e-mail address to <e_mail> and phone number to <phone>, and reach the confirmation screen. Parameterised: <member_ref>, <e_mail>, <phone> are supplied per invocation.",
     "status": "draft",
     "required_role": null
   },
@@ -376,6 +376,6 @@
     "steps_recorded": 9,
     "human_interventions": 0,
     "flow_completed": true,
-    "notes": "Emitted by discovery/recorder.py. Locator chains were built by probing which strategies uniquely resolved each element at the moment it was acted on; ambiguous strategies were discarded rather than recorded. outcomes[] is empty because a happy-path run observes no business outcomes. Risk heuristic (app profile 'meridian'; a first guess for review, not a determination): s2 near-miss: 'Update Member Information' contains 'Update', which the profile does not treat as a commit; s5 near-miss: 'Select' navigated to a committing endpoint but is a link, so it is a GET; s9 risky: 'Save Changes' via 'Save'."
+    "notes": "Emitted by discovery/recorder.py. Locator chains were built by probing which strategies uniquely resolved each element at the moment it was acted on; ambiguous strategies were discarded rather than recorded. outcomes[] is empty because a happy-path run observes no business outcomes. Risk heuristic (app profile 'meridian'; a first guess for review, not a determination): s2 near-miss: 'Update Member Information' contains 'Update', which the profile does not treat as a commit; s5 near-miss: 'Select' navigated to a committing endpoint but is a link, so it is a GET; s9 risky: 'Save Changes' via 'Save'. NAME AND DESCRIPTION CORRECTED BY REVIEW. This artifact was recorded before the recorder learned to substitute discovered values with the parameters carrying them, so its prose named the member the flow was found on and read as one invocation rather than as a contract -- the defect that made a chat model decline requests as 'tied specifically to' that member. Two of the three values would still not substitute on a re-record: an input classified `pii` publishes no example, and the substitution matches on the example, so precisely the sensitive fields keep the scrubbed goal text. The steps, elements, inputs and checkpoints are exactly as discovery emitted them."
   }
 }
