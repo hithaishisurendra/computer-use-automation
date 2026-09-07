@@ -1,0 +1,55 @@
+{
+  "classification": "hard_failure",
+  "capability": {
+    "id": "member_share_balance",
+    "version": "1.1.0"
+  },
+  "tenant": "demo",
+  "run_id": "run_0176110e",
+  "duration_ms": 3804.67,
+  "inputs": {
+    "member_ref": "****87",
+    "share_ref": "************5 "
+  },
+  "message": "The application returned an unexpected server error.",
+  "failure": {
+    "step_id": "s1",
+    "expected": "step s1 to complete",
+    "observed": "The application returned an unexpected server error."
+  },
+  "escalation_eligible": true,
+  "control": {
+    "owner": "released",
+    "context_identity": 4462651024,
+    "transitions": [
+      {
+        "at": "2026-09-07T10:10:01.506192+00:00",
+        "from": "automation",
+        "to": "released",
+        "reason": "run finished: hard_failure"
+      }
+    ]
+  },
+  "evidence": {
+    "screenshot": "evidence/replay/run_0176110e/failure.png",
+    "snapshot": "evidence/replay/run_0176110e/failure_snapshot.txt"
+  },
+  "trace": [
+    {
+      "step_id": "s1",
+      "action": "navigate",
+      "status": "failed",
+      "duration_ms": 77.37,
+      "attempts": 1,
+      "detections": [
+        {
+          "name": "server_error",
+          "layer": "engine",
+          "classification": "hard_failure",
+          "message": "The application returned an unexpected server error.",
+          "escalation_eligible": true
+        }
+      ]
+    }
+  ]
+}
