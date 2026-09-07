@@ -3,3 +3,10 @@ __pycache__/
 *.pyc
 .env
 .DS_Store
+
+# Dashboard state: run history and the chat transcript. Written on every
+# invocation, so committing it would churn the diff on every demo. The curated
+# evidence under evidence/discovery, evidence/replay and evidence/escalation
+# stays tracked -- that is the deliverable; this is a convenience that lets a
+# demo survive a restart.
+evidence/dashboard/

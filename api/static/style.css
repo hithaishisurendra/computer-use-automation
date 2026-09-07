@@ -15,7 +15,7 @@ nav button { background: none; border: 0; color: #c3d0dd; padding: 9px 14px; cur
 nav button.on { color: #fff; border-bottom-color: #6aa6e8; }
 nav .count { background: var(--pause); color: #fff; border-radius: 9px; padding: 0 6px;
              margin-left: 6px; font-size: 11px; }
-main { padding: 18px; max-width: 1180px; }
+main { padding: 18px 22px; max-width: 1600px; margin: 0 auto; }
 .card { background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
         padding: 14px 16px; margin-bottom: 14px; }
 .card h2 { margin: 0 0 4px; font-size: 15px; }
@@ -75,3 +75,60 @@ a { color: var(--info); }
 .examples button { font: inherit; font-size: 12px; background: #fff; cursor: pointer;
                    border: 1px solid var(--line); border-radius: 12px;
                    padding: 3px 10px; margin: 0 4px 4px 0; }
+
+
+/* ------------------------------------------------------------ catalogue */
+
+/* Cards side by side once there is room. Everything used to sit in a narrow
+   column on the left with the rest of the window empty. */
+.cards { display: grid; gap: 14px; grid-template-columns: 1fr; align-items: start; }
+@media (min-width: 1100px) { .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (min-width: 1600px) { .cards { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.cards .card { margin-bottom: 0; }
+
+.card.filter { display: flex; align-items: center; gap: 10px; padding: 10px 16px; }
+.card.filter label { margin: 0; font-size: 12px; color: var(--muted);
+                     text-transform: uppercase; letter-spacing: .06em; }
+.card.filter select { font: inherit; padding: 5px 8px; border: 1px solid var(--line);
+                      border-radius: 4px; background: #fff; }
+
+.badges { display: flex; flex-wrap: wrap; gap: 5px; margin: 0 0 6px; }
+
+/* --------------------------------------------------------------- result */
+
+/* One line that says what happened, in the same shape for every outcome.
+   A business outcome gets the SAME weight as a success -- the application was
+   asked a question and answered it, and colouring that as a warning is how a
+   legitimate result starts reading as a crash. */
+.verdict { border-left: 3px solid var(--muted); background: #f7f8fa;
+           padding: 9px 12px; margin: 10px 0 8px; font-size: 13px; }
+.verdict.v-success { border-left-color: var(--ok); background: #f1f8f3; }
+.verdict.v-business_outcome { border-left-color: var(--info); background: #f1f6fb; }
+.verdict.v-escalation_required { border-left-color: var(--pause); background: #f6f1fb; }
+.verdict.v-not_performed, .verdict.v-expired { border-left-color: var(--pause);
+                                               background: #f6f1fb; }
+.verdict.v-caller_error { border-left-color: var(--warn); background: #fff8ec; }
+.verdict.v-auth_failure, .verdict.v-hard_failure { border-left-color: var(--bad);
+                                                   background: #fdf2f2; }
+
+/* The answer itself, given room. This is what a reader came for. */
+dl.answer { display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px;
+            margin: 10px 0; align-items: baseline; }
+dl.answer dt { color: var(--muted); font-size: 12px; text-transform: uppercase;
+               letter-spacing: .05em; }
+dl.answer dd { margin: 0; font-size: 20px; font-weight: 600;
+               font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.answer-text { font-size: 15px; margin: 8px 0; }
+
+/* The payload stays, collapsed. It is what a reviewer needs when the summary
+   is not enough, so it is hidden rather than removed. */
+details.raw { margin-top: 10px; }
+details.raw summary { cursor: pointer; font-size: 12px; color: var(--muted);
+                      user-select: none; }
+details.raw summary:hover { color: var(--ink); }
+details.raw pre { margin-top: 8px; max-height: 460px; overflow: auto; }
+
+/* What the model could have chosen, when it declined. */
+ul.offers { margin: 6px 0 0; padding-left: 18px; }
+ul.offers li { margin-bottom: 6px; }
+ul.offers .muted { font-size: 12px; }

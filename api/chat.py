@@ -209,9 +209,17 @@ def describe(result: dict[str, Any], capability: str, inputs: dict[str, Any]) ->
 
     if classification == "escalation_required":
         escalation = result.get("escalation") or {}
-        step = escalation.get("step_id")
+        # Two shapes reach here. A finished run carries a flat `escalation`
+        # block; a PARKED one carries the intervention request, which nests
+        # the same facts under `stopped`. Reading only the first produced
+        # "A step is irreversible" for exactly the case where naming the step
+        # matters most -- the one an operator is about to go and perform.
+        stopped = escalation.get("stopped") or {}
+        step = (escalation.get("step_id") or stopped.get("step_id")
+                or result.get("blocked_step"))
         named = f"Step {step}" if step else "A step"
-        expected = escalation.get("expected") or escalation.get("expected_on_resume")
+        expected = (escalation.get("expected") or stopped.get("expected")
+                    or escalation.get("expected_on_resume"))
         lines = [
             f"I stopped before completing this. {named} is irreversible, and this "
             "capability's policy requires a person to perform it rather than "

@@ -37,7 +37,8 @@ STATIC = REPO_ROOT / "api" / "static"
 
 @pytest.fixture
 def client(tmp_path):
-    return TestClient(create_app(CAPABILITIES, evidence_root=tmp_path / "evidence"))
+    return TestClient(create_app(CAPABILITIES, evidence_root=tmp_path / "evidence",
+                                runs_store=tmp_path / "runs.json"))
 
 
 # ---------------------------------------------------------------------------
@@ -652,3 +653,98 @@ def test_the_scan_would_catch_a_violation(tmp_path, monkeypatch):
     bad = 'const x = coreservDefaults;\nfetch("/x");\n'
     stripped = re.sub(r'"[^"]*"', '""', bad)
     assert "coreserv" in stripped.lower(), "the stripper must not hide identifiers"
+
+
+# ---------------------------------------------------------------------------
+# History outlives the process
+# ---------------------------------------------------------------------------
+
+
+def test_run_history_survives_a_restart(tmp_path):
+    """Restarting the API to pick up a change used to empty the Runs tab, and
+    those runs are exactly the evidence worth looking at during a demo."""
+    from api import store
+
+    runs = store.load(tmp_path / "runs.json")
+    assert runs == {}
+
+    store.remember(runs, "run_a", {"classification": "success",
+                                   "outputs": {"share_balance": "48.00"}},
+                   {"id": "cap", "version": "1.0.0"}, 100.0)
+    store.save(tmp_path / "runs.json", runs)
+
+    # A second process reading the same file.
+    reloaded = store.load(tmp_path / "runs.json")
+    assert reloaded["run_a"]["classification"] == "success"
+    assert reloaded["run_a"]["capability"] == {"id": "cap", "version": "1.0.0"}
+
+
+def test_a_corrupt_history_file_does_not_take_the_api_down(tmp_path):
+    """Losing the history is the correct failure. Refusing to serve the
+    capability catalogue over a cosmetic feature is not."""
+    from api import store
+
+    (tmp_path / "runs.json").write_text("{not json")
+    assert store.load(tmp_path / "runs.json") == {}
+    (tmp_path / "chat.json").write_text("[[[")
+    assert store.load_turns(tmp_path / "chat.json") == []
+
+
+def test_the_chat_transcript_is_kept_by_the_api_not_the_browser():
+    """A transcript in browser storage would be a new place data comes to
+    rest that the redaction sink never sees -- which is where every leak in
+    this project appeared. The dashboard reads it back over fetch instead."""
+    js = (STATIC / "app.js").read_text()
+    assert "localStorage" not in js and "sessionStorage" not in js
+    assert 'api("/chat")' in js, "the transcript must be read from the API"
+
+    source = (REPO_ROOT / "api" / "service.py").read_text()
+    assert "_remember_turns" in source
+
+
+def test_the_history_is_written_through_a_sink():
+    """Bodies stored here already went through the run's sink; they go out
+    through one again on the way to disk."""
+    import inspect
+
+    from api import store
+
+    for fn in (store.save, store.save_turns):
+        assert ".write_json(" in inspect.getsource(fn)
+        assert "sink" in inspect.getsource(fn)
+
+
+def test_the_app_filter_is_derived_from_the_catalogue():
+    """Both the option list and the default come from what the API returned.
+
+    A hardcoded default would be application knowledge in the one surface
+    that is specifically not allowed any -- the same rule `_js_code_lines`
+    enforces, but the loophole is real: a string literal is stripped before
+    that scan runs, so the guard would not have caught it.
+    """
+    js = (STATIC / "app.js").read_text()
+    assert "new Set(all.map" in js, "the option list must come from the response"
+    assert "busiest" in js, "the default must be derived, not named"
+
+
+def test_the_filter_choice_is_kept_in_the_url():
+    js = (STATIC / "app.js").read_text()
+    assert "history.replaceState" in js
+    assert "location.hash" in js
+
+
+def test_the_full_response_is_collapsed_not_removed():
+    """The summary is for reading; the payload is what a reviewer needs when
+    the summary is not enough. Hiding it is fine, dropping it is not."""
+    js = (STATIC / "app.js").read_text()
+    assert "Show full response" in js
+    assert "JSON.stringify(body, null, 2)" in js
+
+
+def test_a_business_outcome_is_not_styled_as_a_failure():
+    """It is an ANSWER. Same visual weight as success -- colouring it as a
+    warning is how a legitimate result starts reading as a crash."""
+    css = (STATIC / "style.css").read_text()
+    assert ".verdict.v-business_outcome" in css
+    business = css.split(".verdict.v-business_outcome")[1].split("}")[0]
+    assert "--bad" not in business and "--warn" not in business

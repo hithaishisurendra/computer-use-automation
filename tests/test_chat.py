@@ -216,7 +216,8 @@ def test_the_chat_request_accepts_only_a_message():
 
 
 def test_a_policy_override_on_the_chat_endpoint_is_refused(tmp_path):
-    client = TestClient(create_app(CAPABILITIES, evidence_root=tmp_path / "ev"))
+    client = TestClient(create_app(CAPABILITIES, evidence_root=tmp_path / "ev",
+                                   runs_store=tmp_path / "runs.json"))
     r = client.post("/chat", json={"message": "hello",
                                    "policy": {"allowed_origins": ["http://evil.test"]}})
     assert r.status_code == 422
@@ -280,3 +281,33 @@ def test_a_redacted_input_stays_redacted_in_the_reply(tmp_path):
     reply = describe({"classification": "success", "inputs": {"member_ref": "****34"},
                       "outputs": {"share_balance": "56.00"}}, "member_share_balance", {})
     assert "100234" not in reply
+
+
+def test_a_parked_turn_is_rewritten_once_an_operator_finishes():
+    """The reply written when a run parks is the only thing that can be said
+    at that moment. Leaving the transcript on "waiting for a person" would
+    make chat the one surface that never learns how its own request ended."""
+    source = (REPO_ROOT / "api" / "service.py").read_text()
+    assert "_resolve_turn" in source
+    body = source.split("def _resolve_turn(")[1].split("    @app.")[0]
+    # Rewritten through the same function that produced the original, so the
+    # resolved turn reads in the same voice rather than as a status line.
+    assert "describe(" in body
+    assert "resolved_by_operator" in body
+
+
+def test_the_declined_list_offers_only_what_the_model_could_pick():
+    """A superseded version is invocable by pinning it and is never offered by
+    name. Listing it would show two entries for one capability."""
+    source = (REPO_ROOT / "api" / "service.py").read_text()
+    assert 'c.get("invocable") and not c.get("superseded_by")' in source
+
+
+def test_the_declined_list_carries_arguments_not_just_prose():
+    """The recorded description is the discovery goal -- it names the member
+    the flow was found on and carries placeholders. What a caller needs next
+    is what the capability takes."""
+    source = (REPO_ROOT / "api" / "service.py").read_text()
+    assert '"needs": [' in source
+    js = (REPO_ROOT / "api" / "static" / "app.js").read_text()
+    assert "function offerLine(" in js

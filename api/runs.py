@@ -155,8 +155,15 @@ class RunRecord:
 class RunManager:
     """Every run this process has served, and the threads still holding one."""
 
-    def __init__(self, pause_timeout_s: float = DEFAULT_PAUSE_TIMEOUT_S):
+    def __init__(self, pause_timeout_s: float = DEFAULT_PAUSE_TIMEOUT_S,
+                 on_finish=None):
         self.pause_timeout_s = pause_timeout_s
+        # Called with the record once its thread has produced a result. The
+        # hook exists because a PARKED run finishes long after the request
+        # that started it returned -- persisting from the endpoint would miss
+        # every run an operator resumed later, which is most of the
+        # interesting ones.
+        self.on_finish = on_finish
         self._runs: dict[str, RunRecord] = {}
         self._lock = threading.Lock()
 
@@ -188,6 +195,14 @@ class RunManager:
                 record.result = engine.sink.payload(result.as_dict())
             except Exception as exc:  # a crashed thread must not vanish
                 record.error = f"{type(exc).__name__}: {exc}"
+            finally:
+                if self.on_finish is not None:
+                    try:
+                        self.on_finish(record)
+                    except Exception:
+                        # History is a convenience. A store that cannot write
+                        # must not turn a completed run into a lost one.
+                        pass
 
         record.thread = threading.Thread(
             target=target, name=f"replay-{engine.run_id}", daemon=True

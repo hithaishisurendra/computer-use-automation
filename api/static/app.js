@@ -47,12 +47,222 @@ const kv = (pairs) =>
     .map(([k, v]) => `<dt>${esc(k)}</dt><dd>${v && v.__html ? v.__html : esc(v)}</dd>`)
     .join("")}</dl>`;
 
+
+/* ------------------------------------------------------- naming & filters */
+
+/* A short heading, derived from the capability id.
+ *
+ * The artifact's `name` is the recording goal, which reads as a sentence and
+ * gets truncated mid-word in a heading. The id is already a name -- it just
+ * needs spacing and casing.
+ *
+ * The leading token shared by EVERY id in the catalogue is dropped, so a set
+ * that all begins the same way loses the prefix that carries no information.
+ * Derived from the data rather than from a list of known words: this file is
+ * not allowed to know anything about the target application, and a hardcoded
+ * prefix would be exactly that knowledge smuggled in as presentation.
+ */
+function commonPrefixToken(ids) {
+  if (ids.length < 2) return null;
+  const heads = ids.map((id) => String(id).split("_")[0]);
+  const first = heads[0];
+  if (!first || !heads.every((h) => h === first)) return null;
+  if (ids.some((id) => String(id).split("_").length < 2)) return null;
+  return first;
+}
+
+/* One <option> for the application filter. A named helper rather than an
+ * inline template so the markup is written once; every value it interpolates
+ * still goes through esc(). */
+function appOption(name, chosen, count) {
+  const selected = name === chosen ? " selected" : "";
+  return `<option value="${esc(name)}"${selected}>${esc(name)} (${esc(count)})</option>`;
+}
+
+function shortName(id, prefix) {
+  let parts = String(id).split("_");
+  if (prefix && parts[0] === prefix && parts.length > 1) parts = parts.slice(1);
+  return parts
+    .map((w) => (w ? w[0].toUpperCase() + w.slice(1) : w))
+    .join(" ");
+}
+
+/* A field name as a label: share_balance -> "Share balance".
+ *
+ * A single-letter token belongs to the word after it rather than standing on
+ * its own: `e_mail` is one field called email, and splitting it produced
+ * "E mail", which reads as a typo in the one place a caller is being told
+ * what to supply. */
+const fieldLabel = (name) => {
+  const parts = [];
+  String(name).split("_").forEach((w) => {
+    const last = parts.length - 1;
+    if (last >= 0 && parts[last].length === 1) parts[last] += w;
+    else parts.push(w);
+  });
+  const words = parts.join(" ");
+  return words ? words[0].toUpperCase() + words.slice(1) : words;
+};
+
+/* View and filter live in the URL fragment so a reload keeps them. Written
+ * with replaceState rather than by assigning location.hash, which would push
+ * a history entry for every tab click. */
+function readState() {
+  const p = new URLSearchParams(String(location.hash || "").replace(/^#/, ""));
+  return { view: p.get("view"), app: p.get("app") };
+}
+
+function writeState(patch) {
+  const cur = readState();
+  const next = { ...cur, ...patch };
+  const p = new URLSearchParams();
+  if (next.view) p.set("view", next.view);
+  if (next.app) p.set("app", next.app);
+  history.replaceState(null, "", "#" + p.toString());
+}
+
+/* ------------------------------------------------------- result rendering */
+
+/* One block per classification, because they mean genuinely different things.
+ *
+ * The full response stays available underneath, collapsed. It is the thing a
+ * reviewer needs when the summary is not enough, and removing it would trade
+ * away the debuggability the result contract exists to provide.
+ */
+const details = (body) =>
+  `<details class="raw"><summary>Show full response</summary>
+     <pre>${esc(JSON.stringify(body, null, 2))}</pre></details>`;
+
+const outputLines = (outputs) => {
+  const entries = Object.entries(outputs || {});
+  if (!entries.length) return "";
+  return `<dl class="answer">${entries
+    .map(([k, v]) => `<dt>${esc(fieldLabel(k))}</dt><dd>${esc(v)}</dd>`)
+    .join("")}</dl>`;
+};
+
+const runLink = (id) =>
+  id ? ` <a href="#" data-run="${esc(id)}">run ${esc(id)}</a>` : "";
+
+const took = (ms) => (ms ? `<span class="muted"> · ${Math.round(ms)} ms</span>` : "");
+
+function resultSummary(status, body) {
+  const b = body || {};
+  const cls = b.classification ?? b.status ?? "unknown";
+  const result = b.result || b;
+  const head = (label, extra = "") =>
+    `<div class="verdict v-${esc(cls)}"><b>HTTP ${esc(status)}</b> &middot; ${label}${extra}</div>`;
+
+  if (cls === "success") {
+    return head("success", took(result.duration_ms) + runLink(b.run_id ?? result.run_id))
+      + outputLines(result.outputs)
+      + (Object.keys(result.outputs || {}).length
+          ? "" : `<p class="muted">No declared outputs. This capability performs work
+                  rather than answering a question.</p>`)
+      + details(body);
+  }
+
+  if (cls === "business_outcome") {
+    /* An ANSWER, and it must not read as a failure. Same visual weight as
+     * success: the application was asked a question and gave one. The
+     * classification in the payload stays `business_outcome` -- that is the
+     * brief's vocabulary and the API contract does not change. */
+    return head("Answered", runLink(b.run_id ?? result.run_id))
+      + `<p class="answer-text">${esc(result.message ?? "")}</p>`
+      + details(body);
+  }
+
+  if (cls === "escalation_required") {
+    const step = result.blocked_step ?? b.blocked_step
+      ?? (b.escalation || {}).step_id ?? "";
+    const expected = ((b.escalation || {}).stopped || {}).expected
+      ?? (b.escalation || {}).expected_on_resume ?? "";
+    return head("waiting for a person")
+      + `<p>Stopped${step ? ` at step <code>${esc(step)}</code>` : ""} because it is
+         irreversible. The browser session is open and waiting. Perform the step
+         there, then finish it under
+         <a href="#" data-goto="interventions">Interventions</a>.</p>`
+      + (expected ? `<p class="muted">On finishing it will check: ${esc(expected)}</p>` : "")
+      + runLinkLine(b.run_id ?? result.run_id)
+      + details(body);
+  }
+
+  if (cls === "not_performed" || cls === "expired") {
+    return head(cls === "expired" ? "nobody came in time" : "not performed")
+      + `<p>${esc(result.message ?? "")}</p>`
+      + `<p class="muted">Nothing was committed. The page was re-checked rather
+         than anyone being taken at their word.</p>`
+      + details(body);
+  }
+
+  if (cls === "caller_error") {
+    const violations = result.violations || [];
+    return head("the arguments did not satisfy the contract")
+      + (violations.length
+          ? `<ul>${violations.map((v) =>
+              `<li><code>${esc(v.input)}</code> &mdash; ${esc(v.message)}</li>`).join("")}</ul>`
+          : `<p>${esc(result.message ?? "")}</p>`)
+      + `<p class="muted">No browser was opened.</p>`
+      + details(body);
+  }
+
+  if (cls === "auth_failure") {
+    return head("system credentials problem, not the caller's")
+      + `<p>${esc(result.message ?? "")}</p>`
+      + `<p class="muted">The system's own credentials for this application need
+         attention. Nothing about the request was wrong.</p>`
+      + details(body);
+  }
+
+  const failure = result.failure || {};
+  return head("failed", runLink(b.run_id ?? result.run_id))
+    + kv([
+        ["step", failure.step_id ?? ""],
+        ["expected", failure.expected ?? ""],
+        ["observed", failure.observed ?? ""],
+      ])
+    + (result.evidence?.screenshot
+        ? `<p><a href="#" data-run="${esc(b.run_id ?? result.run_id ?? "")}">
+             open the run to see the failure screenshot</a></p>` : "")
+    + details(body);
+}
+
+const runLinkLine = (id) =>
+  id ? `<p>${runLink(id)}</p>` : "";
+
+
 /* ---------------------------------------------------------------- catalog */
 
 async function renderCatalog() {
   const { body } = await api("/capabilities");
-  const caps = body?.capabilities ?? [];
-  view.innerHTML = caps.map((c) => {
+  const all = body?.capabilities ?? [];
+
+  /* The filter list is derived from what the API returned, and so is the
+   * default: the application with the most recorded capabilities. Neither is
+   * hardcoded, because this page is not allowed to know which applications
+   * exist -- that is the seam the capability API keeps it on the far side of.
+   */
+  const apps = [...new Set(all.map((x) => x.app).filter(Boolean))].sort();
+  const tally = {};
+  all.forEach((x) => { if (x.app) tally[x.app] = (tally[x.app] || 0) + 1; });
+  const busiest = apps.slice().sort((a, b) => (tally[b] || 0) - (tally[a] || 0))[0];
+  const wanted = readState().app || busiest || "";
+  const chosen = wanted === "all" || apps.includes(wanted) ? wanted : (busiest || "all");
+  writeState({ app: chosen });
+
+  const caps = chosen === "all" ? all : all.filter((x) => x.app === chosen);
+  const prefix = commonPrefixToken(all.map((x) => x.id));
+
+  const filter = `<div class="card filter">
+    <label for="app-filter">Application</label>
+    <select id="app-filter">
+      <option value="all"${chosen === "all" ? " selected" : ""}>All (${all.length})</option>
+      ${apps.map((a) => appOption(a, chosen, tally[a])).join("")}
+    </select>
+    <span class="muted">Showing ${caps.length} of ${all.length}.</span>
+  </div>`;
+
+  view.innerHTML = filter + `<div class="cards">` + caps.map((c) => {
     if (c.status === "unloadable") {
       return `<div class="card"><h2>${esc(c.id)} <span class="tag">unloadable</span></h2>
         <pre>${esc(c.error)}</pre></div>`;
@@ -88,12 +298,14 @@ async function renderCatalog() {
       : "";
 
     return `<div class="card" data-cap="${esc(c.id)}" data-ver="${esc(c.version)}">
-      <h2>${esc(c.name)}
-        <span class="tag ${c.status === "draft" ? "draft" : ""}">${esc(c.status)}</span>
-        ${c.requires_human ? '<span class="tag">needs a human</span>' : ""}
-        ${c.required_role ? `<span class="tag role">${esc(c.required_role)}</span>` : ""}
-        ${c.superseded_by ? `<span class="tag">superseded by ${esc(c.superseded_by)}</span>` : ""}
-      </h2>
+      <h2>${esc(shortName(c.id, prefix))}</h2>
+      <div class="badges">
+        <span class="tag ${c.status === "draft" ? "draft" : ""}">${
+          c.status === "draft" ? "Draft" : esc(c.status)}</span>
+        ${c.requires_human ? '<span class="tag">Contains an irreversible step</span>' : ""}
+        ${c.required_role ? `<span class="tag role">Requires ${esc(c.required_role)}</span>` : ""}
+        ${c.superseded_by ? `<span class="tag">Superseded by ${esc(c.superseded_by)}</span>` : ""}
+      </div>
       <div class="muted mono">${esc(c.id)} @ ${esc(c.version)} &middot; ${esc(c.app)} / ${esc(c.tenant)}</div>
       <p>${esc(c.description)}</p>
       ${c.superseded_by ? `<div class="banner"><b>Superseded by ${esc(c.superseded_by)}.</b>
@@ -116,7 +328,14 @@ async function renderCatalog() {
       </form>
       <div class="result"></div>
     </div>`;
-  }).join("") || `<div class="card"><p class="muted">No capabilities recorded yet.</p></div>`;
+  }).join("") + `</div>` ||
+    `<div class="card"><p class="muted">No capabilities recorded yet.</p></div>`;
+
+  const picker = $("#app-filter", view);
+  if (picker) picker.addEventListener("change", () => {
+    writeState({ app: picker.value });
+    renderCatalog();
+  });
 
   view.querySelectorAll("form.invoke").forEach((form) => {
     form.addEventListener("submit", async (e) => {
@@ -133,10 +352,9 @@ async function renderCatalog() {
         `/capabilities/${encodeURIComponent(card.dataset.cap)}/${encodeURIComponent(card.dataset.ver)}/invoke`,
         { method: "POST", headers: { "content-type": "application/json" },
           body: JSON.stringify({ inputs }) });
-      out.innerHTML = `<p>HTTP ${status} ${pill(body?.status ?? body?.classification ?? "unknown")}
-        ${body?.run_id ? `<a href="#" data-run="${esc(body.run_id)}">open run</a>` : ""}</p>
-        <pre>${esc(JSON.stringify(body, null, 2))}</pre>`;
+      out.innerHTML = resultSummary(status, body);
       wireRunLinks(out);
+      wireGoto(out);
       refreshPending();
     });
   });
@@ -161,6 +379,13 @@ async function renderRuns() {
       </tr>`).join("") || `<tr><td colspan="6" class="muted">No runs yet.</td></tr>`}
     </tbody></table></div>`;
   wireRunLinks(view);
+}
+
+/* Links that switch tab, so "finish it under Interventions" is one click
+ * rather than an instruction the reader has to follow by hand. */
+function wireGoto(root) {
+  root.querySelectorAll("[data-goto]").forEach((a) =>
+    a.addEventListener("click", (e) => { e.preventDefault(); show(a.dataset.goto); }));
 }
 
 function wireRunLinks(root) {
@@ -291,6 +516,22 @@ async function renderInterventions() {
 
 /* ------------------------------------------------------------------- shell */
 
+/* A parked turn is stale the moment an operator finishes with it. The server
+ * rewrites the stored turn; this notices and repaints. Only polls while there
+ * is something waiting, and only while the Chat tab is the one on screen. */
+async function refreshChat() {
+  if (current !== "chat") return;
+  if (!chatLog.some((t) => t.classification === "escalation_required")) return;
+  const { body } = await api("/chat");
+  if (!Array.isArray(body?.turns)) return;
+  const typed = $(".chat-form input", view)?.value ?? "";
+  chatLog.length = 0;
+  chatLog.push(...body.turns);
+  renderChat();
+  const box = $(".chat-form input", view);
+  if (box) box.value = typed;
+}
+
 async function refreshPending() {
   const { body } = await api("/interventions");
   const n = body?.count ?? 0;
@@ -302,18 +543,31 @@ async function refreshPending() {
 const views = { catalog: renderCatalog, runs: renderRuns,
                 interventions: renderInterventions };
 
+function show(name) {
+  if (!views[name]) return;
+  current = name;
+  document.querySelectorAll("nav button").forEach((x) =>
+    x.classList.toggle("on", x.dataset.view === name));
+  writeState({ view: name });
+  views[name]();
+}
+
 document.querySelectorAll("nav button").forEach((b) =>
-  b.addEventListener("click", () => {
-    document.querySelectorAll("nav button").forEach((x) => x.classList.remove("on"));
-    b.classList.add("on");
-    current = b.dataset.view;
-    views[current]();
-  }));
+  b.addEventListener("click", () => show(b.dataset.view)));
 
 
 
 /* ------------------------------------------------------------------- chat */
 
+/* The transcript is held by the API, not by this page.
+ *
+ * Browser storage was the obvious place and is the wrong one: this file is
+ * held to having no route out except fetch, and a transcript kept in the
+ * browser would be a new place data comes to rest that the redaction sink
+ * never sees. Every leak this project has had appeared at exactly that
+ * kind of new surface. The server already scrubs what it stores, so the
+ * transcript is read back from it like anything else.
+ */
 const chatLog = [];
 
 function chose(c) {
@@ -325,21 +579,44 @@ function chose(c) {
     with <code>${esc(JSON.stringify(c.inputs ?? {}))}</code></div>`;
 }
 
+/* What the model could have chosen, as a contract rather than as prose.
+ *
+ * The recorded description is the discovery goal: it reads as a sentence,
+ * names the member the flow happened to be found on, and carries `<param>`
+ * placeholders. Useless to someone deciding what to ask for next. What they
+ * need is a name and the arguments it takes.
+ */
+function availableList(items) {
+  const prefix = commonPrefixToken(items.map((x) => x.id));
+  return `<div class="chose"><b>What I can do</b>
+    <ul class="offers">${items.map((a) => offerLine(a, prefix)).join("")}</ul></div>`;
+}
+
+function offerLine(a, prefix) {
+  const needs = (a.needs || []);
+  const required = needs.filter((n) => n.required).map((n) => n.name);
+  const optional = needs.filter((n) => !n.required).map((n) => n.name);
+  const args = [
+    required.length ? `needs ${required.map(fieldLabel).join(", ")}` : "",
+    optional.length ? `optional ${optional.map(fieldLabel).join(", ")}` : "",
+  ].filter(Boolean).join(" &middot; ");
+  return `<li><b>${esc(shortName(a.id, prefix))}</b>
+    ${a.required_role ? `<span class="tag role">Requires ${esc(a.required_role)}</span>` : ""}
+    ${a.requires_human ? '<span class="tag">Irreversible step</span>' : ""}
+    ${args ? `<div class="muted">${args}</div>` : ""}</li>`;
+}
+
 function renderChat() {
   view.innerHTML = `<div class="card">
       <h2>Chat</h2>
-      <p class="muted">A thin driver over the capability API, standing in for the
-        AI agent. It picks a capability and its arguments; the API runs it. Every
-        answer below shows which capability was chosen, so the mapping is visible
-        rather than implied.</p>
-      <div class="chat-log">${chatLog.map((t) => t.you
+      <div class="chat-log">${chatLog.map((t, ix) => t.you
         ? `<div class="turn you"><span class="said">${esc(t.you)}</span></div>`
         : `<div class="turn"><span class="said">${esc(t.reply)}</span></div>
            ${chose(t.chose)}
-           ${t.available ? `<div class="chose">Available:<ul>${t.available.map((a) =>
-              `<li><code>${esc(a.id)}</code> &mdash; ${esc(a.description)}
-               ${a.required_role ? `<span class="tag role">${esc(a.required_role)}</span>` : ""}</li>`
-             ).join("")}</ul></div>` : ""}
+           ${t.available && ix === chatLog.length - 1 ? availableList(t.available) : ""}
+           ${t.resolved_by_operator ? `<div class="chose">An operator finished this
+              in the live session. The run re-checked the page and continued from
+              what it found there.</div>` : ""}
            ${t.classification ? `<p>${pill(t.classification)}
               ${t.run_id ? `<a href="#" data-run="${esc(t.run_id)}">open run</a>` : ""}</p>` : ""}`
       ).join("") || '<p class="muted">Ask for something.</p>'}</div>
@@ -372,6 +649,7 @@ function renderChat() {
     chatLog.push({ you: message });
     chatLog.push({ reply: "Thinking…" });
     renderChat();
+    input.value = "";
     const { body } = await api("/chat", {
       method: "POST", headers: { "content-type": "application/json" },
       body: JSON.stringify({ message }) });
@@ -387,6 +665,15 @@ function renderChat() {
 
 views.chat = renderChat;
 
-views[current]();
-refreshPending();
-setInterval(refreshPending, 5000);
+/* Hydrate the transcript before the first paint, so opening on the Chat tab
+ * after a restart shows the conversation rather than an empty box. */
+async function boot() {
+  const { body } = await api("/chat");
+  if (Array.isArray(body?.turns)) chatLog.push(...body.turns);
+  /* The fragment decides the opening tab, so a reload lands where you were. */
+  show(readState().view || current);
+  refreshPending();
+  setInterval(() => { refreshPending(); refreshChat(); }, 5000);
+}
+
+boot();

@@ -52,6 +52,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from api import catalog as catalog_mod
+from api import store as store_mod
 from api.chat import Chat, describe
 from api.runs import PendingOperator, RunManager, RunRecord
 from capability.loader import ArtifactError
@@ -167,6 +168,8 @@ def _load_environment() -> None:
 def create_app(
     capabilities_root: str | Path = catalog_mod.DEFAULT_ROOT,
     evidence_root: str | Path = "evidence/replay",
+    runs_store: str | Path | None = None,
+    chat_store: str | Path | None = None,
 ) -> FastAPI:
     app = FastAPI(
         title="Capability API",
@@ -180,15 +183,78 @@ def create_app(
     app.state.capabilities_root = Path(capabilities_root)
     app.state.evidence_root = Path(evidence_root)
     # Every run this process has served, so a caller can fetch a result and
-    # its evidence after the fact. In-memory on purpose: this is a demo
-    # surface, and a database would be scaling infrastructure the brief
-    # explicitly does not reward.
-    app.state.runs: dict[str, dict[str, Any]] = {}
+    # its evidence after the fact. Backed by a JSON file rather than held only
+    # in memory: restarting the API to pick up a change used to empty the Runs
+    # tab, and those runs are the evidence worth looking at. A file, not a
+    # database -- the brief does not reward scaling infrastructure, and
+    # outliving a process is the whole requirement.
+    app.state.runs_store = Path(runs_store) if runs_store else store_mod.DEFAULT_PATH
+    app.state.runs: dict[str, dict[str, Any]] = store_mod.load(app.state.runs_store)
+
+    def _remember(record: RunRecord) -> None:
+        """Fold a finished run into the history, on the run's own thread.
+
+        Hooked into the manager rather than done in `invoke`, because a PARKED
+        run finishes long after that request returned. Persisting from the
+        endpoint would miss every run an operator resumed -- which is most of
+        the ones worth showing.
+        """
+        store_mod.remember(
+            app.state.runs, record.run_id, record.result,
+            {"id": record.capability_id, "version": record.version},
+            record.started_at,
+        )
+        store_mod.save(app.state.runs_store, app.state.runs, sink=record._sink)
+        _resolve_turn(record)
+
+    def _resolve_turn(record: RunRecord) -> None:
+        """A chat turn that said "waiting for a person" must not stay that way.
+
+        The reply is written when the run parks, which is the only thing that
+        can be said at that moment. The interesting half happens afterwards --
+        an operator performs the irreversible step, the checkpoint confirms
+        it, and the run returns a confirmation number. Leaving the transcript
+        on "waiting" would make the chat the one surface that never learns how
+        its own request ended.
+
+        Rewritten through `describe()`, the same function that produced the
+        original reply, so the resolved turn reads in the same voice rather
+        than as an appended status line.
+        """
+        result = record.result
+        if not result:
+            return
+        for turn in app.state.chat_log:
+            if turn.get("run_id") != record.run_id:
+                continue
+            turn["reply"] = describe(
+                result, record.capability_id, result.get("inputs") or {}
+            )
+            turn["classification"] = result.get("classification")
+            turn["result"] = result
+            # The turn asked for a person and got one. Said explicitly so the
+            # page can mark it, rather than inferred from the classification
+            # having changed -- a fast run that never parked also ends
+            # `success`, and those are different stories.
+            turn["resolved_by_operator"] = True
+            store_mod.save_turns(app.state.chat_store, app.state.chat_log)
+            return
+
     # Attended runs live on their own threads and can outlast a request.
-    app.state.manager = RunManager()
+    app.state.manager = RunManager(on_finish=_remember)
     # One chat mapper for the process. The model client is built lazily, so
     # an API with no model key still serves every other endpoint.
     app.state.chat = Chat()
+    # The transcript, so a restart does not empty the Chat tab. Server-side
+    # rather than in the browser: the dashboard is held to having no
+    # persistence of its own, and a transcript in browser storage would be a
+    # surface the redaction sink never sees.
+    app.state.chat_store = Path(chat_store) if chat_store else store_mod.DEFAULT_CHAT_PATH
+    app.state.chat_log: list[dict[str, Any]] = store_mod.load_turns(app.state.chat_store)
+
+    def _remember_turns(*turns: dict[str, Any]) -> None:
+        app.state.chat_log.extend(turns)
+        store_mod.save_turns(app.state.chat_store, app.state.chat_log)
 
     def _evidence_dirs(record: RunRecord) -> dict[str, Path]:
         """Both trees a run writes to, keyed by the prefix a URL uses.
@@ -483,17 +549,39 @@ def create_app(
             }))
 
         if "capability" not in choice:
-            invocable = [c for c in catalog if c.get("invocable")]
-            return JSONResponse(status_code=200, content=null_sink().payload({
+            # Exactly what the model could have chosen, which is not the same
+            # as everything that loads: a superseded version is invocable by
+            # pinning it but is never offered by name, and listing it here
+            # would show two entries for one capability and invite a caller to
+            # ask for the older contract.
+            offered = [
+                c for c in catalog
+                if c.get("invocable") and not c.get("superseded_by")
+            ]
+            return _chat_reply(body.message, {
                 "reply": choice.get("message"),
                 "chose": None,
-                # Listing what exists is the useful half of declining.
+                # Listing what exists is the useful half of declining -- but
+                # as a contract, not as prose. The recorded description is the
+                # discovery goal and reads as one: it names the member the
+                # flow was found on and carries `<param>` placeholders. What a
+                # caller actually needs is what the capability does and what
+                # it must be given, so the arguments travel with it and the
+                # page renders them.
                 "available": [
-                    {"id": c["id"], "description": c.get("description"),
-                     "required_role": c.get("required_role")}
-                    for c in invocable
+                    {
+                        "id": c["id"],
+                        "description": c.get("description"),
+                        "required_role": c.get("required_role"),
+                        "requires_human": c.get("requires_human"),
+                        "needs": [
+                            {"name": i["name"], "required": i.get("required", False)}
+                            for i in (c.get("inputs") or [])
+                        ],
+                    }
+                    for c in offered
                 ],
-            }))
+            })
 
         # The CURRENT version, not merely the first one with this id. The
         # model's vocabulary was built from the current contract, so resolving
@@ -507,11 +595,11 @@ def create_app(
             None,
         )
         if entry is None:
-            return JSONResponse(status_code=200, content=null_sink().payload({
+            return _chat_reply(body.message, {
                 "reply": (f"I picked {choice['capability']!r}, which is not in the "
                           "catalogue. Nothing was run."),
                 "chose": choice,
-            }))
+            })
 
         invoked = invoke(
             entry["id"], entry["version"],
@@ -522,7 +610,7 @@ def create_app(
         # The mapping is shown alongside the result, so a demo viewer can see
         # WHICH capability was chosen and with what arguments rather than
         # inferring it from the outcome.
-        return JSONResponse(status_code=200, content=null_sink().payload({
+        return _chat_reply(body.message, {
             "reply": describe(result, entry["id"], choice["inputs"]),
             "chose": {
                 "capability": entry["id"],
@@ -534,10 +622,33 @@ def create_app(
                 "required_role": entry.get("required_role"),
                 "status": entry.get("status"),
             },
-            "classification": result.get("classification"),
+            # A PARKED run reports `status`, not `classification` -- the
+            # nested run body describes a run rather than answering an
+            # invocation. Taking only the first left the turn with no
+            # classification at all, so the page could not tell it was
+            # waiting and never repainted it when the operator finished.
+            "classification": result.get("classification") or result.get("status"),
             "run_id": result.get("run_id"),
             "result": result,
-        }))
+        })
+
+    def _chat_reply(said: str, payload: dict[str, Any]) -> JSONResponse:
+        """Return a reply and keep it in the transcript.
+
+        One place, so a branch added later cannot answer without being
+        recorded -- the same reasoning as sinking the assembled body rather
+        than each field. The stored turn is the SAME object the caller gets,
+        so the Chat tab after a restart shows what it showed before it.
+        """
+        _remember_turns({"you": said}, null_sink().payload(payload))
+        return JSONResponse(status_code=200, content=null_sink().payload(payload))
+
+    @app.get("/chat")
+    def chat_history() -> dict[str, Any]:
+        """The transcript, so a reload or a restart does not empty the tab."""
+        return null_sink().payload(
+            {"count": len(app.state.chat_log), "turns": app.state.chat_log}
+        )
 
     @app.get("/healthz")
     def healthz() -> dict[str, str]:

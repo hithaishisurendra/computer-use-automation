@@ -28,7 +28,8 @@ CAPABILITIES = REPO_ROOT / "capabilities"
 
 @pytest.fixture
 def client(tmp_path):
-    return TestClient(create_app(CAPABILITIES, evidence_root=tmp_path / "evidence"))
+    return TestClient(create_app(CAPABILITIES, evidence_root=tmp_path / "evidence",
+                                runs_store=tmp_path / "runs.json"))
 
 
 # ---------------------------------------------------------------------------
@@ -113,7 +114,8 @@ def test_an_incomplete_recording_cannot_be_invoked(tmp_path):
     d = tmp_path / "caps" / "member_share_balance"
     d.mkdir(parents=True)
     (d / "1.0.0.json").write_text(json.dumps(src))
-    client = TestClient(create_app(tmp_path / "caps", evidence_root=tmp_path / "ev"))
+    client = TestClient(create_app(tmp_path / "caps", evidence_root=tmp_path / "ev",
+                                   runs_store=tmp_path / "runs.json"))
     r = client.post("/capabilities/member_share_balance/1.0.0/invoke",
                     json={"inputs": {"member_ref": "100234"}})
     assert r.status_code == 409
@@ -224,7 +226,8 @@ def test_the_catalogue_will_not_advertise_a_capability_the_invoke_path_refuses(t
             step.pop("checkpoint", None)
     path.write_text(json.dumps(data))
 
-    client = TestClient(create_app(root, evidence_root=tmp_path / "ev"))
+    client = TestClient(create_app(root, evidence_root=tmp_path / "ev",
+                                   runs_store=tmp_path / "runs.json"))
     row = next(c for c in client.get("/capabilities").json()["capabilities"]
                if c["id"] == "member_funds_transfer")
     assert row["invocable"] is False
