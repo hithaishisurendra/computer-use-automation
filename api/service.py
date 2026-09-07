@@ -291,6 +291,12 @@ def create_app(
             artifact,
             evidence_root=app.state.evidence_root,
             escalate=True,
+            # A risky step parks for whoever is on duty. A BREAKAGE fails fast
+            # with its evidence instead: an HTTP caller asked a question, and
+            # an intervention nobody can act on -- a share the member does not
+            # hold, say -- is worse than a three-second answer. The CLI's
+            # --escalate still sets both, because a person is already there.
+            escalate_failures=False,
             operator=operator,
             headless=False,
         )
@@ -521,7 +527,10 @@ def create_app(
             "chose": {
                 "capability": entry["id"],
                 "version": entry["version"],
-                "inputs": result.get("inputs", choice["inputs"]),
+                # `or`, not a dict default: a parked run reports inputs={} --
+                # present but empty -- so a default never fires and the reply
+                # said "with {}" while the arguments were right there.
+                "inputs": result.get("inputs") or choice["inputs"],
                 "required_role": entry.get("required_role"),
                 "status": entry.get("status"),
             },

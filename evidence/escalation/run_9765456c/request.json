@@ -1,0 +1,33 @@
+{
+  "run_id": "run_9765456c",
+  "source": "replay",
+  "raised_at": "2026-09-07T02:39:29.524910+00:00",
+  "capability": {
+    "id": "member_share_balance",
+    "version": "1.1.0"
+  },
+  "goal": "Replay member_share_balance@1.1.0",
+  "stopped": {
+    "step_id": "s5",
+    "classification": "hard_failure",
+    "reason": "Could not locate 'select_link' on the page. element 'select_link' could not be resolved; tried: role_name(no_match, 0 match(es)), role_ordinal(no_match, 0 match(es))",
+    "expected": "step s5 to complete",
+    "observed": "Could not locate 'select_link' on the page. element 'select_link' could not be resolved; tried: role_name(no_match, 0 match(es)), role_ordinal(no_match, 0 match(es))"
+  },
+  "state": {
+    "url": "https://web-sample.interface-hiring.com/members/100987",
+    "screenshot": "evidence/escalation/run_9765456c/stuck.png",
+    "snapshot_file": "evidence/escalation/run_9765456c/stuck_snapshot.txt",
+    "accessibility_snapshot": "--- FRAME (top) ---\ndocument\n  table\n    rowgroup\n      row\n        cell \"MERIDIAN CORE Member Services Platform v4.2.1 Cornerstone Financial Systems\u2122\"\n          text \"Member Services Platform v4.2.1\"\n      row\n        cell\n          generic\n            link \"Main Menu\" [href=/menu]\n            text \"\u00b7\"\n            link \"Member Inquiry\" [href=/members]\n            text \"\u00b7\"\n            link \"System Settings\" [href=/settings]\n            text \"\u00b7\"\n            link \"Sign Off\" [href=/signoff]\n      row\n        cell\n          heading \"MEMBER RECORD\" [level=1]\n          table\n            rowgroup\n              row\n                cell \"Member No.\"\n                cell \"100987\"\n                cell \"Name\"\n                cell \"<redacted:pii>\"\n              row\n                cell \"E-mail\"\n                cell \"<redacted:email>\"\n                cell \"Phone\"\n                cell \"<redacted:phone>\"\n              row\n                cell \"Address\"\n                cell \"9 Proof Street, Springfield\"\n          text \"SHARES / BALANCES\"\n          table\n            rowgroup\n              row\n                cell \"Share ID\"\n                cell \"Type\"\n                cell \"Balance\"\n                cell \"Status\"\n              row\n                cell \"100987-S0001\"\n                cell \"Regular Shares\"\n                cell \"$26.00\"\n                cell \"HOLD [HOLD]\"\n              row\n                cell \"100987-S0070\"\n                cell \"Share Draft (Checking)\"\n                cell \"$18.25\"\n                cell \"HOLD [HOLD]\"\n              row\n                cell \"100987-MMKT-3\"\n                cell \"Money Market\"\n                cell \"$50.00\"\n                cell \"HOLD [HOLD]\"\n              row\n                cell \"100987-MMKT-4\"\n                cell \"Money Market\"\n                cell \"$25.00\"\n                cell \"HOLD [HOLD]\"\n              row\n                cell \"100987-MMKT-5\"\n                cell \"Money Market\"\n                cell \"$0.49\"\n                cell \"OPEN\"\n              row\n                cell \"100987-MMKT-6\"\n                cell \"Money Market\"\n                cell \"$37.51\"\n                cell \"HOLD [HOLD]\"\n              row\n                cell \"100987-MMKT-7\"\n                cell \"Money Market\"\n                cell \"$40.00\"\n                cell \"OPEN\"\n              row\n                cell \"100987-MMKT-8\"\n                cell \"Money Market\"\n                cell \"$25.00\"\n                cell \"OPEN\"\n              row\n                cell \"100987-S0001-9\"\n                cell \"Regular Shares\"\n                cell \"$25.00\"\n                cell \"HOLD [HOLD]\"\n              row\n                cell \"100987-MMKT-10\"\n                cell \"Money Market\"\n                cell \"$30.00\"\n                cell \"HOLD [HOLD]\"\n              row\n                cell \"100987-MMKT-11\"\n                cell \"Money Market\"\n                cell \"$80.00\"\n                cell \"HOLD [HOLD]\"\n              row\n                cell \"100987-S0001-12\"\n                cell \"Regular Shares\"\n                cell \"$45.00\"\n                cell \"OPEN\"\n              row\n                cell \"100987-S0001-13\"\n                cell \"Regular Shares\"\n                cell \"$10.00\"\n                cell \"HOLD [HOLD]\"\n              row\n                cell \"100987-S0001-14\"\n                cell \"Regular Shares\"\n                cell \"$25.00\"\n                cell \"OPEN\"\n              row\n                cell \"100987-S0001-15\"\n                cell \"Regular Shares\"\n                cell \"$25.00\"\n                cell \"OPEN\"\n              row\n                cell \"100987-S0001-16\"\n                cell \"Regular Shares\"\n                cell \"$25.00\"\n                cell \"OPEN\"\n              row\n                cell \"100987-MMKT-17\"\n                cell \"Money Market\"\n                cell \"$93.00\"\n                cell \"OPEN\"\n              row\n                cell \"100987-S0001-18\"\n                cell \"Regular Shares\"\n                cell \"$20.00\"\n                cell \"OPEN\"\n              row\n                cell \"100987-S0001-19\"\n                cell \"Regular Shares\"\n                cell \"$35.00\"\n                cell \"OPEN\"\n              row\n                cell \"100987-MMKT-20\"\n                cell \"Money Market\"\n                cell \"$400.00\"\n                cell \"OPEN\"\n          text \"ACTIONS\"\n          link \"Funds Transfer\" [href=/members/100987/transfer]\n          text \"\u00b7\"\n          link \"Open New Share\" [href=/members/100987/open-share]\n          text \"\u00b7\"\n          link \"Update Member Information\" [href=/members/100987/update]\n          text \"\u00b7\"\n          link \"Place Account Hold\" [href=/members/100987/hold]\n      row\n        cell \"OPR <redacted:credential> | BR MAIN-001 | 09/07/2026 02:39:20 | SID <redacted:session>\"\n      row\n        cell \"F3=Sign Off F5=Main Menu F7=Member Inquiry F12=Cancel\""
+  },
+  "inputs": {
+    "member_ref": "****87",
+    "share_ref": "************5 "
+  },
+  "completed_steps": [
+    "s1",
+    "s2",
+    "s3",
+    "s4"
+  ]
+}

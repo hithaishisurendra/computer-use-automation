@@ -70,6 +70,7 @@ class ReplayEngine:
         artifact: Artifact,
         evidence_root: str | Path = "evidence/replay",
         headless: bool = True,
+        escalate_failures: bool = True,
         escalate: bool = False,
         operator=None,
         escalation_root: str | Path = "evidence/escalation",
@@ -84,6 +85,9 @@ class ReplayEngine:
         # directly still authenticates, and does it through the registry.
         self.artifact = artifact = apply_profile_defaults(artifact, self.profile)
         self.headless = headless
+        # Whether a BREAKAGE (as opposed to a risky step) is worth a human's
+        # attention. See _may_escalate.
+        self.escalate_failures = escalate_failures
         self.run_id = f"run_{uuid.uuid4().hex[:8]}"
         # One sink for the run's whole lifetime. Every writer downstream --
         # evidence, intervention requests, handoff records, and the result
@@ -306,6 +310,27 @@ class ReplayEngine:
                 trace.status = "failed"
                 trace.duration_ms = (time.perf_counter() - started) * 1000
                 result.trace.append(trace)
+                if attempt > 1 and trace.checkpoint and not trace.checkpoint.get("satisfied"):
+                    # REPORT THE FIRST FAILURE, NOT THE LAST.
+                    #
+                    # This step already ran once and its action succeeded --
+                    # what failed was the checkpoint. The retry then re-ran the
+                    # action against a page the first attempt had already
+                    # navigated away from, so the control it clicked is gone
+                    # and resolution fails for a reason that has nothing to do
+                    # with the actual problem.
+                    #
+                    # Observed: reading a balance for a share the member does
+                    # not hold reported "Could not locate 'select_link'". True,
+                    # and useless -- the Select link was missing because the
+                    # first attempt had already used it. What the caller needs
+                    # is that the share was not on the record.
+                    #
+                    # Returning no detection lets the caller build the message
+                    # from `trace.checkpoint`, which is the condition that
+                    # genuinely was not met. The resolution failure stays in
+                    # the trace as evidence rather than as the headline.
+                    return "failed", None, None
                 return "failed", detection, None
             except PolicyViolation:
                 # Policy violations are the one class of error that must not
@@ -808,7 +833,7 @@ class ReplayEngine:
                         f"{result.expected}, observed {result.observed}."
                     )
 
-                if self._may_escalate(result):
+                if self._may_escalate(result, blocked_by_risk):
                     verdict = await self._escalate(
                         step,
                         params,
@@ -871,15 +896,32 @@ class ReplayEngine:
 
     # -- escalation ---------------------------------------------------------
 
-    def _may_escalate(self, result: ReplayResult) -> bool:
+    def _may_escalate(self, result: ReplayResult, blocked_by_risk: bool = False) -> bool:
         """Escalate only where a human could actually help.
 
-        Gated on `escalate` so unattended replay stays unattended: a
-        production caller invoking a capability has nobody at a terminal, and
-        a run that blocks forever waiting for one is worse than a run that
-        fails cleanly.
+        Two different reasons a run can stop, and only one of them is always
+        worth a person's time:
+
+        A RISKY STEP is *designed* to stop. Automation will never perform it,
+        so the run cannot finish without someone, and it always escalates.
+
+        A BREAKAGE is different. Sometimes a human can recover it -- clear a
+        stuck dialog, fix the app's state -- and sometimes nothing they can do
+        in a browser will help. Replaying `member_share_balance` for a share
+        the member does not hold produced an intervention no operator could
+        act on: the share does not exist, and parking a browser for fifteen
+        minutes to have somebody confirm that is worse than answering in three
+        seconds.
+
+        So `escalate_failures` separates them. The CLI's `--escalate` sets
+        both, because a person is already sitting there. The API sets only the
+        first: a risky step parks for whoever is on duty, and a breakage fails
+        fast with its evidence rather than filling the queue with items nobody
+        can resolve.
         """
-        return bool(self.escalate and self.operator and result.escalation_eligible)
+        if not (self.escalate and self.operator and result.escalation_eligible):
+            return False
+        return True if blocked_by_risk else self.escalate_failures
 
     async def _escalate(
         self,

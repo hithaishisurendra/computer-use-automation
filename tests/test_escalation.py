@@ -770,3 +770,44 @@ def test_only_the_timeout_flag_survives_and_only_to_name_the_outcome():
         "timed_out is branched on before the checkpoint is evaluated, which "
         "would let the deadline decide the outcome instead of the page"
     )
+
+
+def test_a_breakage_does_not_escalate_when_only_risky_steps_should(tmp_path):
+    """`escalate_failures=False` is what the API sets.
+
+    A risky step is DESIGNED to stop and always needs a person. A breakage
+    may be something nobody can fix from a browser -- reading a balance for a
+    share the member does not hold produced an intervention no operator could
+    act on, while holding a browser and a live session for the deadline. That
+    is worse for the caller and worse for the queue than a fast, honest
+    failure.
+    """
+    operator = ScriptedOperator([OperatorDecision(Decision.DONE)])
+    engine = build_engine(
+        make_artifact([RISKY_CLICK]), tmp_path,
+        escalate=True, operator=operator, escalate_failures=False,
+    )
+    from replay.result import ReplayResult
+
+    result = ReplayResult(classification="hard_failure", capability_id="t",
+                          capability_version="1.0.0", tenant="t", run_id=engine.run_id)
+    result.escalation_eligible = True
+
+    # A risky block still reaches a person...
+    assert engine._may_escalate(result, blocked_by_risk=True) is True
+    # ...a breakage does not.
+    assert engine._may_escalate(result, blocked_by_risk=False) is False
+
+
+def test_the_cli_still_escalates_breakages(tmp_path):
+    """--escalate means a person is already sitting there, so they get the
+    chance to recover anything. The default is unchanged."""
+    operator = ScriptedOperator([OperatorDecision(Decision.DONE)])
+    engine = build_engine(make_artifact([RISKY_CLICK]), tmp_path,
+                          escalate=True, operator=operator)
+    from replay.result import ReplayResult
+
+    result = ReplayResult(classification="hard_failure", capability_id="t",
+                          capability_version="1.0.0", tenant="t", run_id=engine.run_id)
+    result.escalation_eligible = True
+    assert engine._may_escalate(result, blocked_by_risk=False) is True

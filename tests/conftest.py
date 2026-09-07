@@ -103,7 +103,7 @@ class Observations:
 
 
 def build_engine(artifact: Artifact, tmp_path, *, observations=None, escalate=False,
-                 operator=None, profile=None):
+                 operator=None, profile=None, escalate_failures=True):
     """A ReplayEngine wired to fakes, with its real step logic intact."""
     from escalation.session import ControlledSession
     from replay.engine import ReplayEngine
@@ -112,6 +112,7 @@ def build_engine(artifact: Artifact, tmp_path, *, observations=None, escalate=Fa
         artifact,
         evidence_root=tmp_path / "replay",
         escalate=escalate,
+        escalate_failures=escalate_failures,
         operator=operator,
         escalation_root=tmp_path / "escalation",
         profile=profile or TEST_PROFILE,

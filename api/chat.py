@@ -209,10 +209,11 @@ def describe(result: dict[str, Any], capability: str, inputs: dict[str, Any]) ->
 
     if classification == "escalation_required":
         escalation = result.get("escalation") or {}
-        step = escalation.get("step_id") or "an irreversible step"
+        step = escalation.get("step_id")
+        named = f"Step {step}" if step else "A step"
         expected = escalation.get("expected") or escalation.get("expected_on_resume")
         lines = [
-            f"I stopped before completing this. Step {step} is irreversible, and this "
+            f"I stopped before completing this. {named} is irreversible, and this "
             "capability's policy requires a person to perform it rather than "
             "automation.",
             "Everything up to that point is done and the session is still open, "

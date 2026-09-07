@@ -1,0 +1,212 @@
+{
+  "classification": "hard_failure",
+  "capability": {
+    "id": "member_share_balance",
+    "version": "1.1.0"
+  },
+  "tenant": "demo",
+  "run_id": "run_291b71fa",
+  "duration_ms": 12433.47,
+  "inputs": {
+    "member_ref": "****87",
+    "share_ref": "***********-5"
+  },
+  "message": "Step s5 checkpoint not met: expected element 'share_balance_source' present, observed not found (after 8000ms).",
+  "failure": {
+    "step_id": "s5",
+    "expected": "element 'share_balance_source' present",
+    "observed": "not found (after 8000ms)"
+  },
+  "recoverable_conditions": [
+    {
+      "step_id": "s5",
+      "attempt": 1,
+      "name": "checkpoint_timeout",
+      "layer": "engine",
+      "classification": "recoverable",
+      "message": "Step s5 checkpoint not met: expected element 'share_balance_source' present, observed not found (after 8000ms).",
+      "recovery": "backoff and retry the step"
+    }
+  ],
+  "control": {
+    "owner": "released",
+    "context_identity": 4459228400,
+    "transitions": [
+      {
+        "at": "2026-09-07T02:41:41.705007+00:00",
+        "from": "automation",
+        "to": "released",
+        "reason": "run finished: hard_failure"
+      }
+    ]
+  },
+  "evidence": {
+    "screenshot": "evidence/replay/run_291b71fa/failure.png",
+    "snapshot": "evidence/replay/run_291b71fa/failure_snapshot.txt"
+  },
+  "trace": [
+    {
+      "step_id": "s1",
+      "action": "navigate",
+      "status": "ok",
+      "duration_ms": 86.44,
+      "attempts": 1,
+      "checkpoint": {
+        "satisfied": true,
+        "expected": "element 'member_inquiry_selection_link' present",
+        "observed": "resolved via rung 0",
+        "duration_ms": 4.31
+      }
+    },
+    {
+      "step_id": "s2",
+      "action": "click",
+      "status": "ok",
+      "duration_ms": 164.4,
+      "attempts": 1,
+      "resolution": {
+        "element": "member_inquiry_selection_link",
+        "resolved": true,
+        "frame": null,
+        "rung_index": 0,
+        "strategy": "role_name",
+        "confidence": "high",
+        "brittle": false,
+        "duration_ms": 0.03,
+        "attempts": [
+          {
+            "rung": 0,
+            "strategy": "role_name",
+            "confidence": "high",
+            "brittle": false,
+            "match_count": 1,
+            "outcome": "resolved"
+          }
+        ]
+      },
+      "checkpoint": {
+        "satisfied": true,
+        "expected": "element 'value_field' present",
+        "observed": "resolved via rung 0",
+        "duration_ms": 16.99
+      }
+    },
+    {
+      "step_id": "s3",
+      "action": "fill",
+      "status": "ok",
+      "duration_ms": 39.79,
+      "attempts": 1,
+      "resolution": {
+        "element": "value_field",
+        "resolved": true,
+        "frame": null,
+        "rung_index": 0,
+        "strategy": "role_name",
+        "confidence": "high",
+        "brittle": false,
+        "duration_ms": 0.02,
+        "attempts": [
+          {
+            "rung": 0,
+            "strategy": "role_name",
+            "confidence": "high",
+            "brittle": false,
+            "match_count": 1,
+            "outcome": "resolved"
+          }
+        ]
+      }
+    },
+    {
+      "step_id": "s4",
+      "action": "click",
+      "status": "ok",
+      "duration_ms": 198.93,
+      "attempts": 1,
+      "resolution": {
+        "element": "search_button",
+        "resolved": true,
+        "frame": null,
+        "rung_index": 0,
+        "strategy": "role_name",
+        "confidence": "high",
+        "brittle": false,
+        "duration_ms": 0.03,
+        "attempts": [
+          {
+            "rung": 0,
+            "strategy": "role_name",
+            "confidence": "high",
+            "brittle": false,
+            "match_count": 1,
+            "outcome": "resolved"
+          }
+        ]
+      },
+      "checkpoint": {
+        "satisfied": true,
+        "expected": "element 'select_link' present",
+        "observed": "resolved via rung 0",
+        "duration_ms": 16.34
+      }
+    },
+    {
+      "step_id": "s5",
+      "action": "click",
+      "status": "failed",
+      "duration_ms": 8695.09,
+      "attempts": 2,
+      "resolution": {
+        "element": "select_link",
+        "resolved": false,
+        "frame": null,
+        "rung_index": null,
+        "strategy": null,
+        "confidence": null,
+        "brittle": false,
+        "duration_ms": 0.72,
+        "attempts": [
+          {
+            "rung": 0,
+            "strategy": "role_name",
+            "confidence": "high",
+            "brittle": false,
+            "match_count": 0,
+            "outcome": "no_match"
+          },
+          {
+            "rung": 1,
+            "strategy": "role_ordinal",
+            "confidence": "low",
+            "brittle": true,
+            "match_count": 0,
+            "outcome": "no_match"
+          }
+        ]
+      },
+      "checkpoint": {
+        "satisfied": false,
+        "expected": "element 'share_balance_source' present",
+        "observed": "not found (after 8000ms)",
+        "duration_ms": 8021.06
+      },
+      "detections": [
+        {
+          "name": "checkpoint_timeout",
+          "layer": "engine",
+          "classification": "recoverable",
+          "message": "Step s5 checkpoint not met: expected element 'share_balance_source' present, observed not found (after 8000ms).",
+          "recovery": "backoff and retry the step"
+        },
+        {
+          "name": "element_unresolvable",
+          "layer": "engine",
+          "classification": "hard_failure",
+          "message": "Could not locate 'select_link' on the page. element 'select_link' could not be resolved; tried: role_name(no_match, 0 match(es)), role_ordinal(no_match, 0 match(es))",
+          "escalation_eligible": true
+        }
+      ]
+    }
+  ]
+}

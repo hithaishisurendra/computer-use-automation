@@ -1,0 +1,155 @@
+--- FRAME (top) ---
+document
+  table
+    rowgroup
+      row
+        cell "MERIDIAN CORE Member Services Platform v4.2.1 Cornerstone Financial Systems™"
+          text "Member Services Platform v4.2.1"
+      row
+        cell
+          generic
+            link "Main Menu" [href=/menu]
+            text "·"
+            link "Member Inquiry" [href=/members]
+            text "·"
+            link "System Settings" [href=/settings]
+            text "·"
+            link "Sign Off" [href=/signoff]
+      row
+        cell
+          heading "MEMBER RECORD" [level=1]
+          table
+            rowgroup
+              row
+                cell "Member No."
+                cell "100987"
+                cell "Name"
+                cell "<redacted:pii>"
+              row
+                cell "E-mail"
+                cell "<redacted:email>"
+                cell "Phone"
+                cell "<redacted:phone>"
+              row
+                cell "Address"
+                cell "9 Proof Street, Springfield"
+          text "SHARES / BALANCES"
+          table
+            rowgroup
+              row
+                cell "Share ID"
+                cell "Type"
+                cell "Balance"
+                cell "Status"
+              row
+                cell "100987-S0001"
+                cell "Regular Shares"
+                cell "$26.00"
+                cell "HOLD [HOLD]"
+              row
+                cell "100987-S0070"
+                cell "Share Draft (Checking)"
+                cell "$18.25"
+                cell "HOLD [HOLD]"
+              row
+                cell "100987-MMKT-3"
+                cell "Money Market"
+                cell "$50.00"
+                cell "HOLD [HOLD]"
+              row
+                cell "100987-MMKT-4"
+                cell "Money Market"
+                cell "$25.00"
+                cell "HOLD [HOLD]"
+              row
+                cell "100987-MMKT-5"
+                cell "Money Market"
+                cell "$0.49"
+                cell "OPEN"
+              row
+                cell "100987-MMKT-6"
+                cell "Money Market"
+                cell "$37.51"
+                cell "HOLD [HOLD]"
+              row
+                cell "100987-MMKT-7"
+                cell "Money Market"
+                cell "$40.00"
+                cell "OPEN"
+              row
+                cell "100987-MMKT-8"
+                cell "Money Market"
+                cell "$25.00"
+                cell "OPEN"
+              row
+                cell "100987-S0001-9"
+                cell "Regular Shares"
+                cell "$25.00"
+                cell "HOLD [HOLD]"
+              row
+                cell "100987-MMKT-10"
+                cell "Money Market"
+                cell "$30.00"
+                cell "HOLD [HOLD]"
+              row
+                cell "100987-MMKT-11"
+                cell "Money Market"
+                cell "$80.00"
+                cell "HOLD [HOLD]"
+              row
+                cell "100987-S0001-12"
+                cell "Regular Shares"
+                cell "$45.00"
+                cell "OPEN"
+              row
+                cell "100987-S0001-13"
+                cell "Regular Shares"
+                cell "$10.00"
+                cell "HOLD [HOLD]"
+              row
+                cell "100987-S0001-14"
+                cell "Regular Shares"
+                cell "$25.00"
+                cell "OPEN"
+              row
+                cell "100987-S0001-15"
+                cell "Regular Shares"
+                cell "$25.00"
+                cell "OPEN"
+              row
+                cell "100987-S0001-16"
+                cell "Regular Shares"
+                cell "$25.00"
+                cell "OPEN"
+              row
+                cell "100987-MMKT-17"
+                cell "Money Market"
+                cell "$93.00"
+                cell "OPEN"
+              row
+                cell "100987-S0001-18"
+                cell "Regular Shares"
+                cell "$20.00"
+                cell "OPEN"
+              row
+                cell "100987-S0001-19"
+                cell "Regular Shares"
+                cell "$35.00"
+                cell "OPEN"
+              row
+                cell "100987-MMKT-20"
+                cell "Money Market"
+                cell "$400.00"
+                cell "OPEN"
+          text "ACTIONS"
+          link "Funds Transfer" [href=/members/100987/transfer]
+          text "·"
+          link "Open New Share" [href=/members/100987/open-share]
+          text "·"
+          link "Update Member Information" [href=/members/100987/update]
+          text "·"
+          link "Place Account Hold" [href=/members/100987/hold]
+      row
+        cell "OPR <redacted:credential> | BR MAIN-001 | 09/07/2026 02:36:04 | SID <redacted:session>"
+      row
+        cell "F3=Sign Off F5=Main Menu F7=Member Inquiry F12=Cancel"
