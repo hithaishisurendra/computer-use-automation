@@ -11,10 +11,10 @@ would be to break by accident:
 
 2. **The guardrails come with it.** The allowlist, the risky-step gate and
    the escalation path are properties of the artifact and the engine, so they
-   apply here unchanged. Notably an API invocation is UNATTENDED by
-   construction: nobody is at a terminal, so a risky step blocks and this
-   surface reports that as its own outcome rather than pretending to have
-   asked someone.
+   apply here unchanged. Every invocation parks at a risky step and holds the
+   live session open until an operator comes or the deadline passes -- the
+   caller is never asked to predict whether a human is available, because a
+   calling agent cannot know that.
 
 3. **Every response goes through the run's sink.** The result object carries
    declared-pii outputs and identifier inputs, and handing them to an HTTP
@@ -29,15 +29,19 @@ HTTP status mapping, and why:
 
     success            200  the capability did what it says
     business_outcome   200  a legitimate answer the caller must handle
+    not_performed      200  an operator was offered an irreversible step and
+                            did not take it. Established by re-checking the
+                            page, never by what the operator said.
+    expired            200  the same, except nobody came before the deadline
     caller_error       400  the arguments did not satisfy the contract
-    escalation_required 202 accepted, stopped, needs a human -- not a failure
+    escalation_required 202 accepted, parked, session held open for a person
     auth_failure       502  our credentials are wrong; not the caller's fault
-    hard_failure       502  the app or the flow broke
+    hard_failure       502  the app or the flow broke, or we could not
+                            establish what happened
 """
 
 from __future__ import annotations
 
-import asyncio
 import json
 import time
 from pathlib import Path
@@ -63,6 +67,13 @@ ESCALATION_REQUIRED = "escalation_required"
 STATUS = {
     "success": 200,
     "business_outcome": 200,
+    # Both are answers, not faults: a person was offered an irreversible step
+    # and it was not taken, or nobody came before the deadline. The system did
+    # exactly what it should and can say so precisely, because it re-checked
+    # the page rather than believing a button. Non-2xx stays reserved for
+    # cases where the system could not answer at all.
+    "not_performed": 200,
+    "expired": 200,
     ESCALATION_REQUIRED: 202,
     "caller_error": 400,
     "auth_failure": 502,
@@ -84,18 +95,26 @@ class StrictRequest(BaseModel):
 
 
 class InvokeRequest(StrictRequest):
+    """Inputs and an optional tenant. Deliberately nothing else.
+
+    There is no `attended` flag any more. It asked the CALLER to predict
+    whether a human would be available, and a calling agent cannot know that
+    -- availability is a property of the moment and of the institution, not
+    of the invocation. Worse, the unattended path tore the browser down
+    before returning, so its `202 escalation_required` pointed at an
+    intervention that could never be picked up.
+
+    Every run now parks the same way: stop at the risky step, keep the
+    session alive, raise an intervention, wait. Whether anyone comes is
+    answered by the pause deadline (`PAUSE_TIMEOUT_S`), which is deployment
+    configuration.
+
+    `extra="forbid"` means an old caller still sending `attended` gets a 422
+    rather than a silent 200 that ignored it.
+    """
+
     inputs: dict[str, Any] = Field(default_factory=dict)
     tenant: Optional[str] = None
-    attended: bool = Field(
-        default=False,
-        description=(
-            "Run with a human available. The browser is headed, a risky step "
-            "PAUSES instead of failing, and the run holds its session until an "
-            "operator resumes or aborts it. Default false: a plain API caller "
-            "has nobody at a terminal, and a run that blocks forever waiting "
-            "for one is worse than a run that stops cleanly."
-        ),
-    )
 
 
 class ChatRequest(StrictRequest):
@@ -112,45 +131,18 @@ class ChatRequest(StrictRequest):
 
 
 class DecisionRequest(StrictRequest):
-    """What an operator did, in their own words.
+    """What an operator did, in their own words. Optional, and inert.
 
-    `notes` is not decoration -- it is the only record of what a human
-    actually performed on the live session, and the handoff evidence carries
-    it forward.
+    `notes` goes to the audit trail and NOTHING ELSE. It cannot change the
+    classification: the outcome comes from re-evaluating the blocked step's
+    checkpoint against the live page. A field a person types into must never
+    be able to decide whether a transfer is recorded as having happened, and
+    a test asserts that the same notes produce opposite outcomes when the page
+    differs.
     """
 
     notes: str = ""
     operator: str = "dashboard"
-
-
-def _run_record(result, artifact) -> dict[str, Any]:
-    """The response body. Built from the replay result rather than
-    re-derived, so the API cannot disagree with the evidence on disk."""
-    payload = result.as_dict()
-    payload["capability"] = {
-        "id": artifact.capability.id,
-        "version": artifact.capability.version,
-        "status": artifact.capability.status,
-    }
-    if result.classification == "hard_failure" and result.escalation_eligible:
-        blocked = any(
-            d.get("name") == "risky_action_blocked"
-            for t in result.trace for d in (t.detections or [])
-        )
-        if blocked:
-            payload["classification"] = ESCALATION_REQUIRED
-            payload["escalation"] = {
-                "reason": result.message,
-                "step_id": result.failed_step,
-                "expected_on_resume": result.expected,
-                "how_to_proceed": (
-                    "This capability contains an irreversible step and its policy "
-                    "requires a person to perform it. An API invocation is unattended "
-                    "by construction, so the run stopped before acting. Resume it "
-                    "through the operator surface, on the same session."
-                ),
-            }
-    return payload
 
 
 def _load_environment() -> None:
@@ -286,47 +278,51 @@ def create_app(
                 ),
             }))
 
-        if body.attended:
-            # A human is available. The browser is headed so they can drive
-            # the same session, a risky step pauses rather than failing, and
-            # the run keeps its thread until somebody decides.
-            operator = PendingOperator()
-            engine = ReplayEngine(
-                artifact,
-                evidence_root=app.state.evidence_root,
-                escalate=True,
-                operator=operator,
-                headless=False,
-            )
-            record = app.state.manager.start(
-                engine, body.inputs, attended=True, operator=operator
-            )
-            # Give the run a moment to reach its first pause or finish, so the
-            # caller usually gets something better than "running".
-            deadline = time.time() + 60
-            while time.time() < deadline and not record.finished \
-                    and not record.awaiting_operator:
-                time.sleep(0.1)
-            return JSONResponse(status_code=202, content=_live_run_body(record))
-
+        # ONE PATH. Every run is headed, keeps its session, and parks at a
+        # risky step until an operator comes or the deadline passes. A
+        # capability with no risky step never reaches the pause and simply
+        # runs to completion, so this costs nothing for reads.
+        #
+        # The browser stays alive because that is the entire value of the
+        # handoff: the operator must get the session that got stuck, with its
+        # cookies and its half-completed flow, not a fresh one.
+        operator = PendingOperator(timeout_s=app.state.manager.pause_timeout_s)
         engine = ReplayEngine(
             artifact,
             evidence_root=app.state.evidence_root,
-            # Unattended by construction: there is no operator behind a plain
-            # HTTP request, and offering one would be a lie the audit trail
-            # keeps. The dashboard opts in explicitly instead.
-            escalate=False,
+            escalate=True,
+            operator=operator,
+            headless=False,
         )
-        result = asyncio.run(engine.run(dict(body.inputs)))
-        payload = _run_record(result, artifact)
+        record = app.state.manager.start(
+            engine, body.inputs, attended=True, operator=operator
+        )
+        # Give the run a moment to reach its first pause or finish, so the
+        # caller usually gets something better than "running".
+        deadline = time.time() + 60
+        while time.time() < deadline and not record.finished \
+                and not record.awaiting_operator:
+            time.sleep(0.1)
 
-        # The run's own sink. Declared-pii outputs and identifier inputs are
-        # masked on the way out for the same reason they are on the way to
-        # disk -- an HTTP caller is not a more trusted destination than a file.
-        body_out = engine.sink.payload(payload)
-        app.state.runs[result.run_id] = body_out
-        return JSONResponse(status_code=STATUS.get(payload["classification"], 502),
-                            content=body_out)
+        if record.awaiting_operator:
+            # Parked, and genuinely reachable: the session is open and the
+            # intervention is in the queue. This is what the old 202 claimed
+            # and could not deliver.
+            return JSONResponse(status_code=202, content=_live_run_body(record))
+
+        # Finished before anyone was needed. Return the replay result FLAT --
+        # `classification`, `outputs` and `violations` at the top level -- so
+        # the result contract reads the same here as it does from the CLI. The
+        # nested `{status, result: {...}}` shape belongs to /runs, which is
+        # describing a run rather than answering an invocation.
+        body = dict(record.result or {
+            "classification": "hard_failure",
+            "message": record.error or "the run produced no result",
+        })
+        body.setdefault("run_id", record.run_id)
+        classification = body.get("classification") or record.status()
+        return JSONResponse(status_code=STATUS.get(classification, 502),
+                            content=record._sink.payload(body))
 
     @app.get("/runs/{run_id}")
     def get_run(run_id: str) -> dict[str, Any]:
@@ -372,20 +368,25 @@ def create_app(
             }))
         return {"count": len(pending), "interventions": pending}
 
-    @app.post("/runs/{run_id}/resume")
-    def resume_run(run_id: str, body: DecisionRequest) -> JSONResponse:
-        """Signal that a human has performed the blocked step.
+    @app.post("/runs/{run_id}/done")
+    def done_run(run_id: str, body: DecisionRequest) -> JSONResponse:
+        """The operator has finished with the session. Go and look at it.
 
-        The dashboard does NOT drive the browser. A person did the work in the
-        live window; this tells the paused run to carry on, and the engine
-        re-evaluates the blocked step's checkpoint before continuing -- a
-        resume that leaves the checkpoint failing is not a recovery.
+        ONE control, not resume-and-abort. The two-button version asked the
+        operator to declare an outcome and then believed them, so an operator
+        who performed the irreversible step and pressed Abort got a result
+        recording that nothing had happened -- while the money had moved.
+
+        This is a trigger to inspect, not an assertion. The engine
+        re-evaluates the blocked step's checkpoint against the live page and
+        that decides the outcome: satisfied means the step was performed, so
+        the run continues and extracts its declared outputs; unsatisfied means
+        it was not, and the run ends cleanly rather than as a failure.
+
+        The dashboard still does NOT drive the browser. A person does the work
+        in the live window; this only tells the paused run to look.
         """
-        return _decide(run_id, Decision.RESUME, body)
-
-    @app.post("/runs/{run_id}/abort")
-    def abort_run(run_id: str, body: DecisionRequest) -> JSONResponse:
-        return _decide(run_id, Decision.ABORT, body)
+        return _decide(run_id, Decision.DONE, body)
 
     def _decide(run_id: str, decision: Decision, body: DecisionRequest) -> JSONResponse:
         ok, message = app.state.manager.decide(

@@ -1,0 +1,38 @@
+{
+  "run_id": "run_e61ec20c",
+  "source": "replay",
+  "raised_at": "2026-09-07T00:55:19.612488+00:00",
+  "capability": {
+    "id": "member_funds_transfer",
+    "version": "1.0.0"
+  },
+  "goal": "Replay member_funds_transfer@1.0.0",
+  "stopped": {
+    "step_id": "s10",
+    "classification": "hard_failure",
+    "reason": "Could not locate 'continue_button' on the page. element 'continue_button' could not be resolved; tried: role_name(no_match, 0 match(es))",
+    "expected": "step s10 to complete",
+    "observed": "Could not locate 'continue_button' on the page. element 'continue_button' could not be resolved; tried: role_name(no_match, 0 match(es))"
+  },
+  "state": {
+    "url": "https://web-sample.interface-hiring.com/members/100987/transfer/post",
+    "screenshot": "evidence/escalation/run_e61ec20c/stuck.png",
+    "snapshot_file": "evidence/escalation/run_e61ec20c/stuck_snapshot.txt",
+    "accessibility_snapshot": "--- FRAME (top) ---\ndocument\n  table\n    rowgroup\n      row\n        cell \"MERIDIAN CORE Member Services Platform v4.2.1 Cornerstone Financial Systems\u2122\"\n          text \"Member Services Platform v4.2.1\"\n      row\n        cell\n          generic\n            link \"Main Menu\" [href=/menu]\n            text \"\u00b7\"\n            link \"Member Inquiry\" [href=/members]\n            text \"\u00b7\"\n            link \"System Settings\" [href=/settings]\n            text \"\u00b7\"\n            link \"Sign Off\" [href=/signoff]\n      row\n        cell\n          heading \"TRANSFER POSTED\" [level=1]\n          generic\n            text \"TRANSACTION COMPLETE\"\n            table\n              rowgroup\n                row\n                  cell \"Confirmation\"\n                  cell \"CN480384\"\n                row\n                  cell \"Posted\"\n                  cell \"09/07/2026 00:55:08\"\n                row\n                  cell \"Amount\"\n                  cell \"$2.00\"\n                row\n                  cell \"100987-MMKT-17\"\n                  cell \"$98.00 (new balance)\"\n                row\n                  cell \"100987-S0001\"\n                  cell \"$26.00 (new balance)\"\n          link \"Return to Member Record\" [href=/members/100987]\n          text \"\u00b7\"\n          link \"Main Menu\" [href=/menu]\n      row\n        cell \"OPR <redacted:credential> | BR MAIN-001 | 09/07/2026 00:55:08 | SID <redacted:session>\"\n      row\n        cell \"F3=Sign Off F5=Main Menu F7=Member Inquiry F12=Cancel\""
+  },
+  "inputs": {
+    "member_ref": "****87",
+    "from_share": "************17",
+    "to_share": "************18",
+    "amount": "4.5",
+    "memo": "test 5"
+  },
+  "completed_steps": [
+    "s1",
+    "s2",
+    "s3",
+    "s4",
+    "s5",
+    "s6"
+  ]
+}

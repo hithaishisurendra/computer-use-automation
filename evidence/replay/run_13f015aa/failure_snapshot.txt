@@ -1,0 +1,86 @@
+--- FRAME '' ---
+document
+  table
+    rowgroup
+      row
+        cell "MERIDIAN CORE Member Services Platform v4.2.1 Cornerstone Financial Systems™"
+          text "Member Services Platform v4.2.1"
+      row
+        cell
+          generic
+            link "Main Menu" [href=/menu]
+            text "·"
+            link "Member Inquiry" [href=/members]
+            text "·"
+            link "System Settings" [href=/settings]
+            text "·"
+            link "Sign Off" [href=/signoff]
+      row
+        cell
+          heading "FUNDS TRANSFER" [level=1]
+          text "Member 100987 - <redacted:pii>"
+          table
+            rowgroup
+              row
+                cell "* From Share"
+                cell "100987-S0001 - Regular Shares ($26.00)"
+                  combobox "From Share" [name_source=preceding_td]
+                    option "100987-S0001 - Regular Shares ($26.00)" [selected=True]
+                    option "100987-S0070 - Share Draft (Checking) ($18.25)"
+                    option "100987-MMKT-3 - Money Market ($50.00)"
+                    option "100987-MMKT-4 - Money Market ($25.00)"
+                    option "100987-MMKT-5 - Money Market ($0.49)"
+                    option "100987-MMKT-6 - Money Market ($37.51)"
+                    option "100987-MMKT-7 - Money Market ($40.00)"
+                    option "100987-MMKT-8 - Money Market ($25.00)"
+                    option "100987-S0001-9 - Regular Shares ($25.00)"
+                    option "100987-MMKT-10 - Money Market ($30.00)"
+                    option "100987-MMKT-11 - Money Market ($80.00)"
+                    option "100987-S0001-12 - Regular Shares ($45.00)"
+                    option "100987-S0001-13 - Regular Shares ($10.00)"
+                    option "100987-S0001-14 - Regular Shares ($25.00)"
+                    option "100987-S0001-15 - Regular Shares ($25.00)"
+                    option "100987-S0001-16 - Regular Shares ($25.00)"
+                    option "100987-MMKT-17 - Money Market ($98.00)"
+                    option "100987-S0001-18 - Regular Shares ($15.00)"
+                    option "100987-S0001-19 - Regular Shares ($35.00)"
+              row
+                cell "* To Share"
+                cell "100987-S0001 - Regular Shares ($26.00)"
+                  combobox "To Share" [name_source=preceding_td]
+                    option "100987-S0001 - Regular Shares ($26.00)" [selected=True]
+                    option "100987-S0070 - Share Draft (Checking) ($18.25)"
+                    option "100987-MMKT-3 - Money Market ($50.00)"
+                    option "100987-MMKT-4 - Money Market ($25.00)"
+                    option "100987-MMKT-5 - Money Market ($0.49)"
+                    option "100987-MMKT-6 - Money Market ($37.51)"
+                    option "100987-MMKT-7 - Money Market ($40.00)"
+                    option "100987-MMKT-8 - Money Market ($25.00)"
+                    option "100987-S0001-9 - Regular Shares ($25.00)"
+                    option "100987-MMKT-10 - Money Market ($30.00)"
+                    option "100987-MMKT-11 - Money Market ($80.00)"
+                    option "100987-S0001-12 - Regular Shares ($45.00)"
+                    option "100987-S0001-13 - Regular Shares ($10.00)"
+                    option "100987-S0001-14 - Regular Shares ($25.00)"
+                    option "100987-S0001-15 - Regular Shares ($25.00)"
+                    option "100987-S0001-16 - Regular Shares ($25.00)"
+                    option "100987-MMKT-17 - Money Market ($98.00)"
+                    option "100987-S0001-18 - Regular Shares ($15.00)"
+                    option "100987-S0001-19 - Regular Shares ($35.00)"
+              row
+                cell "* Amount"
+                cell "$"
+                  text "$"
+                  textbox "Amount" [name_source=preceding_td]
+              row
+                cell "Memo"
+                cell
+                  textbox "Memo" [name_source=preceding_td]
+              row
+                cell
+                  button "Continue"
+                  link "Cancel" [href=/members/100987]
+      row
+        cell "OPR <redacted:credential> | BR MAIN-001 | 09/07/2026 00:57:54 | SID <redacted:session>"
+      row
+        cell "F3=Sign Off F5=Main Menu F7=Member Inquiry F12=Cancel"

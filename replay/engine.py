@@ -46,6 +46,15 @@ from replay.resolver import ElementUnresolvable
 from escalation.session import ControlledSession
 from replay.result import ReplayResult, StepTrace
 
+# What `_escalate` concluded, decided by the blocked step's checkpoint against
+# the live page -- never by which button the operator pressed. A boolean was
+# not enough: "the step did not happen" and "we cannot tell whether it
+# happened" are different answers, and only the second is a system failure.
+PERFORMED = "performed"
+NOT_PERFORMED = "not_performed"
+UNVERIFIABLE = "unverifiable"
+
+
 class AuthUnroutableError(Exception):
     """Authentication is configured but has no controls to drive.
 
@@ -800,13 +809,13 @@ class ReplayEngine:
                     )
 
                 if self._may_escalate(result):
-                    resumed = await self._escalate(
+                    verdict = await self._escalate(
                         step,
                         params,
                         result,
                         classification=("risk_blocked" if blocked_by_risk else "hard_failure"),
                     )
-                    if resumed:
+                    if verdict == PERFORMED:
                         # Resume from where it stopped, not from the top.
                         # Re-running completed steps would repeat side
                         # effects and undo whatever the operator just fixed.
@@ -814,6 +823,18 @@ class ReplayEngine:
                         result.failed_step = None
                         result.expected = result.observed = result.message = None
                         continue
+                    if verdict == NOT_PERFORMED:
+                        # A clean ending, not a failure. The guardrail held,
+                        # a person looked, and the irreversible step was not
+                        # taken. `_escalate` has already set the
+                        # classification -- `not_performed` or `expired` --
+                        # from the checkpoint it just evaluated.
+                        result.failed_step = step.id
+                        await self._capture_failure_evidence(result)
+                        return
+                    # UNVERIFIABLE falls through to the hard-failure path
+                    # below: we could not establish what happened, which is
+                    # the one case that genuinely needs a human to look.
 
                 await self._capture_failure_evidence(result)
                 return
@@ -945,17 +966,27 @@ class ReplayEngine:
                 "step_id": step.id,
                 "decision": decision.decision.value,
                 "operator": decision.operator,
+                # Audit trail only. Notes never influence the classification;
+                # the checkpoint does. A test asserts this.
                 "notes": decision.notes,
+                "timed_out": decision.timed_out,
                 "url_changed": activity.url_changed,
             }
         )
         self.evidence.log("intervention_resolved", result.human_interventions[-1])
 
-        if not decision.resumed:
-            result.message = f"Operator aborted at step {step.id}: {decision.notes}".strip()
-            return False
-
-        # The session must be the one that got stuck.
+        # NO BRANCH ON WHICH BUTTON THEY PRESSED. This is the whole point of
+        # the redesign. The previous version returned here on abort without
+        # evaluating anything, so an operator who performed the irreversible
+        # step and then aborted got a result saying "the step was not
+        # performed; automation stopped before acting" -- while the money had
+        # moved. In a bank that is a reconciliation problem, and it was the
+        # system asserting something it had never checked.
+        #
+        # The operator's press is a trigger to LOOK. The blocked step's
+        # checkpoint decides the outcome, on every path including the timeout
+        # path: someone may have performed the step and simply walked away
+        # without pressing anything.
         self.control.assert_same_session()
 
         if step.checkpoint is None:
@@ -969,26 +1000,52 @@ class ReplayEngine:
                 result.expected = "a checkpoint proving the risky step landed"
                 result.observed = "the step declares no checkpoint"
                 result.message = (
-                    f"Operator resumed at step {step.id}, but the step is risky and "
-                    "declares no checkpoint, so the outcome cannot be verified. The "
-                    "run stops rather than assume the action took effect."
+                    f"The operator finished at step {step.id}, but the step is risky "
+                    "and declares no checkpoint, so the outcome cannot be verified. "
+                    "The run stops rather than assume the action took effect."
                 )
-                return False
-            return True
+                return UNVERIFIABLE
+            return PERFORMED
 
         check = await checkpoints.evaluate(
             step.checkpoint, self.artifact, self._capture, params, step.checkpoint.timeout_ms
         )
         if check.satisfied:
-            return True
+            # The checkpoint holds, so the step WAS performed -- regardless of
+            # what the operator pressed, and regardless of whether anyone
+            # pressed anything at all.
+            return PERFORMED
 
         result.expected = check.expected
         result.observed = check.observed
-        result.message = (
-            f"Operator resumed at step {step.id} but its checkpoint still fails: "
-            f"expected {check.expected}, observed {check.observed}."
-        )
-        return False
+
+        if classification != "risk_blocked":
+            # This escalation was for something that BROKE, and a human has
+            # looked and it is still broken. That stays a hard failure.
+            # `not_performed` means an irreversible step was deliberately not
+            # taken -- a decision, not a fault -- and using it here would
+            # dress a persisting failure up as a choice somebody made.
+            result.message = (
+                f"Step {step.id} still fails after the operator looked at it: "
+                f"expected {check.expected}, observed {check.observed}."
+            )
+            return NOT_PERFORMED
+
+        if decision.timed_out:
+            result.classification = "expired"
+            result.message = (
+                f"No operator responded within the pause deadline. Step {step.id} was "
+                f"not performed: expected {check.expected}, observed {check.observed}. "
+                "The run ended and the session was closed; nothing was committed."
+            )
+        else:
+            result.classification = "not_performed"
+            result.message = (
+                f"The operator finished at step {step.id} without performing it: "
+                f"expected {check.expected}, observed {check.observed}. "
+                "Nothing was committed."
+            )
+        return NOT_PERFORMED
 
     async def _capture_failure_evidence(self, result: ReplayResult) -> None:
         """On any non-success, capture the page as it stood when it stopped."""

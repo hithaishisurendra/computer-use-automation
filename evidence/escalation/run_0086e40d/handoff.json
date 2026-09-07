@@ -1,0 +1,38 @@
+{
+  "human_activity": {
+    "started_at": "2026-09-07T00:27:04.936038+00:00",
+    "ended_at": "2026-09-07T00:27:28.392980+00:00",
+    "operator": "verification",
+    "decision": "done",
+    "notes": "I definitely posted this transfer",
+    "url_before": "https://web-sample.interface-hiring.com/members/100234/transfer/review",
+    "url_after": "https://web-sample.interface-hiring.com/members/100234/transfer/review",
+    "url_changed": false,
+    "controls_appeared": [
+      "link \"Return to Member Record\" [href=/members/100234]"
+    ],
+    "controls_disappeared": [
+      "button \"Post Transfer\"",
+      "link \"Cancel\" [href=/members/100234/transfer]"
+    ],
+    "capture_scope": "effect-level: URL and accessibility-state diff across the handoff. Individual actions are not recorded -- see module docstring for the seam."
+  },
+  "control": {
+    "owner": "automation",
+    "context_identity": 4492193008,
+    "transitions": [
+      {
+        "at": "2026-09-07T00:27:04.936054+00:00",
+        "from": "automation",
+        "to": "human",
+        "reason": "step s11: Step s11 is marked risky and policy is 'require_confirmation'. the step is irreversible and policy requires a person to perform it; automation stopped before acting."
+      },
+      {
+        "at": "2026-09-07T00:27:28.285644+00:00",
+        "from": "human",
+        "to": "automation",
+        "reason": "operator returned control after step s11"
+      }
+    ]
+  }
+}

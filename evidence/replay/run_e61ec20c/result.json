@@ -1,0 +1,432 @@
+{
+  "classification": "hard_failure",
+  "capability": {
+    "id": "member_funds_transfer",
+    "version": "1.0.0"
+  },
+  "tenant": "demo",
+  "run_id": "run_e61ec20c",
+  "duration_ms": 30250.59,
+  "inputs": {
+    "member_ref": "****87",
+    "from_share": "************17",
+    "to_share": "************18",
+    "amount": "4.5",
+    "memo": "test 5"
+  },
+  "message": "Step s10 still fails after the operator looked at it: expected element 'post_transfer_button' present, observed not found (after 8000ms).",
+  "failure": {
+    "step_id": "s10",
+    "expected": "element 'post_transfer_button' present",
+    "observed": "not found (after 8000ms)"
+  },
+  "escalation_eligible": true,
+  "human_interventions": [
+    {
+      "step_id": "s7",
+      "decision": "done",
+      "operator": "dashboard",
+      "notes": "",
+      "timed_out": false,
+      "url_changed": false
+    },
+    {
+      "step_id": "s8",
+      "decision": "done",
+      "operator": "dashboard",
+      "notes": "",
+      "timed_out": false,
+      "url_changed": false
+    },
+    {
+      "step_id": "s9",
+      "decision": "done",
+      "operator": "dashboard",
+      "notes": "",
+      "timed_out": false,
+      "url_changed": false
+    },
+    {
+      "step_id": "s10",
+      "decision": "done",
+      "operator": "dashboard",
+      "notes": "",
+      "timed_out": false,
+      "url_changed": false
+    }
+  ],
+  "control": {
+    "owner": "released",
+    "context_identity": 4498647440,
+    "transitions": [
+      {
+        "at": "2026-09-07T00:55:06.978240+00:00",
+        "from": "automation",
+        "to": "human",
+        "reason": "step s7: Unexpected driver error on step s7: Locator.select_option: Invalid frame in aria-ref selector \"aria-ref=f5e29\"\nCall log:\n  - waiting for locator(\"aria-ref=f5e29\")\n    - locator resolved to <select name=\"to\" class=\"fld\">\u2026</select>\n  - attempting select option action\n    2 \u00d7 waiting for element to be visible and enabled\n      - did not find some options\n    - retrying select option action\n    - waiting 20ms\n    2 \u00d7 waiting for element to be visible and enabled\n      - did not find some options\n    - retrying select option action\n      - waiting 100ms\n    11 \u00d7 waiting for element to be visible and enabled\n       - did not find some options\n     - retrying select option action\n       - waiting 500ms\n  - element was detached from the DOM, retrying\n"
+      },
+      {
+        "at": "2026-09-07T00:55:19.409711+00:00",
+        "from": "human",
+        "to": "automation",
+        "reason": "operator returned control after step s7"
+      },
+      {
+        "at": "2026-09-07T00:55:19.519686+00:00",
+        "from": "automation",
+        "to": "human",
+        "reason": "step s8: Could not locate 'amount_field' on the page. element 'amount_field' could not be resolved; tried: role_name(no_match, 0 match(es)), role_ordinal(no_match, 0 match(es))"
+      },
+      {
+        "at": "2026-09-07T00:55:19.519702+00:00",
+        "from": "human",
+        "to": "automation",
+        "reason": "operator returned control after step s8"
+      },
+      {
+        "at": "2026-09-07T00:55:19.566473+00:00",
+        "from": "automation",
+        "to": "human",
+        "reason": "step s9: Could not locate 'memo_field' on the page. element 'memo_field' could not be resolved; tried: role_name(no_match, 0 match(es)), role_ordinal(no_match, 0 match(es))"
+      },
+      {
+        "at": "2026-09-07T00:55:19.566483+00:00",
+        "from": "human",
+        "to": "automation",
+        "reason": "operator returned control after step s9"
+      },
+      {
+        "at": "2026-09-07T00:55:19.615979+00:00",
+        "from": "automation",
+        "to": "human",
+        "reason": "step s10: Could not locate 'continue_button' on the page. element 'continue_button' could not be resolved; tried: role_name(no_match, 0 match(es))"
+      },
+      {
+        "at": "2026-09-07T00:55:19.615988+00:00",
+        "from": "human",
+        "to": "automation",
+        "reason": "operator returned control after step s10"
+      },
+      {
+        "at": "2026-09-07T00:55:27.747518+00:00",
+        "from": "automation",
+        "to": "released",
+        "reason": "run finished: hard_failure"
+      }
+    ]
+  },
+  "evidence": {
+    "intervention_request": "evidence/escalation/run_e61ec20c/request.json",
+    "handoff": "evidence/escalation/run_e61ec20c/handoff.json",
+    "screenshot": "evidence/replay/run_e61ec20c/failure.png",
+    "snapshot": "evidence/replay/run_e61ec20c/failure_snapshot.txt"
+  },
+  "trace": [
+    {
+      "step_id": "s1",
+      "action": "navigate",
+      "status": "ok",
+      "duration_ms": 83.12,
+      "attempts": 1,
+      "checkpoint": {
+        "satisfied": true,
+        "expected": "element 'funds_transfer_link' present",
+        "observed": "resolved via rung 0",
+        "duration_ms": 4.29
+      }
+    },
+    {
+      "step_id": "s2",
+      "action": "click",
+      "status": "ok",
+      "duration_ms": 231.92,
+      "attempts": 1,
+      "resolution": {
+        "element": "funds_transfer_link",
+        "resolved": true,
+        "frame": null,
+        "rung_index": 0,
+        "strategy": "role_name",
+        "confidence": "high",
+        "brittle": false,
+        "duration_ms": 0.03,
+        "attempts": [
+          {
+            "rung": 0,
+            "strategy": "role_name",
+            "confidence": "high",
+            "brittle": false,
+            "match_count": 1,
+            "outcome": "resolved"
+          }
+        ]
+      },
+      "checkpoint": {
+        "satisfied": true,
+        "expected": "element 'value_field' present",
+        "observed": "resolved via rung 0",
+        "duration_ms": 13.58
+      }
+    },
+    {
+      "step_id": "s3",
+      "action": "fill",
+      "status": "ok",
+      "duration_ms": 39.34,
+      "attempts": 1,
+      "resolution": {
+        "element": "value_field",
+        "resolved": true,
+        "frame": null,
+        "rung_index": 0,
+        "strategy": "role_name",
+        "confidence": "high",
+        "brittle": false,
+        "duration_ms": 0.02,
+        "attempts": [
+          {
+            "rung": 0,
+            "strategy": "role_name",
+            "confidence": "high",
+            "brittle": false,
+            "match_count": 1,
+            "outcome": "resolved"
+          }
+        ]
+      }
+    },
+    {
+      "step_id": "s4",
+      "action": "click",
+      "status": "ok",
+      "duration_ms": 158.16,
+      "attempts": 1,
+      "resolution": {
+        "element": "search_button",
+        "resolved": true,
+        "frame": null,
+        "rung_index": 0,
+        "strategy": "role_name",
+        "confidence": "high",
+        "brittle": false,
+        "duration_ms": 0.03,
+        "attempts": [
+          {
+            "rung": 0,
+            "strategy": "role_name",
+            "confidence": "high",
+            "brittle": false,
+            "match_count": 1,
+            "outcome": "resolved"
+          }
+        ]
+      },
+      "checkpoint": {
+        "satisfied": true,
+        "expected": "element 'select_link' present",
+        "observed": "resolved via rung 0",
+        "duration_ms": 12.19
+      }
+    },
+    {
+      "step_id": "s5",
+      "action": "click",
+      "status": "ok",
+      "duration_ms": 169.76,
+      "attempts": 1,
+      "resolution": {
+        "element": "select_link",
+        "resolved": true,
+        "frame": null,
+        "rung_index": 0,
+        "strategy": "role_name",
+        "confidence": "high",
+        "brittle": false,
+        "duration_ms": 0.03,
+        "attempts": [
+          {
+            "rung": 0,
+            "strategy": "role_name",
+            "confidence": "high",
+            "brittle": false,
+            "match_count": 1,
+            "outcome": "resolved"
+          }
+        ]
+      },
+      "checkpoint": {
+        "satisfied": true,
+        "expected": "element 'from_share_select' present",
+        "observed": "resolved via rung 0",
+        "duration_ms": 20.55
+      }
+    },
+    {
+      "step_id": "s6",
+      "action": "select",
+      "status": "ok",
+      "duration_ms": 62.3,
+      "attempts": 1,
+      "resolution": {
+        "element": "from_share_select",
+        "resolved": true,
+        "frame": null,
+        "rung_index": 0,
+        "strategy": "role_name",
+        "confidence": "high",
+        "brittle": false,
+        "duration_ms": 0.04,
+        "attempts": [
+          {
+            "rung": 0,
+            "strategy": "role_name",
+            "confidence": "high",
+            "brittle": false,
+            "match_count": 1,
+            "outcome": "resolved"
+          }
+        ]
+      }
+    },
+    {
+      "step_id": "s7",
+      "action": "select",
+      "status": "failed",
+      "duration_ms": 5626.88,
+      "attempts": 1,
+      "detections": [
+        {
+          "name": "driver_error",
+          "layer": "engine",
+          "classification": "hard_failure",
+          "message": "Unexpected driver error on step s7: Locator.select_option: Invalid frame in aria-ref selector \"aria-ref=f5e29\"\nCall log:\n  - waiting for locator(\"aria-ref=f5e29\")\n    - locator resolved to <select name=\"to\" class=\"fld\">\u2026</select>\n  - attempting select option action\n    2 \u00d7 waiting for element to be visible and enabled\n      - did not find some options\n    - retrying select option action\n    - waiting 20ms\n    2 \u00d7 waiting for element to be visible and enabled\n      - did not find some options\n    - retrying select option action\n      - waiting 100ms\n    11 \u00d7 waiting for element to be visible and enabled\n       - did not find some options\n     - retrying select option action\n       - waiting 500ms\n  - element was detached from the DOM, retrying\n",
+          "escalation_eligible": true
+        }
+      ]
+    },
+    {
+      "step_id": "s8",
+      "action": "fill",
+      "status": "failed",
+      "duration_ms": 9.06,
+      "attempts": 1,
+      "resolution": {
+        "element": "amount_field",
+        "resolved": false,
+        "frame": null,
+        "rung_index": null,
+        "strategy": null,
+        "confidence": null,
+        "brittle": false,
+        "duration_ms": 0.21,
+        "attempts": [
+          {
+            "rung": 0,
+            "strategy": "role_name",
+            "confidence": "high",
+            "brittle": false,
+            "match_count": 0,
+            "outcome": "no_match"
+          },
+          {
+            "rung": 1,
+            "strategy": "role_ordinal",
+            "confidence": "low",
+            "brittle": true,
+            "match_count": 0,
+            "outcome": "no_match"
+          }
+        ]
+      },
+      "detections": [
+        {
+          "name": "element_unresolvable",
+          "layer": "engine",
+          "classification": "hard_failure",
+          "message": "Could not locate 'amount_field' on the page. element 'amount_field' could not be resolved; tried: role_name(no_match, 0 match(es)), role_ordinal(no_match, 0 match(es))",
+          "escalation_eligible": true
+        }
+      ]
+    },
+    {
+      "step_id": "s9",
+      "action": "fill",
+      "status": "failed",
+      "duration_ms": 4.94,
+      "attempts": 1,
+      "resolution": {
+        "element": "memo_field",
+        "resolved": false,
+        "frame": null,
+        "rung_index": null,
+        "strategy": null,
+        "confidence": null,
+        "brittle": false,
+        "duration_ms": 0.07,
+        "attempts": [
+          {
+            "rung": 0,
+            "strategy": "role_name",
+            "confidence": "high",
+            "brittle": false,
+            "match_count": 0,
+            "outcome": "no_match"
+          },
+          {
+            "rung": 1,
+            "strategy": "role_ordinal",
+            "confidence": "low",
+            "brittle": true,
+            "match_count": 0,
+            "outcome": "no_match"
+          }
+        ]
+      },
+      "detections": [
+        {
+          "name": "element_unresolvable",
+          "layer": "engine",
+          "classification": "hard_failure",
+          "message": "Could not locate 'memo_field' on the page. element 'memo_field' could not be resolved; tried: role_name(no_match, 0 match(es)), role_ordinal(no_match, 0 match(es))",
+          "escalation_eligible": true
+        }
+      ]
+    },
+    {
+      "step_id": "s10",
+      "action": "click",
+      "status": "failed",
+      "duration_ms": 4.58,
+      "attempts": 1,
+      "resolution": {
+        "element": "continue_button",
+        "resolved": false,
+        "frame": null,
+        "rung_index": null,
+        "strategy": null,
+        "confidence": null,
+        "brittle": false,
+        "duration_ms": 0.02,
+        "attempts": [
+          {
+            "rung": 0,
+            "strategy": "role_name",
+            "confidence": "high",
+            "brittle": false,
+            "match_count": 0,
+            "outcome": "no_match"
+          }
+        ]
+      },
+      "detections": [
+        {
+          "name": "element_unresolvable",
+          "layer": "engine",
+          "classification": "hard_failure",
+          "message": "Could not locate 'continue_button' on the page. element 'continue_button' could not be resolved; tried: role_name(no_match, 0 match(es))",
+          "escalation_eligible": true
+        }
+      ]
+    }
+  ]
+}

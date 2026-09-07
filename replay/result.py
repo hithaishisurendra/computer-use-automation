@@ -11,7 +11,20 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
-Classification = str  # success | business_outcome | caller_error | auth_failure | hard_failure
+Classification = str
+# success           the flow completed and produced its declared outputs
+# business_outcome  the application gave an answer the caller needs ("no such member")
+# not_performed     a risky step was offered to an operator who did not perform it.
+#                   A clean ending, not a failure: the guardrail held, a person
+#                   looked, and nothing was committed. Decided by re-evaluating the
+#                   blocked step's checkpoint against the live page -- never by what
+#                   the operator said they did.
+# expired           the same, except nobody came before the pause deadline. The
+#                   checkpoint is still evaluated first, because an operator may have
+#                   performed the step and never pressed anything.
+# caller_error      the inputs were wrong, detected before a browser opened
+# auth_failure      our own configuration is wrong; not the caller's problem
+# hard_failure      something broke, or we could not establish what happened
 
 
 @dataclass

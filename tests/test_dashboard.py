@@ -183,10 +183,16 @@ class FakeEngine:
     step" is checked by what actually ran rather than by a status string.
     """
 
-    def __init__(self, run_id, operator, tmp_path, steps=("s1", "s2", "s3")):
+    def __init__(self, run_id, operator, tmp_path, steps=("s1", "s2", "s3"),
+                 checkpoint_holds=True):
         self.run_id = run_id
         self.operator = operator
         self.steps = steps
+        # Stands in for the live page. TRUE means the operator performed the
+        # irreversible step, FALSE means they did not -- and the fake decides
+        # the outcome from this alone, never from what the operator pressed,
+        # exactly as the real engine does.
+        self.checkpoint_holds = checkpoint_holds
         self.performed: list[str] = []
         self.artifact = type("A", (), {"capability": type("C", (), {
             "id": "member_funds_transfer", "version": "1.0.0"})()})()
@@ -211,10 +217,16 @@ class FakeEngine:
                     inputs_redacted={"member_ref": "****87"}))
                 result.human_interventions.append({
                     "step_id": "s2", "decision": decision.decision.value,
-                    "operator": decision.operator, "notes": decision.notes})
-                if not decision.resumed:
-                    result.classification = "hard_failure"
-                    result.message = f"Operator aborted at step s2: {decision.notes}"
+                    "operator": decision.operator, "notes": decision.notes,
+                    "timed_out": decision.timed_out})
+                # The CHECKPOINT decides. There is deliberately no branch on
+                # decision.resumed here: believing the button is the defect
+                # this design replaces.
+                if not self.checkpoint_holds:
+                    result.classification = (
+                        "expired" if decision.timed_out else "not_performed")
+                    result.message = (
+                        f"step s2 was not performed: expected text 'POSTED' present")
                     return result
                 continue  # NOT re-performed: the human did it
             self.performed.append(step)
@@ -246,38 +258,120 @@ def test_resume_continues_from_the_blocked_step(tmp_path):
     assert record.result["human_interventions"][0]["notes"] == "posted it manually"
 
 
-def test_abort_terminates_cleanly(tmp_path):
+def test_an_operator_who_did_not_perform_the_step_ends_the_run_cleanly(tmp_path):
+    """Nothing was committed, and the result says exactly that.
+
+    `not_performed`, not `hard_failure`: the guardrail held, a person looked,
+    and the irreversible action was not taken. Reporting that as a system
+    failure would train a caller to page an engineer over a decision.
+    """
     manager = RunManager()
     operator = PendingOperator(timeout_s=10)
-    engine = FakeEngine("run_abort", operator, tmp_path)
+    engine = FakeEngine("run_declined", operator, tmp_path, checkpoint_holds=False)
     record = manager.start(engine, {}, attended=True, operator=operator)
 
     deadline = time.time() + 5
     while time.time() < deadline and not record.awaiting_operator:
         time.sleep(0.02)
-    ok, _ = manager.decide("run_abort", Decision.ABORT, "not authorised", "dashboard")
+    ok, _ = manager.decide("run_declined", Decision.DONE, "not authorised", "dashboard")
     assert ok
     record.thread.join(timeout=5)
 
-    assert engine.performed == ["s1"], "nothing ran after the abort"
-    assert record.result["classification"] == "hard_failure"
-    assert "aborted" in record.result["message"]
+    assert engine.performed == ["s1"], "nothing ran after the step was declined"
+    assert record.result["classification"] == "not_performed"
     assert not record.awaiting_operator
     assert not record.thread.is_alive(), "the thread must not be left holding a session"
 
 
-def test_a_pause_nobody_answers_expires_into_an_abort(tmp_path):
+def test_the_button_cannot_hide_a_step_the_operator_performed(tmp_path):
+    """THE REGRESSION TEST FOR THE RECONCILIATION BUG.
+
+    The operator performed the irreversible step and then pressed what used to
+    be Abort. The old engine returned immediately on that branch without
+    looking at anything, and the run recorded "the step was not performed;
+    automation stopped before acting" -- while the money had moved. In a bank
+    that is a reconciliation problem.
+
+    The page is the authority. Whatever the operator pressed, and whatever
+    they typed in the notes, a satisfied checkpoint means it happened.
+    """
+    manager = RunManager()
+    operator = PendingOperator(timeout_s=10)
+    engine = FakeEngine("run_did_it", operator, tmp_path, checkpoint_holds=True)
+    record = manager.start(engine, {}, attended=True, operator=operator)
+
+    deadline = time.time() + 5
+    while time.time() < deadline and not record.awaiting_operator:
+        time.sleep(0.02)
+    # The legacy ABORT value, on purpose: even the strongest possible claim
+    # that nothing happened must not override what the page says.
+    manager.decide("run_did_it", Decision.ABORT, "changed my mind", "dashboard")
+    record.thread.join(timeout=5)
+
+    assert record.result["classification"] == "success"
+    assert "not_performed" not in str(record.result)
+
+
+def test_notes_cannot_change_the_classification(tmp_path):
+    """The same words, opposite outcomes -- decided by the page alone.
+
+    A free-text field a person types into must never be able to decide
+    whether a transfer is recorded as having happened.
+    """
+    outcomes = {}
+    for name, holds in (("did", True), ("didnt", False)):
+        manager = RunManager()
+        operator = PendingOperator(timeout_s=10)
+        engine = FakeEngine(f"run_notes_{name}", operator, tmp_path,
+                            checkpoint_holds=holds)
+        record = manager.start(engine, {}, attended=True, operator=operator)
+        deadline = time.time() + 5
+        while time.time() < deadline and not record.awaiting_operator:
+            time.sleep(0.02)
+        manager.decide(f"run_notes_{name}", Decision.DONE,
+                       "I definitely posted the transfer", "dashboard")
+        record.thread.join(timeout=5)
+        outcomes[name] = record.result["classification"]
+
+    assert outcomes == {"did": "success", "didnt": "not_performed"}
+
+
+def test_a_pause_nobody_answers_expires_and_closes_the_session(tmp_path):
     """A paused run holds a browser, a thread and a live application session.
-    Waiting forever leaks all three."""
+    Waiting forever leaks all three.
+
+    Expiry is `expired`, not `hard_failure`: nothing broke. And the checkpoint
+    is still evaluated on this path, because an operator may have performed
+    the step in the live window and never pressed anything.
+    """
     manager = RunManager()
     operator = PendingOperator(timeout_s=0.2)
-    engine = FakeEngine("run_timeout", operator, tmp_path)
+    engine = FakeEngine("run_timeout", operator, tmp_path, checkpoint_holds=False)
     record = manager.start(engine, {}, attended=True, operator=operator)
     record.thread.join(timeout=5)
 
-    assert record.result["classification"] == "hard_failure"
+    assert record.result["classification"] == "expired"
     assert engine.performed == ["s1"]
-    assert "no operator responded" in record.result["human_interventions"][0]["notes"]
+    intervention = record.result["human_interventions"][0]
+    assert "no operator responded" in intervention["notes"]
+    assert intervention["timed_out"] is True
+
+
+def test_a_timeout_still_reports_success_if_the_step_was_performed(tmp_path):
+    """Nobody pressed anything, but the page says it happened.
+
+    The deadline is not a verdict. If an operator performed the irreversible
+    step and walked away, reporting "expired, nothing committed" would be the
+    same reconciliation error as trusting an Abort.
+    """
+    manager = RunManager()
+    operator = PendingOperator(timeout_s=0.2)
+    engine = FakeEngine("run_timeout_done", operator, tmp_path, checkpoint_holds=True)
+    record = manager.start(engine, {}, attended=True, operator=operator)
+    record.thread.join(timeout=5)
+
+    assert record.result["classification"] == "success"
+    assert record.result["human_interventions"][0]["timed_out"] is True
 
 
 def test_answering_twice_is_refused(tmp_path):
@@ -295,19 +389,19 @@ def test_answering_twice_is_refused(tmp_path):
     assert ok is False and "not waiting" in message
 
 
-def test_resuming_an_unknown_run_is_a_404(client):
-    r = client.post("/runs/run_nope/resume", json={"notes": "x"})
+def test_signalling_an_unknown_run_is_a_404(client):
+    r = client.post("/runs/run_nope/done", json={"notes": "x"})
     assert r.status_code == 404
     assert r.json()["classification"] == "caller_error"
 
 
-def test_resuming_a_run_that_is_not_waiting_is_a_409(client, tmp_path):
+def test_signalling_a_run_that_is_not_waiting_is_a_409(client, tmp_path):
     manager = client.app.state.manager
     record = RunRecord(run_id="run_done", capability_id="c", version="1.0.0",
                        started_at=time.time(), attended=False)
     record.result = {"classification": "success"}
     manager.register(record)
-    r = client.post("/runs/run_done/resume", json={"notes": "x"})
+    r = client.post("/runs/run_done/done", json={"notes": "x"})
     assert r.status_code == 409
     assert "not waiting" in r.json()["message"]
 
@@ -360,8 +454,10 @@ def test_the_ui_cannot_lift_a_risk_classification():
     js = (STATIC / "app.js").read_text()
     for lever in ("risk", "risky_action_handling", "policy", "allowed_"):
         assert f'"{lever}"' not in js and f"'{lever}'" not in js, lever
-    # It sends exactly two things when invoking.
-    assert 'JSON.stringify({ inputs, attended })' in js
+    # It sends exactly one thing when invoking. `attended` is gone: the
+    # caller no longer decides whether a human will be available.
+    assert 'JSON.stringify({ inputs })' in js
+    assert "attended" not in js
 
 
 def test_widening_policy_through_invoke_is_ignored(client):

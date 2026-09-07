@@ -1,0 +1,43 @@
+{
+  "human_activity": {
+    "started_at": "2026-09-07T00:57:51.465913+00:00",
+    "ended_at": "2026-09-07T00:57:58.026411+00:00",
+    "operator": "dashboard",
+    "decision": "done",
+    "notes": "",
+    "url_before": "https://web-sample.interface-hiring.com/members/100987/transfer/review",
+    "url_after": "https://web-sample.interface-hiring.com/members/100987/transfer/review",
+    "url_changed": false,
+    "controls_appeared": [
+      "button \"Continue\"",
+      "combobox \"From Share\" [name_source=preceding_td]",
+      "combobox \"To Share\" [name_source=preceding_td]",
+      "link \"Cancel\" [href=/members/100987]",
+      "textbox \"Amount\" [name_source=preceding_td]",
+      "textbox \"Memo\" [name_source=preceding_td]"
+    ],
+    "controls_disappeared": [
+      "button \"Post Transfer\"",
+      "link \"Cancel\" [href=/members/100987/transfer]"
+    ],
+    "capture_scope": "effect-level: URL and accessibility-state diff across the handoff. Individual actions are not recorded -- see module docstring for the seam."
+  },
+  "control": {
+    "owner": "automation",
+    "context_identity": 4516082224,
+    "transitions": [
+      {
+        "at": "2026-09-07T00:57:51.465933+00:00",
+        "from": "automation",
+        "to": "human",
+        "reason": "step s11: Step s11 is marked risky and policy is 'require_confirmation'. the step is irreversible and policy requires a person to perform it; automation stopped before acting."
+      },
+      {
+        "at": "2026-09-07T00:57:57.945597+00:00",
+        "from": "human",
+        "to": "automation",
+        "reason": "operator returned control after step s11"
+      }
+    ]
+  }
+}

@@ -31,6 +31,9 @@ tbody tr:hover { background: #f0f4f8; }
 .pill { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 11px;
         font-weight: 600; border: 1px solid currentColor; white-space: nowrap; }
 .s-success { color: var(--ok); } .s-business_outcome { color: var(--info); }
+/* Neither is a failure: a person was offered an irreversible step and it was
+   not taken, established by re-checking the page. Warn-coloured, not bad. */
+.s-not_performed, .s-expired { color: var(--pause); }
 .s-escalation_required { color: var(--pause); } .s-caller_error { color: var(--warn); }
 .s-auth_failure, .s-hard_failure { color: var(--bad); }
 .s-running { color: var(--muted); }

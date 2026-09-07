@@ -1,0 +1,69 @@
+{
+  "human_activity": {
+    "started_at": "2026-09-07T00:55:19.615966+00:00",
+    "ended_at": "2026-09-07T00:55:19.618241+00:00",
+    "operator": "dashboard",
+    "decision": "done",
+    "notes": "",
+    "url_before": "https://web-sample.interface-hiring.com/members/100987/transfer/post",
+    "url_after": "https://web-sample.interface-hiring.com/members/100987/transfer/post",
+    "url_changed": false,
+    "controls_appeared": [],
+    "controls_disappeared": [],
+    "capture_scope": "effect-level: URL and accessibility-state diff across the handoff. Individual actions are not recorded -- see module docstring for the seam."
+  },
+  "control": {
+    "owner": "automation",
+    "context_identity": 4498647440,
+    "transitions": [
+      {
+        "at": "2026-09-07T00:55:06.978240+00:00",
+        "from": "automation",
+        "to": "human",
+        "reason": "step s7: Unexpected driver error on step s7: Locator.select_option: Invalid frame in aria-ref selector \"aria-ref=f5e29\"\nCall log:\n  - waiting for locator(\"aria-ref=f5e29\")\n    - locator resolved to <select name=\"to\" class=\"fld\">\u2026</select>\n  - attempting select option action\n    2 \u00d7 waiting for element to be visible and enabled\n      - did not find some options\n    - retrying select option action\n    - waiting 20ms\n    2 \u00d7 waiting for element to be visible and enabled\n      - did not find some options\n    - retrying select option action\n      - waiting 100ms\n    11 \u00d7 waiting for element to be visible and enabled\n       - did not find some options\n     - retrying select option action\n       - waiting 500ms\n  - element was detached from the DOM, retrying\n"
+      },
+      {
+        "at": "2026-09-07T00:55:19.409711+00:00",
+        "from": "human",
+        "to": "automation",
+        "reason": "operator returned control after step s7"
+      },
+      {
+        "at": "2026-09-07T00:55:19.519686+00:00",
+        "from": "automation",
+        "to": "human",
+        "reason": "step s8: Could not locate 'amount_field' on the page. element 'amount_field' could not be resolved; tried: role_name(no_match, 0 match(es)), role_ordinal(no_match, 0 match(es))"
+      },
+      {
+        "at": "2026-09-07T00:55:19.519702+00:00",
+        "from": "human",
+        "to": "automation",
+        "reason": "operator returned control after step s8"
+      },
+      {
+        "at": "2026-09-07T00:55:19.566473+00:00",
+        "from": "automation",
+        "to": "human",
+        "reason": "step s9: Could not locate 'memo_field' on the page. element 'memo_field' could not be resolved; tried: role_name(no_match, 0 match(es)), role_ordinal(no_match, 0 match(es))"
+      },
+      {
+        "at": "2026-09-07T00:55:19.566483+00:00",
+        "from": "human",
+        "to": "automation",
+        "reason": "operator returned control after step s9"
+      },
+      {
+        "at": "2026-09-07T00:55:19.615979+00:00",
+        "from": "automation",
+        "to": "human",
+        "reason": "step s10: Could not locate 'continue_button' on the page. element 'continue_button' could not be resolved; tried: role_name(no_match, 0 match(es))"
+      },
+      {
+        "at": "2026-09-07T00:55:19.615988+00:00",
+        "from": "human",
+        "to": "automation",
+        "reason": "operator returned control after step s10"
+      }
+    ]
+  }
+}

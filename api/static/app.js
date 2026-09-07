@@ -82,8 +82,9 @@ async function renderCatalog() {
 
     const risky = c.risky_steps?.length
       ? `<div class="banner stop"><b>Contains an irreversible step</b> (${esc(c.risky_steps.join(", "))}).
-         An unattended invocation stops there and asks for a person. Tick
-         <b>attended</b> to run it with a human available.</div>`
+         The run stops there, keeps the live session open and waits for a person.
+         It appears under <b>Interventions</b> until someone finishes with it or the
+         pause deadline passes.</div>`
       : "";
 
     return `<div class="card" data-cap="${esc(c.id)}" data-ver="${esc(c.version)}">
@@ -106,7 +107,6 @@ async function renderCatalog() {
       ${outputs}${outcomes}
       <h3>Invoke</h3>
       <form class="invoke">${inputs}
-        <label><input type="checkbox" name="__attended"> attended &mdash; headed browser, a risky step pauses for you</label>
         <p><button class="act go" type="submit">Invoke</button></p>
       </form>
       <div class="result"></div>
@@ -119,17 +119,15 @@ async function renderCatalog() {
       const card = form.closest(".card");
       const out = $(".result", card);
       const inputs = {};
-      let attended = false;
       new FormData(form).forEach((v, k) => {
-        if (k === "__attended") attended = true;
-        else if (String(v).length) inputs[k] = v;
+        if (String(v).length) inputs[k] = v;
       });
-      out.innerHTML = `<p class="muted">Running&hellip;${attended
-        ? " A browser window will open on the machine running the API." : ""}</p>`;
+      out.innerHTML = `<p class="muted">Running&hellip; A browser window will open on the
+        machine running the API.</p>`;
       const { status, body } = await api(
         `/capabilities/${encodeURIComponent(card.dataset.cap)}/${encodeURIComponent(card.dataset.ver)}/invoke`,
         { method: "POST", headers: { "content-type": "application/json" },
-          body: JSON.stringify({ inputs, attended }) });
+          body: JSON.stringify({ inputs }) });
       out.innerHTML = `<p>HTTP ${status} ${pill(body?.status ?? body?.classification ?? "unknown")}
         ${body?.run_id ? `<a href="#" data-run="${esc(body.run_id)}">open run</a>` : ""}</p>
         <pre>${esc(JSON.stringify(body, null, 2))}</pre>`;
@@ -151,7 +149,7 @@ async function renderRuns() {
       ${runs.map((r) => `<tr>
         <td class="mono"><a href="#" data-run="${esc(r.run_id)}">${esc(r.run_id)}</a></td>
         <td>${esc(r.capability?.id ?? "")}</td>
-        <td>${pill(r.status)}${r.attended ? ' <span class="tag">attended</span>' : ""}</td>
+        <td>${pill(r.status)}</td>
         <td>${when(r.started_at)}</td>
         <td>${r.duration_ms ? Math.round(r.duration_ms) + " ms" : "—"}</td>
         <td class="mono">${esc(JSON.stringify(r.inputs ?? {}))}</td>
@@ -251,7 +249,7 @@ async function renderInterventions() {
           ["run", html(`<span class="mono">${esc(it.run_id)}</span>`)],
           ["blocked step", html(`<span class="mono">${esc(stopped.step_id ?? "")}</span>`)],
           ["why", stopped.reason ?? ""],
-          ["expected on resume", stopped.expected ?? ""],
+          ["what will be checked", stopped.expected ?? ""],
           ["observed", stopped.observed ?? ""],
           ["url", html(`<span class="mono">${esc(req.state?.url ?? "")}</span>`)],
           ["completed", html(`<span class="mono">${esc((req.completed_steps ?? []).join(", "))}</span>`)],
@@ -259,10 +257,14 @@ async function renderInterventions() {
         ])}
         ${evidenceBlock(it.run_id, it.evidence)}
         <h3>Hand control back</h3>
-        <label>What did you do? <input type="text" class="notes"
-          placeholder="e.g. posted the transfer manually and saw the confirmation"></label>
-        <p><button class="act go" data-do="resume">Resume</button>
-           <button class="act stop" data-do="abort">Abort</button></p>
+        <div class="banner">This step posts and cannot be reversed. Automation has
+          performed nothing. The browser is open on that screen &mdash; if you approve
+          of this step, perform it there. Then press the button below and the run will
+          <b>check the page</b> to see what actually happened. You are not telling it
+          the outcome.</div>
+        <label>Notes (optional, audit trail only) <input type="text" class="notes"
+          placeholder="e.g. posted the transfer manually"></label>
+        <p><button class="act go" data-do="done">I&rsquo;m done &mdash; check it</button></p>
         <div class="outcome"></div>
       </div>`;
     }).join("");
@@ -271,7 +273,7 @@ async function renderInterventions() {
     btn.addEventListener("click", async () => {
       const card = btn.closest(".card");
       const out = $(".outcome", card);
-      out.innerHTML = '<p class="muted">Signalling&hellip;</p>';
+      out.innerHTML = '<p class="muted">Checking the page&hellip;</p>';
       const { status, body } = await api(
         `/runs/${encodeURIComponent(card.dataset.run)}/${btn.dataset.do}`,
         { method: "POST", headers: { "content-type": "application/json" },

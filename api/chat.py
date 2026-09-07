@@ -203,19 +203,38 @@ def describe(result: dict[str, Any], capability: str, inputs: dict[str, Any]) ->
     if classification == "escalation_required":
         escalation = result.get("escalation") or {}
         step = escalation.get("step_id") or "an irreversible step"
-        expected = escalation.get("expected_on_resume")
+        expected = escalation.get("expected") or escalation.get("expected_on_resume")
         lines = [
             f"I stopped before completing this. Step {step} is irreversible, and this "
             "capability's policy requires a person to perform it rather than "
             "automation.",
-            "Everything up to that point is done and the session is still open.",
+            "Everything up to that point is done and the session is still open, "
+            "waiting for someone.",
         ]
         if expected:
-            lines.append(f"When someone completes it, the run will verify: {expected}.")
+            lines.append(f"When someone has finished, the run will check: {expected}.")
         lines.append(
-            "Open the Interventions tab to see the captured state and hand control "
-            "back when the step has been performed.")
+            "Open the Interventions tab to see the captured state and tell the run "
+            "to look once the step has been performed.")
         return " ".join(lines)
+
+    if classification == "not_performed":
+        # NOT a failure, and it must not read as one. A person was offered an
+        # irreversible step and did not take it, and the system established
+        # that by looking at the page rather than by being told.
+        return (
+            "This was not completed, and nothing was committed. The irreversible step "
+            "was offered to an operator and has not been performed -- I checked the "
+            f"page rather than taking anyone's word for it. {result.get('message', '')}"
+        ).strip()
+
+    if classification == "expired":
+        return (
+            "Nobody picked this up in time, so the run ended and the session was "
+            "closed. Nothing was committed -- I checked the page before ending, in "
+            "case the step had been performed without anyone saying so. "
+            f"{result.get('message', '')}"
+        ).strip()
 
     if classification == "caller_error":
         violations = result.get("violations") or []

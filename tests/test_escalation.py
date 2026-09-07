@@ -310,19 +310,24 @@ def test_operator_performing_the_step_lets_the_run_continue(tmp_path):
     assert result.human_interventions[0]["decision"] == "resume"
 
 
-def test_resume_without_actually_doing_it_does_not_pass(tmp_path):
-    """A resume is not evidence. If the checkpoint still fails, the run stops
-    rather than trusting the operator's report that the transfer went through."""
-    operator = ScriptedOperator([OperatorDecision(Decision.RESUME, notes="said done")])
+def test_signalling_done_without_actually_doing_it_does_not_pass(tmp_path):
+    """The button is not evidence. The checkpoint still fails, so the run ends
+    without claiming the transfer went through.
+
+    `not_performed` rather than `hard_failure`: nothing broke. A person was
+    offered an irreversible step and it was not taken, and the system
+    established that by looking at the page.
+    """
+    operator = ScriptedOperator([OperatorDecision(Decision.DONE, notes="said done")])
     engine = build_engine(
         make_artifact([RISKY_CLICK]), tmp_path,
         observations=Observations(page_text=""), escalate=True, operator=operator,
     )
     result = _run_flow(engine)
 
-    assert result.classification == "hard_failure"
-    assert "checkpoint still fails" in result.message
-    assert engine.executor.calls == []
+    assert result.classification == "not_performed"
+    assert "without performing it" in result.message
+    assert engine.executor.calls == [], "automation never performs a risky step"
 
 
 def test_escalate_refuses_to_succeed_for_a_risky_step_with_no_checkpoint(tmp_path):
@@ -332,18 +337,22 @@ def test_escalate_refuses_to_succeed_for_a_risky_step_with_no_checkpoint(tmp_pat
     failure the checkpoint exists to prevent."""
     artifact = make_artifact([RISKY_CLICK])
     uncheckable = artifact.steps[0].model_copy(update={"checkpoint": None})
-    operator = ScriptedOperator([OperatorDecision(Decision.RESUME, notes="done")])
+    operator = ScriptedOperator([OperatorDecision(Decision.DONE, notes="done")])
     engine = build_engine(artifact, tmp_path, escalate=True, operator=operator)
 
+    from replay.engine import UNVERIFIABLE
     from replay.result import ReplayResult
 
     result = ReplayResult(
         classification="hard_failure", capability_id="t", capability_version="1.0.0",
         tenant="t", run_id=engine.run_id,
     )
-    resumed = asyncio.run(engine._escalate(uncheckable, {}, result, classification="risk_blocked"))
+    verdict = asyncio.run(engine._escalate(uncheckable, {}, result, classification="risk_blocked"))
 
-    assert resumed is False
+    # UNVERIFIABLE, distinct from NOT_PERFORMED: "it did not happen" and "we
+    # cannot tell whether it happened" are different answers, and only the
+    # second is a failure that needs someone to look.
+    assert verdict == UNVERIFIABLE
     assert "cannot be verified" in result.message
 
 
@@ -430,10 +439,12 @@ def test_scripted_operator_runs_work_while_holding_control(request_obj):
     assert operator.seen[0] is request_obj
 
 
-def test_scripted_operator_aborts_when_out_of_decisions(request_obj):
+def test_scripted_operator_signals_done_when_out_of_decisions(request_obj):
+    """DONE, not ABORT. A surface with nothing left to say must still let the
+    checkpoint decide -- asserting "nothing happened" without looking is the
+    defect this design removes."""
     decision = ScriptedOperator().handle(request_obj)
-    assert not decision.resumed
-    assert decision.decision is Decision.ABORT
+    assert decision.decision is Decision.DONE
 
 
 # ---------------------------------------------------------------------------
@@ -610,7 +621,13 @@ def test_resume_continues_from_the_failed_step_not_from_the_start(faults, creds,
 
 
 @live
-def test_operator_abort_ends_the_run_as_a_failure(faults, creds, tmp_path):
+def test_an_unfixed_breakage_stays_a_hard_failure(faults, creds, tmp_path):
+    """`not_performed` is scoped to a risky step deliberately not taken.
+
+    This escalation is a session expiry -- something BROKE. A human looked and
+    it is still broken, so it stays a hard failure rather than being dressed
+    up as a decision somebody made.
+    """
     from replay.engine import ReplayEngine
 
     faults("session_expired")
@@ -687,3 +704,69 @@ def test_a_writer_given_no_sink_is_degraded_rather_than_permissive(tmp_path):
     written = write_request(request, tmp_path).read_text()
     assert "ada@example.com" not in written        # shape rules still apply
     assert null_sink().degraded is True            # and it says it is degraded
+
+
+# ---------------------------------------------------------------------------
+# The outcome comes from the page, structurally
+# ---------------------------------------------------------------------------
+
+
+def test_escalate_never_branches_on_what_the_operator_pressed():
+    """Asserted by parsing, not by testing behaviour on the paths I thought of.
+
+    The bug this replaces was a single early return: `if not decision.resumed:
+    return False`, taken before anything was evaluated. An operator who
+    performed the irreversible step and then pressed Abort got a run recording
+    that nothing had happened, while the money had moved.
+
+    Behavioural tests only cover the paths someone remembered to write. This
+    reads the method and fails if a branch on the operator's choice reappears
+    anywhere in it, which is a statement about the code rather than about my
+    enumeration of cases.
+    """
+    import ast
+    import inspect
+    import textwrap
+
+    from replay import engine as engine_mod
+
+    tree = ast.parse(textwrap.dedent(inspect.getsource(engine_mod.ReplayEngine._escalate)))
+    rendered = [
+        ast.unparse(node.test)
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.If, ast.IfExp))
+    ]
+    forbidden = ("decision.resumed", "decision.decision", "Decision.ABORT",
+                 "Decision.RESUME", "Decision.DONE")
+    offenders = [
+        test for test in rendered
+        if any(marker in test for marker in forbidden)
+    ]
+    assert not offenders, (
+        "the outcome must come from the checkpoint, never from the operator's "
+        f"choice -- found branches on: {offenders}"
+    )
+
+
+def test_only_the_timeout_flag_survives_and_only_to_name_the_outcome():
+    """`decision.timed_out` IS read, and that is deliberate.
+
+    It never decides whether the step happened -- the checkpoint does, on the
+    timeout path too, because an operator may have performed the step and
+    walked away. It only distinguishes "nobody came" from "somebody looked and
+    declined" once the checkpoint has already said the step did not happen.
+    """
+    import inspect
+
+    from replay import engine as engine_mod
+
+    source = inspect.getsource(engine_mod.ReplayEngine._escalate)
+    checkpoint_at = source.index("checkpoints.evaluate")
+    # It is read earlier than that, once, to record it in the handoff evidence.
+    # Recording is not deciding. What must come after the checkpoint is the
+    # only place it is BRANCHED on.
+    branch_at = source.index("if decision.timed_out")
+    assert branch_at > checkpoint_at, (
+        "timed_out is branched on before the checkpoint is evaluated, which "
+        "would let the deadline decide the outcome instead of the page"
+    )

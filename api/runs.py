@@ -21,6 +21,7 @@ process. The dashboard signals resume; it does not host the session.
 from __future__ import annotations
 
 import asyncio
+import os
 import threading
 import time
 from dataclasses import dataclass, field
@@ -31,10 +32,15 @@ from escalation.operator import Decision, OperatorDecision
 from escalation.request import InterventionRequest
 
 # A paused run holds a browser, a thread and a live application session. If
-# nobody ever answers, that leaks all three -- so a pause has a deadline and
-# expires into an abort rather than waiting forever. Long enough for a person
-# to actually do the work, short enough that a forgotten run cleans itself up.
-DEFAULT_PAUSE_TIMEOUT_S = 30 * 60
+# nobody ever answers, that leaks all three -- so a pause has a deadline.
+# Long enough for a person to actually do the work, short enough that a
+# forgotten run cleans itself up.
+#
+# Configurable because it is a deployment property, not a code constant: an
+# institution that staffs an intervention queue wants minutes, one that does
+# not wants seconds. It is also what makes expiry demonstrable without waiting
+# a quarter of an hour in front of an audience.
+DEFAULT_PAUSE_TIMEOUT_S = float(os.environ.get("PAUSE_TIMEOUT_S", 15 * 60))
 
 
 class PendingOperator:
@@ -60,13 +66,19 @@ class PendingOperator:
         answered = self._answered.wait(self.timeout_s)
         self.waiting_since = None
         if not answered or self.decision is None:
-            # Nobody came. Abort rather than resume: resuming would continue a
-            # run whose blocked step nobody performed, and the checkpoint
-            # would then fail with a misleading reason.
+            # Nobody came. Still DONE, and still verified: the engine
+            # evaluates the blocked step's checkpoint on this path too,
+            # because an operator may have performed the step in the live
+            # window and simply never pressed anything. Returning a verdict
+            # here instead of a checked one is the mistake this replaces.
+            # `timed_out` only changes how a failed checkpoint is reported --
+            # "nobody came" and "somebody looked and declined" are different
+            # operational facts.
             return OperatorDecision(
-                Decision.ABORT,
+                Decision.DONE,
                 notes=f"no operator responded within {self.timeout_s:.0f}s",
                 operator="dashboard (timed out)",
+                timed_out=True,
             )
         return self.decision
 

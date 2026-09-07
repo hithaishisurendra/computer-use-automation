@@ -154,16 +154,35 @@ def test_the_api_never_drives_a_page_itself():
             )
 
 
-def test_an_api_invocation_is_unattended_by_construction():
-    """There is no operator behind an HTTP request, and offering one would be
-    a lie the audit trail keeps."""
+def test_there_is_no_unattended_invoke_path():
+    """Every invocation parks and holds its session.
+
+    The previous design let the CALLER declare whether a human would be
+    available. It could not: availability is a property of the institution
+    and the moment, not of the call. Worse, the unattended branch ran with
+    `escalate=False` and tore the browser down before responding, so its
+    `202 escalation_required` named an intervention that had already ceased
+    to exist. One path now, and this asserts the other cannot come back.
+    """
     source = (REPO_ROOT / "api" / "service.py").read_text()
-    assert "escalate=False" in source
+    assert "escalate=False" not in source
+    assert "escalate=True" in source
+    assert "headless=False" in source
 
 
-def test_every_response_goes_through_the_run_s_sink():
+def test_invoke_does_not_accept_an_attended_flag(client):
+    """`extra="forbid"` turns an obsolete field into a 422 rather than a
+    silent 200 that ignored it."""
+    r = client.post("/capabilities/member_share_balance/1.0.0/invoke",
+                    json={"inputs": {"member_ref": "100234"}, "attended": True})
+    assert r.status_code == 422
+
+
+def test_every_response_goes_through_a_sink():
+    """An HTTP body is an output surface. Asserted structurally because this
+    project has leaked at every new surface it added."""
     source = (REPO_ROOT / "api" / "service.py").read_text()
-    assert "engine.sink.payload(payload)" in source
+    assert "record._sink.payload(body)" in source
 
 
 def test_declared_sensitive_inputs_are_masked_in_the_response(client):
