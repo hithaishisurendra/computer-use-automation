@@ -1,5 +1,7 @@
 # Computer-use automation: discover once, replay deterministically
 
+NOTE: CHECK BRANCH PHASE-2-CUA FOR IMPLEMENTATION OF THE SECOND PHASE
+
 An LLM drives a legacy back-office UI to accomplish a goal, the successful run
 is recorded as a typed capability artifact, and that artifact replays
 deterministically with **no model in the loop**.
