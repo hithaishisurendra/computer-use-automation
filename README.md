@@ -30,7 +30,8 @@ Python 3.11+. Every block below runs as-is.
 **1. Install.**
 
 ```bash
-git clone <repo-url> && cd interface.ai
+git clone https://github.com/hithaishisurendra/computer-use-automation.git
+cd computer-use-automation
 git checkout phase-2-cua
 python3 -m venv .venv
 source .venv/bin/activate            # Windows: .venv\Scripts\activate
