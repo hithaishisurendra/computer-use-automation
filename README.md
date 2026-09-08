@@ -23,55 +23,84 @@ Decisions and their rejected alternatives:
 
 ---
 
-## Setup
+## Setup: clone to running, copy and paste
 
-Python 3.11+.
+Python 3.11+. Every block below runs as-is.
+
+**1. Install.**
 
 ```bash
+git clone <repo-url> && cd interface.ai
+git checkout phase-2-cua
 python3 -m venv .venv
 source .venv/bin/activate            # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 playwright install chromium          # ~300MB, one time
 ```
 
-### Environment
-
-Everything goes in `.env` (gitignored, loaded automatically). Artifacts store
-the **names** of credential variables, never values — a pasted secret fails
-schema validation.
+**2. Credentials.** Paste this whole block, then edit the one line with your
+Anthropic key. Everything else is correct as written: the MERIDIAN operators
+are the brief's public demo accounts.
 
 ```bash
 cat > .env <<'EOF'
-# Model. Anthropic is the default provider; Gemini is fully wired as an
-# alternative and both stay, which is what makes the provider seam real.
-ANTHROPIC_API_KEY=sk-ant-...
-ANTHROPIC_WORKSPACE_ID=...      # only if your key is identity-linked
-GEMINI_API_KEY=...              # optional, for --provider gemini
+ANTHROPIC_API_KEY=sk-ant-REPLACE-ME
+ANTHROPIC_WORKSPACE_ID=            # only if your key is workspace-scoped
+GEMINI_API_KEY=                    # optional, for --provider gemini
 
-# MERIDIAN operators. Public demo credentials, no real PII.
 MERIDIAN_OPERATOR=teller1
 MERIDIAN_PASSWORD=password
 MERIDIAN_SUPERVISOR=super1
 MERIDIAN_SUPERVISOR_PASSWORD=password
 
-# CoreServ accepts any non-empty pair.
 CORESERV_USERNAME=operator
 CORESERV_PASSWORD=devpassword
 
-# Optional. How long a run parked at an irreversible step waits for an
-# operator before ending and closing the session. Default 900 (15 minutes);
-# lower it to make expiry demonstrable without waiting.
 PAUSE_TIMEOUT_S=900
 EOF
 ```
 
----
+Artifacts store the **names** of credential variables, never values. A pasted
+secret fails schema validation.
 
-## Quick start — the whole system in one command
+**A model key is needed only to record a new capability or to use the Chat
+tab.** Replay imports no model client, so every capability, the API, the
+catalogue, the dashboard and the whole escalation path work without one.
+
+**3. Prove it works before running anything else.**
 
 ```bash
-uvicorn api.service:app --port 8900
+python -m pytest tests/ -q                              # 508 pass, 21 skip
+python -m replay.run --capability member_share_balance --version 1.1.0 \
+  --input member_ref=100234 --input share_ref=100234-S0001-12
 ```
+
+The replay drives the live MERIDIAN site and prints a JSON result ending in
+`"classification": "success"` with the share balance. No API key involved.
+
+**4. Start everything.**
+
+```bash
+uvicorn api.service:app --port 8900        # terminal 1
+uvicorn coreserv.main:app --port 8800      # terminal 2, only for the two CoreServ capabilities
+```
+
+**5. Check the target is not in a forced-error state.** MERIDIAN has a global
+fault switch that persists across sessions, and someone may have left it on.
+
+```bash
+B=https://web-sample.interface-hiring.com; J=/tmp/meridian.jar; rm -f $J
+curl -s -c $J -b $J -o /dev/null "$B/signon"
+curl -s -c $J -b $J -o /dev/null -d "operator=teller1&password=password&branch=MAIN-001" "$B/signon"
+curl -s -c $J -b $J "$B/settings" | grep -oE '<option[^>]*selected[^>]*>'
+```
+
+`<option value="" selected>` means normal operation. Anything else means a fault
+is forced globally; clear it on the System Settings screen before demoing.
+
+---
+
+## Quick start
 
 Open **<http://127.0.0.1:8900/ui>**. Four tabs:
 
@@ -79,7 +108,7 @@ Open **<http://127.0.0.1:8900/ui>**. Four tabs:
 |---|---|
 | **Chat** | Plain English → a capability invocation. Shows which capability it chose and with what arguments. |
 | **Catalog** | Every capability: typed inputs and outputs, declared business outcomes, whether it needs a supervisor, whether it contains an irreversible step. Invoke one directly. |
-| **Runs** | Every run this process served, colour-coded by classification. |
+| **Runs** | Every run, colour-coded by classification. Seeded from `evidence/dashboard/` so a fresh clone opens with history rather than an empty table, and appended to as you use it. |
 | **Interventions** | Runs parked at an irreversible step, holding a live session, with the captured state and one control: **I'm done — check it**. |
 
 Try, in the Chat tab:
@@ -90,8 +119,9 @@ Look up the share balance for member 999999
 Transfer 5.00 from 100987-MMKT-7 to 100987-MMKT-8 for member 100987, memo demo
 ```
 
-The app is stateful in memory and your own runs move money, so check a share
-holds enough before using it in a demo. The first returns a balance. The second
+The app is stateful in memory and every transfer you run moves real money on
+it, so check a share holds enough before using it. `100987-MMKT-7` and
+`100987-MMKT-8` are the pair the examples use. The first returns a balance. The second
 returns **"No member exists with the supplied identifier"** — a business outcome, an answer rather than an error.
 The third stops at the irreversible post step and hands you to Interventions.
 

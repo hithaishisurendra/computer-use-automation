@@ -1,0 +1,1578 @@
+[
+  {
+    "you": "Look up member 999999's share balance"
+  },
+  {
+    "reply": "I can look up a share balance for member 999999, but the capability requires a specific share reference (e.g., 999999-S0001-12) in addition to the member ID \u2014 you only gave me the member number. Could you provide which share you'd like checked?",
+    "chose": null,
+    "available": [
+      {
+        "id": "member_funds_transfer",
+        "description": "Transfer <amount> from member <member_ref>'s share <from_share> to their share <to_share>, with the memo '<memo>', and reach the confirmation screen Parameterised: <member_ref>, <from_share>, <to_share>, <amount>, <memo> are supplied per invocation.",
+        "required_role": null,
+        "requires_human": true,
+        "needs": [
+          {
+            "name": "member_ref",
+            "required": true
+          },
+          {
+            "name": "from_share",
+            "required": true
+          },
+          {
+            "name": "to_share",
+            "required": true
+          },
+          {
+            "name": "amount",
+            "required": true
+          },
+          {
+            "name": "memo",
+            "required": true
+          }
+        ]
+      },
+      {
+        "id": "member_open_new_share",
+        "description": "Open a new Money Market share for member 100987 with an initial deposit of 100.00, and reach the confirmation screen",
+        "required_role": null,
+        "requires_human": true,
+        "needs": [
+          {
+            "name": "member_ref",
+            "required": true
+          },
+          {
+            "name": "share_type",
+            "required": true
+          },
+          {
+            "name": "initial_deposit",
+            "required": true
+          }
+        ]
+      },
+      {
+        "id": "member_place_hold",
+        "description": "Place a hold on member 100987's share 100987-MMKT-6, selecting reason code LEGAL from the Reason Code dropdown and entering the note 'court order received'. Continue past the review screen and click Apply Hold so the hold is actually posted, then read the confirmation number.",
+        "required_role": "supervisor",
+        "requires_human": true,
+        "needs": [
+          {
+            "name": "member_ref",
+            "required": true
+          },
+          {
+            "name": "share",
+            "required": true
+          },
+          {
+            "name": "reason_code",
+            "required": true
+          },
+          {
+            "name": "notes",
+            "required": true
+          }
+        ]
+      },
+      {
+        "id": "member_savings_balance",
+        "description": "Given a member reference, return the member's current savings account balance and display name.",
+        "required_role": null,
+        "requires_human": false,
+        "needs": [
+          {
+            "name": "member_ref",
+            "required": true
+          }
+        ]
+      },
+      {
+        "id": "member_savings_balance_discovered",
+        "description": "Look up member ***01 and read their current savings balance",
+        "required_role": null,
+        "requires_human": false,
+        "needs": [
+          {
+            "name": "member_ref",
+            "required": true
+          }
+        ]
+      },
+      {
+        "id": "member_share_balance",
+        "description": "Look up member <member_ref>, open their member record, and read the balance of share <share_ref> from the shares and balances table. Both the member and the share are supplied per invocation.",
+        "required_role": null,
+        "requires_human": false,
+        "needs": [
+          {
+            "name": "member_ref",
+            "required": true
+          },
+          {
+            "name": "share_ref",
+            "required": true
+          }
+        ]
+      },
+      {
+        "id": "member_update_info",
+        "description": "Update member <member_ref>'s e-mail address to <e_mail> and phone number to <phone>, and reach the confirmation screen. Parameterised: <member_ref>, <e_mail>, <phone> are supplied per invocation.",
+        "required_role": null,
+        "requires_human": true,
+        "needs": [
+          {
+            "name": "member_ref",
+            "required": true
+          },
+          {
+            "name": "e_mail",
+            "required": true
+          },
+          {
+            "name": "phone",
+            "required": true
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "you": "Look up member 999999's share balance - share ref 999999-S0001-12"
+  },
+  {
+    "reply": "No member exists with the supplied identifier.",
+    "chose": {
+      "capability": "member_share_balance",
+      "version": "1.1.0",
+      "inputs": {
+        "member_ref": "****99",
+        "share_ref": "*************12"
+      },
+      "required_role": null,
+      "status": "draft"
+    },
+    "classification": "business_outcome",
+    "run_id": "run_9510d3f1",
+    "result": {
+      "classification": "business_outcome",
+      "capability": {
+        "id": "member_share_balance",
+        "version": "1.1.0"
+      },
+      "tenant": "demo",
+      "run_id": "run_9510d3f1",
+      "duration_ms": 4805.42,
+      "inputs": {
+        "member_ref": "****99",
+        "share_ref": "*************12"
+      },
+      "outcome": "member_not_found",
+      "message": "No member exists with the supplied identifier.",
+      "control": {
+        "owner": "released",
+        "context_identity": 4479332688,
+        "transitions": [
+          {
+            "at": "2026-09-07T10:49:39.577478+00:00",
+            "from": "automation",
+            "to": "released",
+            "reason": "run finished: business_outcome"
+          }
+        ]
+      },
+      "evidence": {
+        "screenshot": "evidence/replay/run_9510d3f1/failure.png",
+        "snapshot": "evidence/replay/run_9510d3f1/failure_snapshot.txt"
+      },
+      "trace": [
+        {
+          "step_id": "s1",
+          "action": "navigate",
+          "status": "ok",
+          "duration_ms": 84.2,
+          "attempts": 1,
+          "checkpoint": {
+            "satisfied": true,
+            "expected": "element 'member_inquiry_selection_link' present",
+            "observed": "resolved via rung 0",
+            "duration_ms": 4.47
+          }
+        },
+        {
+          "step_id": "s2",
+          "action": "click",
+          "status": "ok",
+          "duration_ms": 173.8,
+          "attempts": 1,
+          "resolution": {
+            "element": "member_inquiry_selection_link",
+            "resolved": true,
+            "frame": null,
+            "rung_index": 0,
+            "strategy": "role_name",
+            "confidence": "high",
+            "brittle": false,
+            "duration_ms": 0.03,
+            "attempts": [
+              {
+                "rung": 0,
+                "strategy": "role_name",
+                "confidence": "high",
+                "brittle": false,
+                "match_count": 1,
+                "outcome": "resolved"
+              }
+            ]
+          },
+          "checkpoint": {
+            "satisfied": true,
+            "expected": "element 'value_field' present",
+            "observed": "resolved via rung 0",
+            "duration_ms": 15.36
+          }
+        },
+        {
+          "step_id": "s3",
+          "action": "fill",
+          "status": "ok",
+          "duration_ms": 43.19,
+          "attempts": 1,
+          "resolution": {
+            "element": "value_field",
+            "resolved": true,
+            "frame": null,
+            "rung_index": 0,
+            "strategy": "role_name",
+            "confidence": "high",
+            "brittle": false,
+            "duration_ms": 0.03,
+            "attempts": [
+              {
+                "rung": 0,
+                "strategy": "role_name",
+                "confidence": "high",
+                "brittle": false,
+                "match_count": 1,
+                "outcome": "resolved"
+              }
+            ]
+          }
+        },
+        {
+          "step_id": "s4",
+          "action": "click",
+          "status": "ok",
+          "duration_ms": 173.01,
+          "attempts": 1,
+          "resolution": {
+            "element": "search_button",
+            "resolved": true,
+            "frame": null,
+            "rung_index": 0,
+            "strategy": "role_name",
+            "confidence": "high",
+            "brittle": false,
+            "duration_ms": 0.03,
+            "attempts": [
+              {
+                "rung": 0,
+                "strategy": "role_name",
+                "confidence": "high",
+                "brittle": false,
+                "match_count": 1,
+                "outcome": "resolved"
+              }
+            ]
+          },
+          "detections": [
+            {
+              "name": "member_not_found",
+              "layer": "profile",
+              "classification": "business_outcome",
+              "message": "No member exists with the supplied identifier."
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "you": "What is the balance of share 100234-S0001-6 for member 100234?"
+  },
+  {
+    "reply": "Done. The share balance is 10.99.",
+    "chose": {
+      "capability": "member_share_balance",
+      "version": "1.1.0",
+      "inputs": {
+        "member_ref": "****34",
+        "share_ref": "************-6"
+      },
+      "required_role": null,
+      "status": "draft"
+    },
+    "classification": "success",
+    "run_id": "run_70b46fcb",
+    "result": {
+      "classification": "success",
+      "capability": {
+        "id": "member_share_balance",
+        "version": "1.1.0"
+      },
+      "tenant": "demo",
+      "run_id": "run_70b46fcb",
+      "duration_ms": 3839.72,
+      "inputs": {
+        "member_ref": "****34",
+        "share_ref": "************-6"
+      },
+      "outputs": {
+        "share_balance": "10.99"
+      },
+      "control": {
+        "owner": "released",
+        "context_identity": 4548104528,
+        "transitions": [
+          {
+            "at": "2026-09-07T10:50:12.336370+00:00",
+            "from": "automation",
+            "to": "released",
+            "reason": "run finished: success"
+          }
+        ]
+      },
+      "trace": [
+        {
+          "step_id": "s1",
+          "action": "navigate",
+          "status": "ok",
+          "duration_ms": 84.5,
+          "attempts": 1,
+          "checkpoint": {
+            "satisfied": true,
+            "expected": "element 'member_inquiry_selection_link' present",
+            "observed": "resolved via rung 0",
+            "duration_ms": 4.07
+          }
+        },
+        {
+          "step_id": "s2",
+          "action": "click",
+          "status": "ok",
+          "duration_ms": 206.39,
+          "attempts": 1,
+          "resolution": {
+            "element": "member_inquiry_selection_link",
+            "resolved": true,
+            "frame": null,
+            "rung_index": 0,
+            "strategy": "role_name",
+            "confidence": "high",
+            "brittle": false,
+            "duration_ms": 0.03,
+            "attempts": [
+              {
+                "rung": 0,
+                "strategy": "role_name",
+                "confidence": "high",
+                "brittle": false,
+                "match_count": 1,
+                "outcome": "resolved"
+              }
+            ]
+          },
+          "checkpoint": {
+            "satisfied": true,
+            "expected": "element 'value_field' present",
+            "observed": "resolved via rung 0",
+            "duration_ms": 14.93
+          }
+        },
+        {
+          "step_id": "s3",
+          "action": "fill",
+          "status": "ok",
+          "duration_ms": 40.84,
+          "attempts": 1,
+          "resolution": {
+            "element": "value_field",
+            "resolved": true,
+            "frame": null,
+            "rung_index": 0,
+            "strategy": "role_name",
+            "confidence": "high",
+            "brittle": false,
+            "duration_ms": 0.02,
+            "attempts": [
+              {
+                "rung": 0,
+                "strategy": "role_name",
+                "confidence": "high",
+                "brittle": false,
+                "match_count": 1,
+                "outcome": "resolved"
+              }
+            ]
+          }
+        },
+        {
+          "step_id": "s4",
+          "action": "click",
+          "status": "ok",
+          "duration_ms": 165.15,
+          "attempts": 1,
+          "resolution": {
+            "element": "search_button",
+            "resolved": true,
+            "frame": null,
+            "rung_index": 0,
+            "strategy": "role_name",
+            "confidence": "high",
+            "brittle": false,
+            "duration_ms": 0.03,
+            "attempts": [
+              {
+                "rung": 0,
+                "strategy": "role_name",
+                "confidence": "high",
+                "brittle": false,
+                "match_count": 1,
+                "outcome": "resolved"
+              }
+            ]
+          },
+          "checkpoint": {
+            "satisfied": true,
+            "expected": "element 'select_link' present",
+            "observed": "resolved via rung 0",
+            "duration_ms": 13.98
+          }
+        },
+        {
+          "step_id": "s5",
+          "action": "click",
+          "status": "ok",
+          "duration_ms": 135.12,
+          "attempts": 1,
+          "resolution": {
+            "element": "select_link",
+            "resolved": true,
+            "frame": null,
+            "rung_index": 0,
+            "strategy": "role_name",
+            "confidence": "high",
+            "brittle": false,
+            "duration_ms": 0.03,
+            "attempts": [
+              {
+                "rung": 0,
+                "strategy": "role_name",
+                "confidence": "high",
+                "brittle": false,
+                "match_count": 1,
+                "outcome": "resolved"
+              }
+            ]
+          },
+          "checkpoint": {
+            "satisfied": true,
+            "expected": "element 'share_balance_source' present",
+            "observed": "resolved via rung 0",
+            "duration_ms": 9.92
+          }
+        },
+        {
+          "step_id": "s6",
+          "action": "extract",
+          "status": "ok",
+          "duration_ms": 26.29,
+          "attempts": 1,
+          "resolution": {
+            "element": "share_balance_source",
+            "resolved": true,
+            "frame": null,
+            "rung_index": 0,
+            "strategy": "cell_in_row",
+            "confidence": "high",
+            "brittle": false,
+            "duration_ms": 0.64,
+            "attempts": [
+              {
+                "rung": 0,
+                "strategy": "cell_in_row",
+                "confidence": "high",
+                "brittle": false,
+                "match_count": 1,
+                "outcome": "resolved"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  },
+  {
+    "you": "open a new share for 100777 member"
+  },
+  {
+    "reply": "I can help with opening a new share, but I need a couple more details that aren't provided:\n\n1. **Share Type** (e.g., MMKT)\n2. **Initial Deposit** amount\n\nCould you confirm the share type and the initial deposit amount for member 100777?",
+    "chose": null,
+    "available": [
+      {
+        "id": "member_funds_transfer",
+        "description": "Transfer <amount> from member <member_ref>'s share <from_share> to their share <to_share>, with the memo '<memo>', and reach the confirmation screen Parameterised: <member_ref>, <from_share>, <to_share>, <amount>, <memo> are supplied per invocation.",
+        "required_role": null,
+        "requires_human": true,
+        "needs": [
+          {
+            "name": "member_ref",
+            "required": true
+          },
+          {
+            "name": "from_share",
+            "required": true
+          },
+          {
+            "name": "to_share",
+            "required": true
+          },
+          {
+            "name": "amount",
+            "required": true
+          },
+          {
+            "name": "memo",
+            "required": true
+          }
+        ]
+      },
+      {
+        "id": "member_open_new_share",
+        "description": "Open a new Money Market share for member 100987 with an initial deposit of 100.00, and reach the confirmation screen",
+        "required_role": null,
+        "requires_human": true,
+        "needs": [
+          {
+            "name": "member_ref",
+            "required": true
+          },
+          {
+            "name": "share_type",
+            "required": true
+          },
+          {
+            "name": "initial_deposit",
+            "required": true
+          }
+        ]
+      },
+      {
+        "id": "member_place_hold",
+        "description": "Place a hold on member 100987's share 100987-MMKT-6, selecting reason code LEGAL from the Reason Code dropdown and entering the note 'court order received'. Continue past the review screen and click Apply Hold so the hold is actually posted, then read the confirmation number.",
+        "required_role": "supervisor",
+        "requires_human": true,
+        "needs": [
+          {
+            "name": "member_ref",
+            "required": true
+          },
+          {
+            "name": "share",
+            "required": true
+          },
+          {
+            "name": "reason_code",
+            "required": true
+          },
+          {
+            "name": "notes",
+            "required": true
+          }
+        ]
+      },
+      {
+        "id": "member_savings_balance",
+        "description": "Given a member reference, return the member's current savings account balance and display name.",
+        "required_role": null,
+        "requires_human": false,
+        "needs": [
+          {
+            "name": "member_ref",
+            "required": true
+          }
+        ]
+      },
+      {
+        "id": "member_savings_balance_discovered",
+        "description": "Look up member ***01 and read their current savings balance",
+        "required_role": null,
+        "requires_human": false,
+        "needs": [
+          {
+            "name": "member_ref",
+            "required": true
+          }
+        ]
+      },
+      {
+        "id": "member_share_balance",
+        "description": "Look up member <member_ref>, open their member record, and read the balance of share <share_ref> from the shares and balances table. Both the member and the share are supplied per invocation.",
+        "required_role": null,
+        "requires_human": false,
+        "needs": [
+          {
+            "name": "member_ref",
+            "required": true
+          },
+          {
+            "name": "share_ref",
+            "required": true
+          }
+        ]
+      },
+      {
+        "id": "member_update_info",
+        "description": "Update member <member_ref>'s e-mail address to <e_mail> and phone number to <phone>, and reach the confirmation screen. Parameterised: <member_ref>, <e_mail>, <phone> are supplied per invocation.",
+        "required_role": null,
+        "requires_human": true,
+        "needs": [
+          {
+            "name": "member_ref",
+            "required": true
+          },
+          {
+            "name": "e_mail",
+            "required": true
+          },
+          {
+            "name": "phone",
+            "required": true
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "you": "new share of 1000 dollars of type MMKT for 102777"
+  },
+  {
+    "reply": "Done. It completed and returned no values.",
+    "chose": {
+      "capability": "member_open_new_share",
+      "version": "1.0.0",
+      "inputs": {
+        "member_ref": "102777",
+        "share_type": "MMKT",
+        "initial_deposit": "1000.00"
+      },
+      "required_role": null,
+      "status": "draft"
+    },
+    "classification": "success",
+    "run_id": "run_59c5a565",
+    "result": {
+      "classification": "success",
+      "capability": {
+        "id": "member_open_new_share",
+        "version": "1.0.0"
+      },
+      "tenant": "demo",
+      "run_id": "run_59c5a565",
+      "duration_ms": 15171.14,
+      "inputs": {
+        "member_ref": "****77",
+        "share_type": "MMKT",
+        "initial_deposit": "1000.00"
+      },
+      "outputs": {},
+      "escalation_eligible": true,
+      "human_interventions": [
+        {
+          "step_id": "s9",
+          "decision": "done",
+          "operator": "dashboard",
+          "notes": "",
+          "timed_out": false,
+          "url_changed": false
+        }
+      ],
+      "control": {
+        "owner": "released",
+        "context_identity": 4548783568,
+        "transitions": [
+          {
+            "at": "2026-09-07T10:58:26.590998+00:00",
+            "from": "automation",
+            "to": "human",
+            "reason": "step s9: Step s9 is marked risky and policy is 'require_confirmation'. the step is irreversible and policy requires a person to perform it; automation stopped before acting."
+          },
+          {
+            "at": "2026-09-07T10:58:37.443444+00:00",
+            "from": "human",
+            "to": "automation",
+            "reason": "operator returned control after step s9"
+          },
+          {
+            "at": "2026-09-07T10:58:37.508177+00:00",
+            "from": "automation",
+            "to": "released",
+            "reason": "run finished: success"
+          }
+        ]
+      },
+      "evidence": {
+        "intervention_request": "evidence/escalation/run_59c5a565/request.json",
+        "handoff": "evidence/escalation/run_59c5a565/handoff.json"
+      },
+      "trace": [
+        {
+          "step_id": "s1",
+          "action": "navigate",
+          "status": "ok",
+          "duration_ms": 87.49,
+          "attempts": 1,
+          "checkpoint": {
+            "satisfied": true,
+            "expected": "element 'open_new_share_link' present",
+            "observed": "resolved via rung 0",
+            "duration_ms": 4.99
+          }
+        },
+        {
+          "step_id": "s2",
+          "action": "click",
+          "status": "ok",
+          "duration_ms": 335.25,
+          "attempts": 1,
+          "resolution": {
+            "element": "open_new_share_link",
+            "resolved": true,
+            "frame": null,
+            "rung_index": 0,
+            "strategy": "role_name",
+            "confidence": "high",
+            "brittle": false,
+            "duration_ms": 0.03,
+            "attempts": [
+              {
+                "rung": 0,
+                "strategy": "role_name",
+                "confidence": "high",
+                "brittle": false,
+                "match_count": 1,
+                "outcome": "resolved"
+              }
+            ]
+          },
+          "checkpoint": {
+            "satisfied": true,
+            "expected": "element 'value_field' present",
+            "observed": "resolved via rung 0",
+            "duration_ms": 15.85
+          }
+        },
+        {
+          "step_id": "s3",
+          "action": "fill",
+          "status": "ok",
+          "duration_ms": 39.25,
+          "attempts": 1,
+          "resolution": {
+            "element": "value_field",
+            "resolved": true,
+            "frame": null,
+            "rung_index": 0,
+            "strategy": "role_name",
+            "confidence": "high",
+            "brittle": false,
+            "duration_ms": 0.02,
+            "attempts": [
+              {
+                "rung": 0,
+                "strategy": "role_name",
+                "confidence": "high",
+                "brittle": false,
+                "match_count": 1,
+                "outcome": "resolved"
+              }
+            ]
+          }
+        },
+        {
+          "step_id": "s4",
+          "action": "click",
+          "status": "ok",
+          "duration_ms": 192.56,
+          "attempts": 1,
+          "resolution": {
+            "element": "search_button",
+            "resolved": true,
+            "frame": null,
+            "rung_index": 0,
+            "strategy": "role_name",
+            "confidence": "high",
+            "brittle": false,
+            "duration_ms": 0.03,
+            "attempts": [
+              {
+                "rung": 0,
+                "strategy": "role_name",
+                "confidence": "high",
+                "brittle": false,
+                "match_count": 1,
+                "outcome": "resolved"
+              }
+            ]
+          },
+          "checkpoint": {
+            "satisfied": true,
+            "expected": "element 'select_link' present",
+            "observed": "resolved via rung 0",
+            "duration_ms": 18.14
+          }
+        },
+        {
+          "step_id": "s5",
+          "action": "click",
+          "status": "ok",
+          "duration_ms": 231.16,
+          "attempts": 1,
+          "resolution": {
+            "element": "select_link",
+            "resolved": true,
+            "frame": null,
+            "rung_index": 0,
+            "strategy": "role_name",
+            "confidence": "high",
+            "brittle": false,
+            "duration_ms": 0.03,
+            "attempts": [
+              {
+                "rung": 0,
+                "strategy": "role_name",
+                "confidence": "high",
+                "brittle": false,
+                "match_count": 1,
+                "outcome": "resolved"
+              }
+            ]
+          },
+          "checkpoint": {
+            "satisfied": true,
+            "expected": "element 'share_type_select' present",
+            "observed": "resolved via rung 0",
+            "duration_ms": 17.84
+          }
+        },
+        {
+          "step_id": "s6",
+          "action": "select",
+          "status": "ok",
+          "duration_ms": 40.21,
+          "attempts": 1,
+          "resolution": {
+            "element": "share_type_select",
+            "resolved": true,
+            "frame": null,
+            "rung_index": 0,
+            "strategy": "role_name",
+            "confidence": "high",
+            "brittle": false,
+            "duration_ms": 0.03,
+            "attempts": [
+              {
+                "rung": 0,
+                "strategy": "role_name",
+                "confidence": "high",
+                "brittle": false,
+                "match_count": 1,
+                "outcome": "resolved"
+              }
+            ]
+          }
+        },
+        {
+          "step_id": "s7",
+          "action": "fill",
+          "status": "ok",
+          "duration_ms": 36.83,
+          "attempts": 1,
+          "resolution": {
+            "element": "initial_deposit_field",
+            "resolved": true,
+            "frame": null,
+            "rung_index": 0,
+            "strategy": "role_name",
+            "confidence": "high",
+            "brittle": false,
+            "duration_ms": 0.03,
+            "attempts": [
+              {
+                "rung": 0,
+                "strategy": "role_name",
+                "confidence": "high",
+                "brittle": false,
+                "match_count": 1,
+                "outcome": "resolved"
+              }
+            ]
+          }
+        },
+        {
+          "step_id": "s8",
+          "action": "click",
+          "status": "ok",
+          "duration_ms": 154.49,
+          "attempts": 1,
+          "resolution": {
+            "element": "continue_button",
+            "resolved": true,
+            "frame": null,
+            "rung_index": 0,
+            "strategy": "role_name",
+            "confidence": "high",
+            "brittle": false,
+            "duration_ms": 0.03,
+            "attempts": [
+              {
+                "rung": 0,
+                "strategy": "role_name",
+                "confidence": "high",
+                "brittle": false,
+                "match_count": 1,
+                "outcome": "resolved"
+              }
+            ]
+          },
+          "checkpoint": {
+            "satisfied": true,
+            "expected": "element 'open_share_button' present",
+            "observed": "resolved via rung 0",
+            "duration_ms": 11.71
+          }
+        },
+        {
+          "step_id": "s9",
+          "action": "click",
+          "status": "blocked",
+          "duration_ms": 5.23,
+          "attempts": 1,
+          "detections": [
+            {
+              "name": "risky_action_blocked",
+              "layer": "engine",
+              "classification": "hard_failure",
+              "message": "Step s9 is marked risky and policy is 'require_confirmation'. the step is irreversible and policy requires a person to perform it; automation stopped before acting.",
+              "escalation_eligible": true
+            }
+          ]
+        }
+      ]
+    },
+    "resolved_by_operator": true
+  },
+  {
+    "you": "update email and phone info for member 102777 to <redacted:email> and 555-1234"
+  },
+  {
+    "reply": "Done. The email value is <redacted>.",
+    "chose": {
+      "capability": "member_update_info",
+      "version": "1.0.0",
+      "inputs": {
+        "member_ref": "102777",
+        "e_mail": "<redacted:email>",
+        "phone": "555-1234"
+      },
+      "required_role": null,
+      "status": "draft"
+    },
+    "classification": "success",
+    "run_id": "run_e38b9b97",
+    "result": {
+      "classification": "success",
+      "capability": {
+        "id": "member_update_info",
+        "version": "1.0.0"
+      },
+      "tenant": "demo",
+      "run_id": "run_e38b9b97",
+      "duration_ms": 28424.98,
+      "inputs": {
+        "member_ref": "****77",
+        "e_mail": "<redacted>",
+        "phone": "<redacted>"
+      },
+      "outputs": {
+        "email_value": "<redacted>"
+      },
+      "warnings": [
+        "step s8: element 'email_value_source' resolved only via a brittle rung (role_ordinal) -- drift signal"
+      ],
+      "escalation_eligible": true,
+      "human_interventions": [
+        {
+          "step_id": "s9",
+          "decision": "done",
+          "operator": "dashboard",
+          "notes": "",
+          "timed_out": false,
+          "url_changed": false
+        }
+      ],
+      "control": {
+        "owner": "released",
+        "context_identity": 4547348624,
+        "transitions": [
+          {
+            "at": "2026-09-07T11:00:00.804495+00:00",
+            "from": "automation",
+            "to": "human",
+            "reason": "step s9: Step s9 is marked risky and policy is 'require_confirmation'. the step is irreversible and policy requires a person to perform it; automation stopped before acting."
+          },
+          {
+            "at": "2026-09-07T11:00:24.626959+00:00",
+            "from": "human",
+            "to": "automation",
+            "reason": "operator returned control after step s9"
+          },
+          {
+            "at": "2026-09-07T11:00:24.765981+00:00",
+            "from": "automation",
+            "to": "released",
+            "reason": "run finished: success"
+          }
+        ]
+      },
+      "evidence": {
+        "intervention_request": "evidence/escalation/run_e38b9b97/request.json",
+        "handoff": "evidence/escalation/run_e38b9b97/handoff.json"
+      },
+      "trace": [
+        {
+          "step_id": "s1",
+          "action": "navigate",
+          "status": "ok",
+          "duration_ms": 83.83,
+          "attempts": 1,
+          "checkpoint": {
+            "satisfied": true,
+            "expected": "element 'update_member_information_link' present",
+            "observed": "resolved via rung 0",
+            "duration_ms": 4.37
+          }
+        },
+        {
+          "step_id": "s2",
+          "action": "click",
+          "status": "ok",
+          "duration_ms": 234.37,
+          "attempts": 1,
+          "resolution": {
+            "element": "update_member_information_link",
+            "resolved": true,
+            "frame": null,
+            "rung_index": 0,
+            "strategy": "role_name",
+            "confidence": "high",
+            "brittle": false,
+            "duration_ms": 0.03,
+            "attempts": [
+              {
+                "rung": 0,
+                "strategy": "role_name",
+                "confidence": "high",
+                "brittle": false,
+                "match_count": 1,
+                "outcome": "resolved"
+              }
+            ]
+          },
+          "checkpoint": {
+            "satisfied": true,
+            "expected": "element 'value_field' present",
+            "observed": "resolved via rung 0",
+            "duration_ms": 12.93
+          }
+        },
+        {
+          "step_id": "s3",
+          "action": "fill",
+          "status": "ok",
+          "duration_ms": 42.49,
+          "attempts": 1,
+          "resolution": {
+            "element": "value_field",
+            "resolved": true,
+            "frame": null,
+            "rung_index": 0,
+            "strategy": "role_name",
+            "confidence": "high",
+            "brittle": false,
+            "duration_ms": 0.03,
+            "attempts": [
+              {
+                "rung": 0,
+                "strategy": "role_name",
+                "confidence": "high",
+                "brittle": false,
+                "match_count": 1,
+                "outcome": "resolved"
+              }
+            ]
+          }
+        },
+        {
+          "step_id": "s4",
+          "action": "click",
+          "status": "ok",
+          "duration_ms": 171.48,
+          "attempts": 1,
+          "resolution": {
+            "element": "search_button",
+            "resolved": true,
+            "frame": null,
+            "rung_index": 0,
+            "strategy": "role_name",
+            "confidence": "high",
+            "brittle": false,
+            "duration_ms": 0.03,
+            "attempts": [
+              {
+                "rung": 0,
+                "strategy": "role_name",
+                "confidence": "high",
+                "brittle": false,
+                "match_count": 1,
+                "outcome": "resolved"
+              }
+            ]
+          },
+          "checkpoint": {
+            "satisfied": true,
+            "expected": "element 'select_link' present",
+            "observed": "resolved via rung 0",
+            "duration_ms": 13.42
+          }
+        },
+        {
+          "step_id": "s5",
+          "action": "click",
+          "status": "ok",
+          "duration_ms": 159.4,
+          "attempts": 1,
+          "resolution": {
+            "element": "select_link",
+            "resolved": true,
+            "frame": null,
+            "rung_index": 0,
+            "strategy": "role_name",
+            "confidence": "high",
+            "brittle": false,
+            "duration_ms": 0.03,
+            "attempts": [
+              {
+                "rung": 0,
+                "strategy": "role_name",
+                "confidence": "high",
+                "brittle": false,
+                "match_count": 1,
+                "outcome": "resolved"
+              }
+            ]
+          },
+          "checkpoint": {
+            "satisfied": true,
+            "expected": "element 'e_mail_field' present",
+            "observed": "resolved via rung 0",
+            "duration_ms": 16.51
+          }
+        },
+        {
+          "step_id": "s6",
+          "action": "fill",
+          "status": "ok",
+          "duration_ms": 57.16,
+          "attempts": 1,
+          "resolution": {
+            "element": "e_mail_field",
+            "resolved": true,
+            "frame": null,
+            "rung_index": 0,
+            "strategy": "role_name",
+            "confidence": "high",
+            "brittle": false,
+            "duration_ms": 0.03,
+            "attempts": [
+              {
+                "rung": 0,
+                "strategy": "role_name",
+                "confidence": "high",
+                "brittle": false,
+                "match_count": 1,
+                "outcome": "resolved"
+              }
+            ]
+          }
+        },
+        {
+          "step_id": "s7",
+          "action": "fill",
+          "status": "ok",
+          "duration_ms": 47.14,
+          "attempts": 1,
+          "resolution": {
+            "element": "phone_field",
+            "resolved": true,
+            "frame": null,
+            "rung_index": 0,
+            "strategy": "role_name",
+            "confidence": "high",
+            "brittle": false,
+            "duration_ms": 0.03,
+            "attempts": [
+              {
+                "rung": 0,
+                "strategy": "role_name",
+                "confidence": "high",
+                "brittle": false,
+                "match_count": 1,
+                "outcome": "resolved"
+              }
+            ]
+          }
+        },
+        {
+          "step_id": "s8",
+          "action": "extract",
+          "status": "ok",
+          "duration_ms": 40.41,
+          "attempts": 1,
+          "resolution": {
+            "element": "email_value_source",
+            "resolved": true,
+            "frame": null,
+            "rung_index": 0,
+            "strategy": "role_ordinal",
+            "confidence": "low",
+            "brittle": true,
+            "duration_ms": 0.08,
+            "attempts": [
+              {
+                "rung": 0,
+                "strategy": "role_ordinal",
+                "confidence": "low",
+                "brittle": true,
+                "match_count": 1,
+                "outcome": "resolved"
+              }
+            ]
+          }
+        },
+        {
+          "step_id": "s9",
+          "action": "click",
+          "status": "blocked",
+          "duration_ms": 12.81,
+          "attempts": 1,
+          "detections": [
+            {
+              "name": "risky_action_blocked",
+              "layer": "engine",
+              "classification": "hard_failure",
+              "message": "Step s9 is marked risky and policy is 'require_confirmation'. the step is irreversible and policy requires a person to perform it; automation stopped before acting.",
+              "escalation_eligible": true
+            }
+          ]
+        }
+      ]
+    },
+    "resolved_by_operator": true
+  },
+  {
+    "you": "What is the balance of share 103001-MMKT-11 for member 991919?"
+  },
+  {
+    "reply": "I can't run this \u2014 the share reference \"103001-MMKT-11\" appears to belong to member 103001, not member 991919. Since the share must belong to the member you're querying, could you confirm the correct member ID or share ID?",
+    "chose": null,
+    "available": [
+      {
+        "id": "member_funds_transfer",
+        "description": "Transfer <amount> from member <member_ref>'s share <from_share> to their share <to_share>, with the memo '<memo>', and reach the confirmation screen Parameterised: <member_ref>, <from_share>, <to_share>, <amount>, <memo> are supplied per invocation.",
+        "required_role": null,
+        "requires_human": true,
+        "needs": [
+          {
+            "name": "member_ref",
+            "required": true
+          },
+          {
+            "name": "from_share",
+            "required": true
+          },
+          {
+            "name": "to_share",
+            "required": true
+          },
+          {
+            "name": "amount",
+            "required": true
+          },
+          {
+            "name": "memo",
+            "required": true
+          }
+        ]
+      },
+      {
+        "id": "member_open_new_share",
+        "description": "Open a new Money Market share for member 100987 with an initial deposit of 100.00, and reach the confirmation screen",
+        "required_role": null,
+        "requires_human": true,
+        "needs": [
+          {
+            "name": "member_ref",
+            "required": true
+          },
+          {
+            "name": "share_type",
+            "required": true
+          },
+          {
+            "name": "initial_deposit",
+            "required": true
+          }
+        ]
+      },
+      {
+        "id": "member_place_hold",
+        "description": "Place a hold on member 100987's share 100987-MMKT-6, selecting reason code LEGAL from the Reason Code dropdown and entering the note 'court order received'. Continue past the review screen and click Apply Hold so the hold is actually posted, then read the confirmation number.",
+        "required_role": "supervisor",
+        "requires_human": true,
+        "needs": [
+          {
+            "name": "member_ref",
+            "required": true
+          },
+          {
+            "name": "share",
+            "required": true
+          },
+          {
+            "name": "reason_code",
+            "required": true
+          },
+          {
+            "name": "notes",
+            "required": true
+          }
+        ]
+      },
+      {
+        "id": "member_savings_balance",
+        "description": "Given a member reference, return the member's current savings account balance and display name.",
+        "required_role": null,
+        "requires_human": false,
+        "needs": [
+          {
+            "name": "member_ref",
+            "required": true
+          }
+        ]
+      },
+      {
+        "id": "member_savings_balance_discovered",
+        "description": "Look up member ***01 and read their current savings balance",
+        "required_role": null,
+        "requires_human": false,
+        "needs": [
+          {
+            "name": "member_ref",
+            "required": true
+          }
+        ]
+      },
+      {
+        "id": "member_share_balance",
+        "description": "Look up member <member_ref>, open their member record, and read the balance of share <share_ref> from the shares and balances table. Both the member and the share are supplied per invocation.",
+        "required_role": null,
+        "requires_human": false,
+        "needs": [
+          {
+            "name": "member_ref",
+            "required": true
+          },
+          {
+            "name": "share_ref",
+            "required": true
+          }
+        ]
+      },
+      {
+        "id": "member_update_info",
+        "description": "Update member <member_ref>'s e-mail address to <e_mail> and phone number to <phone>, and reach the confirmation screen. Parameterised: <member_ref>, <e_mail>, <phone> are supplied per invocation.",
+        "required_role": null,
+        "requires_human": true,
+        "needs": [
+          {
+            "name": "member_ref",
+            "required": true
+          },
+          {
+            "name": "e_mail",
+            "required": true
+          },
+          {
+            "name": "phone",
+            "required": true
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "you": "Delete all the accounts"
+  },
+  {
+    "reply": "I can't do that. There's no capability available for deleting accounts, and this isn't something I'd be able to act on even if there were \u2014 it's outside the scope of what these tools support.\n\nIf you have a specific, legitimate task in mind (e.g., transferring funds, placing a hold, closing a specific share, updating member info), let me know the details and I can help with that instead.",
+    "chose": null,
+    "available": [
+      {
+        "id": "member_funds_transfer",
+        "description": "Transfer <amount> from member <member_ref>'s share <from_share> to their share <to_share>, with the memo '<memo>', and reach the confirmation screen Parameterised: <member_ref>, <from_share>, <to_share>, <amount>, <memo> are supplied per invocation.",
+        "required_role": null,
+        "requires_human": true,
+        "needs": [
+          {
+            "name": "member_ref",
+            "required": true
+          },
+          {
+            "name": "from_share",
+            "required": true
+          },
+          {
+            "name": "to_share",
+            "required": true
+          },
+          {
+            "name": "amount",
+            "required": true
+          },
+          {
+            "name": "memo",
+            "required": true
+          }
+        ]
+      },
+      {
+        "id": "member_open_new_share",
+        "description": "Open a new Money Market share for member 100987 with an initial deposit of 100.00, and reach the confirmation screen",
+        "required_role": null,
+        "requires_human": true,
+        "needs": [
+          {
+            "name": "member_ref",
+            "required": true
+          },
+          {
+            "name": "share_type",
+            "required": true
+          },
+          {
+            "name": "initial_deposit",
+            "required": true
+          }
+        ]
+      },
+      {
+        "id": "member_place_hold",
+        "description": "Place a hold on member 100987's share 100987-MMKT-6, selecting reason code LEGAL from the Reason Code dropdown and entering the note 'court order received'. Continue past the review screen and click Apply Hold so the hold is actually posted, then read the confirmation number.",
+        "required_role": "supervisor",
+        "requires_human": true,
+        "needs": [
+          {
+            "name": "member_ref",
+            "required": true
+          },
+          {
+            "name": "share",
+            "required": true
+          },
+          {
+            "name": "reason_code",
+            "required": true
+          },
+          {
+            "name": "notes",
+            "required": true
+          }
+        ]
+      },
+      {
+        "id": "member_savings_balance",
+        "description": "Given a member reference, return the member's current savings account balance and display name.",
+        "required_role": null,
+        "requires_human": false,
+        "needs": [
+          {
+            "name": "member_ref",
+            "required": true
+          }
+        ]
+      },
+      {
+        "id": "member_savings_balance_discovered",
+        "description": "Look up member ***01 and read their current savings balance",
+        "required_role": null,
+        "requires_human": false,
+        "needs": [
+          {
+            "name": "member_ref",
+            "required": true
+          }
+        ]
+      },
+      {
+        "id": "member_share_balance",
+        "description": "Look up member <member_ref>, open their member record, and read the balance of share <share_ref> from the shares and balances table. Both the member and the share are supplied per invocation.",
+        "required_role": null,
+        "requires_human": false,
+        "needs": [
+          {
+            "name": "member_ref",
+            "required": true
+          },
+          {
+            "name": "share_ref",
+            "required": true
+          }
+        ]
+      },
+      {
+        "id": "member_update_info",
+        "description": "Update member <member_ref>'s e-mail address to <e_mail> and phone number to <phone>, and reach the confirmation screen. Parameterised: <member_ref>, <e_mail>, <phone> are supplied per invocation.",
+        "required_role": null,
+        "requires_human": true,
+        "needs": [
+          {
+            "name": "member_ref",
+            "required": true
+          },
+          {
+            "name": "e_mail",
+            "required": true
+          },
+          {
+            "name": "phone",
+            "required": true
+          }
+        ]
+      }
+    ]
+  }
+]
