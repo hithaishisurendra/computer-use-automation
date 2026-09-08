@@ -15,9 +15,11 @@ rather than a rewrite:
   for offline work. Real `<frameset>`, tables nested three deep, ids that
   rotate every render.
 
-Design write-up: [`REPORT.md`](REPORT.md). Decisions and their rejected
-alternatives: [`docs/phase2-decisions.md`](docs/phase2-decisions.md). Runs and
-logs: [`evidence/README.md`](evidence/README.md).
+Design write-up: [`REPORT.md`](REPORT.md) (the core) and
+[`REPORT-PHASE2.md`](REPORT-PHASE2.md) (what adapting to MERIDIAN took).
+Decisions and their rejected alternatives:
+[`docs/phase2-decisions.md`](docs/phase2-decisions.md). Runs and logs:
+[`evidence/README.md`](evidence/README.md).
 
 ---
 
@@ -55,6 +57,11 @@ MERIDIAN_SUPERVISOR_PASSWORD=password
 # CoreServ accepts any non-empty pair.
 CORESERV_USERNAME=operator
 CORESERV_PASSWORD=devpassword
+
+# Optional. How long a run parked at an irreversible step waits for an
+# operator before ending and closing the session. Default 900 (15 minutes);
+# lower it to make expiry demonstrable without waiting.
+PAUSE_TIMEOUT_S=900
 EOF
 ```
 
@@ -73,18 +80,19 @@ Open **<http://127.0.0.1:8900/ui>**. Four tabs:
 | **Chat** | Plain English → a capability invocation. Shows which capability it chose and with what arguments. |
 | **Catalog** | Every capability: typed inputs and outputs, declared business outcomes, whether it needs a supervisor, whether it contains an irreversible step. Invoke one directly. |
 | **Runs** | Every run this process served, colour-coded by classification. |
-| **Interventions** | Runs paused at an irreversible step, with the captured state and Resume / Abort. |
+| **Interventions** | Runs parked at an irreversible step, holding a live session, with the captured state and one control: **I'm done — check it**. |
 
 Try, in the Chat tab:
 
 ```
 What is the balance of share 100234-S0001-12 for member 100234?
 Look up the share balance for member 999999
-Transfer 5.00 from 100987-MMKT-5 to 100987-MMKT-7 for member 100987, memo demo
+Transfer 5.00 from 100987-MMKT-7 to 100987-MMKT-8 for member 100987, memo demo
 ```
 
-The first returns a balance. The second returns **"No member exists with the
-supplied identifier"** — a business outcome, an answer rather than an error.
+The app is stateful in memory and your own runs move money, so check a share
+holds enough before using it in a demo. The first returns a balance. The second
+returns **"No member exists with the supplied identifier"** — a business outcome, an answer rather than an error.
 The third stops at the irreversible post step and hands you to Interventions.
 
 ---
@@ -216,16 +224,20 @@ session cannot produce a capability that posts unattended.
 ### 6. Replay it
 
 ```bash
-python -m replay.run --capability member_share_balance --version 1.0.0 \
-  --input member_ref=100234
+python -m replay.run --capability member_share_balance --version 1.1.0 \
+  --input member_ref=100234 --input share_ref=100234-S0001-12
 ```
 
-A capability generalises exactly as far as its declared inputs. This one takes
-`member_ref` only — the share suffix came from the goal and is fixed in the
-locator — so it works for any member holding an `-S0001-12` share and returns
-a business outcome for one who does not. Naming the share in the goal *as a
-value the caller supplies* is what would make it a parameter; the goal is the
-specification.
+A capability generalises exactly as far as its declared inputs, and this one is
+the worked example. Version 1.0.0 was recorded from a goal that named one share,
+so the share id was fixed in the locator: it replayed for any member holding an
+`-S0001-12` share and returned a checkpoint failure for everyone else, while its
+name promised something general. The recorder derives parameters from values
+that were **typed or selected**, and a value appearing only inside a locator
+scope has no path to becoming an input, so re-recording could not have fixed it.
+Review widened it by hand into 1.1.0, where the share is a declared input, and
+1.0.0 was retired. The goal is the specification, and that is what `status:
+draft` exists to catch.
 
 Replay exit codes: `0` success **and** business outcome, `1` hard failure,
 `2` caller error, `3` auth failure. "No such member" is an answer, not a
@@ -252,22 +264,28 @@ The chosen capability and its arguments are shown beside the answer.
 identifier."* Never phrased as a failure.
 
 **3. An irreversible step stopping for a human.** Chat: *"Transfer 5.00 from
-100987-MMKT-5 to 100987-MMKT-7 for member 100987, memo demo"* →
+100987-MMKT-7 to 100987-MMKT-8 for member 100987, memo demo"* →
 `escalation_required`. Ten steps complete, `s11` (`post_transfer_button`)
 blocks, and the reply says what would have to happen for the run to continue.
 Nothing was posted.
 
-The chat stops there and does **not** open an intervention, because it cannot:
-chat invokes unattended, and an unattended request has no operator behind it to
-hand the browser to. That is the same reason `/chat` cannot pass `attended`.
+The run does not end there. It keeps the browser session open and parks,
+and **Interventions** shows it: the blocked step, why it stopped, what will be
+checked when you are done, and the stuck screenshot.
 
-**3b. Handing the blocked step to a person.** To reach the operator surface,
-run the same capability from **Capabilities** with **attended** ticked (or
-`POST .../invoke` with `{"attended": true}`). It returns `202`, opens a headed
-window, and parks the run. **Interventions** then shows the blocked step, why,
-what the checkpoint will verify on resume (`element
-'confirmation_number_source' present`), and the stuck screenshot. Press
-**Abort** unless you intend to move money — the transfer is real.
+There is no `attended` flag. It used to ask the caller to predict whether a
+human would be available, which a calling agent cannot know, and the unattended
+path tore the browser down before responding so its `202` named a session that
+no longer existed. Every invocation now parks the same way; whether anyone comes
+is answered by the pause deadline (`PAUSE_TIMEOUT_S`, default 15 minutes).
+
+**3b. Finishing it.** The browser window is open on the confirm screen. If you
+approve of the step, perform it there, then press **I'm done — check it**. The
+run re-evaluates the blocked step's checkpoint against the live page and that
+decides the outcome: `success` with the confirmation number if the transfer
+posted, `not_performed` if it did not. One control, not Resume and Abort: the
+button is a trigger to look, never a claim about what happened. **The transfer
+is real, so do not perform it unless you mean to.**
 
 **4. A supervisor-gated action.** `member_place_hold` declares
 `required_role: supervisor`; the catalogue and dashboard show it. Run it with
@@ -325,7 +343,8 @@ GET  /capabilities/{id}/{version}               one contract
 POST /capabilities/{id}/{version}/invoke        run it
 GET  /runs · /runs/{id} · /runs/{id}/evidence   history and evidence
 GET  /interventions                             runs awaiting a person
-POST /runs/{id}/resume · /runs/{id}/abort       hand control back
+GET  /chat                                      the transcript, so a restart keeps it
+POST /runs/{id}/done                            operator has finished; check the page
 POST /chat                                      plain English → an invocation
 ```
 
@@ -339,8 +358,8 @@ curl -sX POST localhost:8900/capabilities/member_share_balance/1.0.0/invoke \
 HTTP status carries the result contract: `success` and `business_outcome` are
 both **200** — the caller asked a question and got an answer — `202` is
 accepted-and-awaiting-a-human, `400` a caller error, `502` a system or app
-failure. Add `{"attended": true}` to run with a headed browser so an
-irreversible step pauses for you instead of failing.
+failure. Every invocation runs headed and parks at an irreversible step, so
+`202` means the session is open and waiting rather than already gone.
 
 ---
 
@@ -351,8 +370,8 @@ implies `--headed`, since a human cannot drive a headless browser.
 
 ```bash
 python -m replay.run --capability member_funds_transfer --version 1.0.0 \
-  --input member_ref=100987 --input from_share=100987-MMKT-5 \
-  --input to_share=100987-MMKT-7 --input amount=5.00 --input memo=demo \
+  --input member_ref=100987 --input from_share=100987-MMKT-7 \
+  --input to_share=100987-MMKT-8 --input amount=5.00 --input memo=demo \
   --escalate
 ```
 
@@ -391,8 +410,8 @@ moves the allowlist with it.
 python -m pytest tests/ -q
 ```
 
-**465 pass with nothing running**, 21 skip. With CoreServ up on 8800 all
-**486** pass. No test needs an API key — model calls are exercised by real runs
+**508 pass with nothing running**, 21 skip. With CoreServ up on 8800 the live
+replay and escalation tests run too. No test needs an API key — model calls are exercised by real runs
 in `evidence/`, and the loop's logic is tested against synthetic accessibility
 trees.
 

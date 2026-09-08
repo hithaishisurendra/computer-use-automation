@@ -1,0 +1,142 @@
+{
+  "classification": "business_outcome",
+  "capability": {
+    "id": "member_share_balance",
+    "version": "1.1.0"
+  },
+  "tenant": "demo",
+  "run_id": "run_41483168",
+  "duration_ms": 4770.26,
+  "inputs": {
+    "member_ref": "****32",
+    "share_ref": "************-6"
+  },
+  "outcome": "member_not_found",
+  "message": "No member exists with the supplied identifier.",
+  "control": {
+    "owner": "released",
+    "context_identity": 4547794032,
+    "transitions": [
+      {
+        "at": "2026-09-08T06:12:28.234979+00:00",
+        "from": "automation",
+        "to": "released",
+        "reason": "run finished: business_outcome"
+      }
+    ]
+  },
+  "evidence": {
+    "screenshot": "evidence/replay/run_41483168/failure.png",
+    "snapshot": "evidence/replay/run_41483168/failure_snapshot.txt"
+  },
+  "trace": [
+    {
+      "step_id": "s1",
+      "action": "navigate",
+      "status": "ok",
+      "duration_ms": 120.64,
+      "attempts": 1,
+      "checkpoint": {
+        "satisfied": true,
+        "expected": "element 'member_inquiry_selection_link' present",
+        "observed": "resolved via rung 0",
+        "duration_ms": 5.98
+      }
+    },
+    {
+      "step_id": "s2",
+      "action": "click",
+      "status": "ok",
+      "duration_ms": 236.45,
+      "attempts": 1,
+      "resolution": {
+        "element": "member_inquiry_selection_link",
+        "resolved": true,
+        "frame": null,
+        "rung_index": 0,
+        "strategy": "role_name",
+        "confidence": "high",
+        "brittle": false,
+        "duration_ms": 0.04,
+        "attempts": [
+          {
+            "rung": 0,
+            "strategy": "role_name",
+            "confidence": "high",
+            "brittle": false,
+            "match_count": 1,
+            "outcome": "resolved"
+          }
+        ]
+      },
+      "checkpoint": {
+        "satisfied": true,
+        "expected": "element 'value_field' present",
+        "observed": "resolved via rung 0",
+        "duration_ms": 23.05
+      }
+    },
+    {
+      "step_id": "s3",
+      "action": "fill",
+      "status": "ok",
+      "duration_ms": 56.67,
+      "attempts": 1,
+      "resolution": {
+        "element": "value_field",
+        "resolved": true,
+        "frame": null,
+        "rung_index": 0,
+        "strategy": "role_name",
+        "confidence": "high",
+        "brittle": false,
+        "duration_ms": 0.03,
+        "attempts": [
+          {
+            "rung": 0,
+            "strategy": "role_name",
+            "confidence": "high",
+            "brittle": false,
+            "match_count": 1,
+            "outcome": "resolved"
+          }
+        ]
+      }
+    },
+    {
+      "step_id": "s4",
+      "action": "click",
+      "status": "ok",
+      "duration_ms": 218.34,
+      "attempts": 1,
+      "resolution": {
+        "element": "search_button",
+        "resolved": true,
+        "frame": null,
+        "rung_index": 0,
+        "strategy": "role_name",
+        "confidence": "high",
+        "brittle": false,
+        "duration_ms": 0.04,
+        "attempts": [
+          {
+            "rung": 0,
+            "strategy": "role_name",
+            "confidence": "high",
+            "brittle": false,
+            "match_count": 1,
+            "outcome": "resolved"
+          }
+        ]
+      },
+      "detections": [
+        {
+          "name": "member_not_found",
+          "layer": "profile",
+          "classification": "business_outcome",
+          "message": "No member exists with the supplied identifier."
+        }
+      ]
+    }
+  ]
+}

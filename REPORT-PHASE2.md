@@ -190,10 +190,7 @@ catches.
 
 What does not exist is a harness. `evidence/replay/MATRIX.txt` is a real sweep
 of one artifact against every CoreServ fault, but its header says plainly that I
-generated it by hand. The version worth building runs every capability against
-every declared condition on a schedule, scores replay stability across repeats,
-and fails when a classification changes without an artifact changing. That last
-check is the one that would have caught the step-scoping problem in section 3.
+generated it by hand.
 
 ## 6. Cuts, and what I would build next
 
@@ -214,6 +211,17 @@ The operator console is a dashboard page. In production the browser runs
 server-side and an operator picks up a parked session over CDP screencast.
 `ConsoleOperator` and the dashboard already satisfy one interface, so that is a
 new surface rather than a new escalation mechanism.
+
+I do not have a full eval harness. What I have is structural tests enforcing
+real invariants: no application name in engine code, no model client in
+`replay/`, no write outside the redaction sink, each verified by deliberately
+planting a violation to confirm it is actually caught. My manual equivalent of a
+harness is how I found my worst bugs, including a checkpoint that was already
+true before the step it was meant to verify ever ran. Automating that same
+process on a schedule is the natural next step: every capability against every
+declared condition, replay stability scored across repeats, and a failure raised
+when a classification changes without its artifact changing. That last check is
+the one that would have caught the step-scoping problem in section 3.
 
 Two known gaps, which I would rather state than have found.
 

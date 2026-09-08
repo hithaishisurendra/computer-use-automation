@@ -1,0 +1,361 @@
+{
+  "classification": "not_performed",
+  "capability": {
+    "id": "member_funds_transfer",
+    "version": "1.0.0"
+  },
+  "tenant": "demo",
+  "run_id": "run_00053968",
+  "duration_ms": 35084.93,
+  "inputs": {
+    "member_ref": "****77",
+    "from_share": "************46",
+    "to_share": "************22",
+    "amount": "0.1",
+    "memo": "test"
+  },
+  "message": "The operator finished at step s11 without performing it: expected element 'confirmation_number_source' present, observed not found (after 8000ms). Nothing was committed.",
+  "failure": {
+    "step_id": "s11",
+    "expected": "element 'confirmation_number_source' present",
+    "observed": "not found (after 8000ms)"
+  },
+  "escalation_eligible": true,
+  "human_interventions": [
+    {
+      "step_id": "s11",
+      "decision": "done",
+      "operator": "dashboard",
+      "notes": "",
+      "timed_out": false,
+      "url_changed": false
+    }
+  ],
+  "control": {
+    "owner": "released",
+    "context_identity": 4463965200,
+    "transitions": [
+      {
+        "at": "2026-09-08T10:05:26.603235+00:00",
+        "from": "automation",
+        "to": "human",
+        "reason": "step s11: Step s11 is marked risky and policy is 'require_confirmation'. the step is irreversible and policy requires a person to perform it; automation stopped before acting."
+      },
+      {
+        "at": "2026-09-08T10:05:47.699369+00:00",
+        "from": "human",
+        "to": "automation",
+        "reason": "operator returned control after step s11"
+      },
+      {
+        "at": "2026-09-08T10:05:55.817703+00:00",
+        "from": "automation",
+        "to": "released",
+        "reason": "run finished: not_performed"
+      }
+    ]
+  },
+  "evidence": {
+    "intervention_request": "evidence/escalation/run_00053968/request.json",
+    "handoff": "evidence/escalation/run_00053968/handoff.json",
+    "snapshot": "evidence/replay/run_00053968/failure_snapshot.txt"
+  },
+  "trace": [
+    {
+      "step_id": "s1",
+      "action": "navigate",
+      "status": "ok",
+      "duration_ms": 120.43,
+      "attempts": 1,
+      "checkpoint": {
+        "satisfied": true,
+        "expected": "element 'funds_transfer_link' present",
+        "observed": "resolved via rung 0",
+        "duration_ms": 6.3
+      }
+    },
+    {
+      "step_id": "s2",
+      "action": "click",
+      "status": "ok",
+      "duration_ms": 304.13,
+      "attempts": 1,
+      "resolution": {
+        "element": "funds_transfer_link",
+        "resolved": true,
+        "frame": null,
+        "rung_index": 0,
+        "strategy": "role_name",
+        "confidence": "high",
+        "brittle": false,
+        "duration_ms": 0.09,
+        "attempts": [
+          {
+            "rung": 0,
+            "strategy": "role_name",
+            "confidence": "high",
+            "brittle": false,
+            "match_count": 1,
+            "outcome": "resolved"
+          }
+        ]
+      },
+      "checkpoint": {
+        "satisfied": true,
+        "expected": "element 'value_field' present",
+        "observed": "resolved via rung 0",
+        "duration_ms": 19.48
+      }
+    },
+    {
+      "step_id": "s3",
+      "action": "fill",
+      "status": "ok",
+      "duration_ms": 67.24,
+      "attempts": 1,
+      "resolution": {
+        "element": "value_field",
+        "resolved": true,
+        "frame": null,
+        "rung_index": 0,
+        "strategy": "role_name",
+        "confidence": "high",
+        "brittle": false,
+        "duration_ms": 0.04,
+        "attempts": [
+          {
+            "rung": 0,
+            "strategy": "role_name",
+            "confidence": "high",
+            "brittle": false,
+            "match_count": 1,
+            "outcome": "resolved"
+          }
+        ]
+      }
+    },
+    {
+      "step_id": "s4",
+      "action": "click",
+      "status": "ok",
+      "duration_ms": 271.08,
+      "attempts": 1,
+      "resolution": {
+        "element": "search_button",
+        "resolved": true,
+        "frame": null,
+        "rung_index": 0,
+        "strategy": "role_name",
+        "confidence": "high",
+        "brittle": false,
+        "duration_ms": 0.04,
+        "attempts": [
+          {
+            "rung": 0,
+            "strategy": "role_name",
+            "confidence": "high",
+            "brittle": false,
+            "match_count": 1,
+            "outcome": "resolved"
+          }
+        ]
+      },
+      "checkpoint": {
+        "satisfied": true,
+        "expected": "element 'select_link' present",
+        "observed": "resolved via rung 0",
+        "duration_ms": 18.96
+      }
+    },
+    {
+      "step_id": "s5",
+      "action": "click",
+      "status": "ok",
+      "duration_ms": 300.51,
+      "attempts": 1,
+      "resolution": {
+        "element": "select_link",
+        "resolved": true,
+        "frame": null,
+        "rung_index": 0,
+        "strategy": "role_name",
+        "confidence": "high",
+        "brittle": false,
+        "duration_ms": 0.04,
+        "attempts": [
+          {
+            "rung": 0,
+            "strategy": "role_name",
+            "confidence": "high",
+            "brittle": false,
+            "match_count": 1,
+            "outcome": "resolved"
+          }
+        ]
+      },
+      "checkpoint": {
+        "satisfied": true,
+        "expected": "element 'from_share_select' present",
+        "observed": "resolved via rung 0",
+        "duration_ms": 35.33
+      }
+    },
+    {
+      "step_id": "s6",
+      "action": "select",
+      "status": "ok",
+      "duration_ms": 115.51,
+      "attempts": 1,
+      "resolution": {
+        "element": "from_share_select",
+        "resolved": true,
+        "frame": null,
+        "rung_index": 0,
+        "strategy": "role_name",
+        "confidence": "high",
+        "brittle": false,
+        "duration_ms": 0.11,
+        "attempts": [
+          {
+            "rung": 0,
+            "strategy": "role_name",
+            "confidence": "high",
+            "brittle": false,
+            "match_count": 1,
+            "outcome": "resolved"
+          }
+        ]
+      }
+    },
+    {
+      "step_id": "s7",
+      "action": "select",
+      "status": "ok",
+      "duration_ms": 101.33,
+      "attempts": 1,
+      "resolution": {
+        "element": "to_share_select",
+        "resolved": true,
+        "frame": null,
+        "rung_index": 0,
+        "strategy": "role_name",
+        "confidence": "high",
+        "brittle": false,
+        "duration_ms": 0.1,
+        "attempts": [
+          {
+            "rung": 0,
+            "strategy": "role_name",
+            "confidence": "high",
+            "brittle": false,
+            "match_count": 1,
+            "outcome": "resolved"
+          }
+        ]
+      }
+    },
+    {
+      "step_id": "s8",
+      "action": "fill",
+      "status": "ok",
+      "duration_ms": 107.74,
+      "attempts": 1,
+      "resolution": {
+        "element": "amount_field",
+        "resolved": true,
+        "frame": null,
+        "rung_index": 0,
+        "strategy": "role_name",
+        "confidence": "high",
+        "brittle": false,
+        "duration_ms": 0.1,
+        "attempts": [
+          {
+            "rung": 0,
+            "strategy": "role_name",
+            "confidence": "high",
+            "brittle": false,
+            "match_count": 1,
+            "outcome": "resolved"
+          }
+        ]
+      }
+    },
+    {
+      "step_id": "s9",
+      "action": "fill",
+      "status": "ok",
+      "duration_ms": 105.35,
+      "attempts": 1,
+      "resolution": {
+        "element": "memo_field",
+        "resolved": true,
+        "frame": null,
+        "rung_index": 0,
+        "strategy": "role_name",
+        "confidence": "high",
+        "brittle": false,
+        "duration_ms": 0.1,
+        "attempts": [
+          {
+            "rung": 0,
+            "strategy": "role_name",
+            "confidence": "high",
+            "brittle": false,
+            "match_count": 1,
+            "outcome": "resolved"
+          }
+        ]
+      }
+    },
+    {
+      "step_id": "s10",
+      "action": "click",
+      "status": "ok",
+      "duration_ms": 297.34,
+      "attempts": 1,
+      "resolution": {
+        "element": "continue_button",
+        "resolved": true,
+        "frame": null,
+        "rung_index": 0,
+        "strategy": "role_name",
+        "confidence": "high",
+        "brittle": false,
+        "duration_ms": 0.1,
+        "attempts": [
+          {
+            "rung": 0,
+            "strategy": "role_name",
+            "confidence": "high",
+            "brittle": false,
+            "match_count": 1,
+            "outcome": "resolved"
+          }
+        ]
+      },
+      "checkpoint": {
+        "satisfied": true,
+        "expected": "element 'post_transfer_button' present",
+        "observed": "resolved via rung 0",
+        "duration_ms": 9.88
+      }
+    },
+    {
+      "step_id": "s11",
+      "action": "click",
+      "status": "blocked",
+      "duration_ms": 8.91,
+      "attempts": 1,
+      "detections": [
+        {
+          "name": "risky_action_blocked",
+          "layer": "engine",
+          "classification": "hard_failure",
+          "message": "Step s11 is marked risky and policy is 'require_confirmation'. the step is irreversible and policy requires a person to perform it; automation stopped before acting.",
+          "escalation_eligible": true
+        }
+      ]
+    }
+  ]
+}

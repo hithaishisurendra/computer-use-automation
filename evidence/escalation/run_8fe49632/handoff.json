@@ -1,0 +1,38 @@
+{
+  "human_activity": {
+    "started_at": "2026-09-08T10:08:48.097053+00:00",
+    "ended_at": "2026-09-08T10:09:03.145758+00:00",
+    "operator": "dashboard",
+    "decision": "done",
+    "notes": "",
+    "url_before": "https://web-sample.interface-hiring.com/members/102777/hold/review",
+    "url_after": "https://web-sample.interface-hiring.com/members/102777/hold/review",
+    "url_changed": false,
+    "controls_appeared": [
+      "link \"Return to Member Record\" [href=/members/102777]"
+    ],
+    "controls_disappeared": [
+      "button \"Apply Hold\"",
+      "link \"Cancel\" [href=/members/102777]"
+    ],
+    "capture_scope": "effect-level: URL and accessibility-state diff across the handoff. Individual actions are not recorded -- see module docstring for the seam."
+  },
+  "control": {
+    "owner": "automation",
+    "context_identity": 4550585680,
+    "transitions": [
+      {
+        "at": "2026-09-08T10:08:48.097199+00:00",
+        "from": "automation",
+        "to": "human",
+        "reason": "step s10: Step s10 is marked risky and policy is 'require_confirmation'. the step is irreversible and policy requires a person to perform it; automation stopped before acting."
+      },
+      {
+        "at": "2026-09-08T10:09:03.094472+00:00",
+        "from": "human",
+        "to": "automation",
+        "reason": "operator returned control after step s10"
+      }
+    ]
+  }
+}
