@@ -1,0 +1,38 @@
+{
+  "run_id": "run_e38b9b97",
+  "source": "replay",
+  "raised_at": "2026-09-07T11:00:00.792090+00:00",
+  "capability": {
+    "id": "member_update_info",
+    "version": "1.0.0"
+  },
+  "goal": "Replay member_update_info@1.0.0",
+  "stopped": {
+    "step_id": "s9",
+    "classification": "risk_blocked",
+    "reason": "Step s9 (click 'save_changes_button') is blocked because it is irreversible and this capability's policy is 'require_confirmation'. Automation has performed nothing. Perform the step manually in this live session if you approve of it, then resume; the run will verify the outcome before continuing.",
+    "expected": "text 'MEMBER INFORMATION UPDATED' present on page",
+    "observed": "the step was not performed; automation stopped before acting"
+  },
+  "state": {
+    "url": "https://web-sample.interface-hiring.com/members/102777/update",
+    "screenshot": "evidence/escalation/run_e38b9b97/stuck.png",
+    "snapshot_file": "evidence/escalation/run_e38b9b97/stuck_snapshot.txt",
+    "accessibility_snapshot": "--- FRAME (top) ---\ndocument\n  table\n    rowgroup\n      row\n        cell \"MERIDIAN CORE Member Services Platform v4.2.1 Cornerstone Financial Systems\u2122\"\n          text \"Member Services Platform v4.2.1\"\n      row\n        cell\n          generic\n            link \"Main Menu\" [href=/menu]\n            text \"\u00b7\"\n            link \"Member Inquiry\" [href=/members]\n            text \"\u00b7\"\n            link \"System Settings\" [href=/settings]\n            text \"\u00b7\"\n            link \"Sign Off\" [href=/signoff]\n      row\n        cell\n          heading \"UPDATE MEMBER INFORMATION\" [level=1]\n          text \"Member 102777 - <redacted:pii>\"\n          table\n            rowgroup\n              row\n                cell \"* E-mail\"\n                cell\n                  textbox \"E-mail\" [value=<redacted:email>, name_source=preceding_td]\n              row\n                cell \"* Phone\"\n                cell\n                  textbox \"Phone\" [value=<redacted:phone>, name_source=preceding_td]\n              row\n                cell \"* Mailing Address\"\n                cell\n                  textbox \"Mailing Address\" [value=88 Cornerstone Ave, Springfield, name_source=preceding_td]\n              row\n                cell\n                  button \"Save Changes\"\n                  link \"Cancel\" [href=/members/102777]\n      row\n        cell \"OPR <redacted:credential> | BR MAIN-001 | 09/07/2026 11:00:00 | SID <redacted:session>\"\n      row\n        cell \"F3=Sign Off F5=Main Menu F7=Member Inquiry F12=Cancel\""
+  },
+  "inputs": {
+    "member_ref": "****77",
+    "e_mail": "<redacted>",
+    "phone": "<redacted>"
+  },
+  "completed_steps": [
+    "s1",
+    "s2",
+    "s3",
+    "s4",
+    "s5",
+    "s6",
+    "s7",
+    "s8"
+  ]
+}

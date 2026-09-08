@@ -1,0 +1,99 @@
+{
+  "classification": "hard_failure",
+  "capability": {
+    "id": "member_open_new_share",
+    "version": "1.0.0"
+  },
+  "tenant": "demo",
+  "run_id": "run_71b8561c",
+  "duration_ms": 3600.25,
+  "inputs": {
+    "member_ref": "****87",
+    "share_type": "MMKT",
+    "initial_deposit": "1111"
+  },
+  "message": "A maintenance interstitial is covering the page. Recovery attempted 2 times without clearing it.",
+  "failure": {
+    "step_id": "s1",
+    "expected": "step s1 to complete",
+    "observed": "A maintenance interstitial is covering the page. Recovery attempted 2 times without clearing it."
+  },
+  "recoverable_conditions": [
+    {
+      "step_id": "s1",
+      "attempt": 1,
+      "name": "maintenance_interstitial",
+      "layer": "engine",
+      "classification": "recoverable",
+      "message": "A maintenance interstitial is covering the page.",
+      "recovery": "re-request the step's own URL and retry it"
+    },
+    {
+      "step_id": "s1",
+      "attempt": 2,
+      "name": "maintenance_interstitial",
+      "layer": "engine",
+      "classification": "recoverable",
+      "message": "A maintenance interstitial is covering the page.",
+      "recovery": "re-request the step's own URL and retry it"
+    },
+    {
+      "step_id": "s1",
+      "attempt": 3,
+      "name": "maintenance_interstitial",
+      "layer": "engine",
+      "classification": "recoverable",
+      "message": "A maintenance interstitial is covering the page.",
+      "recovery": "re-request the step's own URL and retry it"
+    }
+  ],
+  "escalation_eligible": true,
+  "control": {
+    "owner": "released",
+    "context_identity": 4549968832,
+    "transitions": [
+      {
+        "at": "2026-09-07T11:02:19.185999+00:00",
+        "from": "automation",
+        "to": "released",
+        "reason": "run finished: hard_failure"
+      }
+    ]
+  },
+  "evidence": {
+    "screenshot": "evidence/replay/run_71b8561c/failure.png",
+    "snapshot": "evidence/replay/run_71b8561c/failure_snapshot.txt"
+  },
+  "trace": [
+    {
+      "step_id": "s1",
+      "action": "navigate",
+      "status": "failed",
+      "duration_ms": 485.77,
+      "attempts": 3,
+      "detections": [
+        {
+          "name": "maintenance_interstitial",
+          "layer": "engine",
+          "classification": "recoverable",
+          "message": "A maintenance interstitial is covering the page.",
+          "recovery": "re-request the step's own URL and retry it"
+        },
+        {
+          "name": "maintenance_interstitial",
+          "layer": "engine",
+          "classification": "recoverable",
+          "message": "A maintenance interstitial is covering the page.",
+          "recovery": "re-request the step's own URL and retry it"
+        },
+        {
+          "name": "maintenance_interstitial",
+          "layer": "engine",
+          "classification": "recoverable",
+          "message": "A maintenance interstitial is covering the page.",
+          "recovery": "re-request the step's own URL and retry it"
+        }
+      ]
+    }
+  ]
+}

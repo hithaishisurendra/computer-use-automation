@@ -1,0 +1,49 @@
+{
+  "classification": "business_outcome",
+  "capability": {
+    "id": "member_share_balance",
+    "version": "1.1.0"
+  },
+  "tenant": "demo",
+  "run_id": "run_d4920761",
+  "duration_ms": 3506.37,
+  "inputs": {
+    "member_ref": "****87",
+    "share_ref": "************5 "
+  },
+  "outcome": "supervisor_override_required",
+  "message": "The signed-on operator lacks the privilege for this function; a supervisor must perform it.",
+  "control": {
+    "owner": "released",
+    "context_identity": 4549828560,
+    "transitions": [
+      {
+        "at": "2026-09-07T11:01:31.597932+00:00",
+        "from": "automation",
+        "to": "released",
+        "reason": "run finished: business_outcome"
+      }
+    ]
+  },
+  "evidence": {
+    "screenshot": "evidence/replay/run_d4920761/failure.png",
+    "snapshot": "evidence/replay/run_d4920761/failure_snapshot.txt"
+  },
+  "trace": [
+    {
+      "step_id": "s1",
+      "action": "navigate",
+      "status": "ok",
+      "duration_ms": 77.11,
+      "attempts": 1,
+      "detections": [
+        {
+          "name": "supervisor_override_required",
+          "layer": "profile",
+          "classification": "business_outcome",
+          "message": "The signed-on operator lacks the privilege for this function; a supervisor must perform it."
+        }
+      ]
+    }
+  ]
+}

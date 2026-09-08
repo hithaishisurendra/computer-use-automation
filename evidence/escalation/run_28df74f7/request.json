@@ -1,0 +1,40 @@
+{
+  "run_id": "run_28df74f7",
+  "source": "replay",
+  "raised_at": "2026-09-07T10:55:30.088316+00:00",
+  "capability": {
+    "id": "member_place_hold",
+    "version": "1.0.0"
+  },
+  "goal": "Replay member_place_hold@1.0.0",
+  "stopped": {
+    "step_id": "s10",
+    "classification": "risk_blocked",
+    "reason": "Step s10 (click 'apply_hold_button') is blocked because it is irreversible and this capability's policy is 'require_confirmation'. Automation has performed nothing. Perform the step manually in this live session if you approve of it, then resume; the run will verify the outcome before continuing.",
+    "expected": "url matching '/members/[^/]+/hold/post$'",
+    "observed": "the step was not performed; automation stopped before acting"
+  },
+  "state": {
+    "url": "https://web-sample.interface-hiring.com/members/102777/hold/review",
+    "screenshot": "evidence/escalation/run_28df74f7/stuck.png",
+    "snapshot_file": "evidence/escalation/run_28df74f7/stuck_snapshot.txt",
+    "accessibility_snapshot": "--- FRAME (top) ---\ndocument\n  table\n    rowgroup\n      row\n        cell \"MERIDIAN CORE Member Services Platform v4.2.1 Cornerstone Financial Systems\u2122\"\n          text \"Member Services Platform v4.2.1\"\n      row\n        cell\n          generic\n            link \"Main Menu\" [href=/menu]\n            text \"\u00b7\"\n            link \"Member Inquiry\" [href=/members]\n            text \"\u00b7\"\n            link \"System Settings\" [href=/settings]\n            text \"\u00b7\"\n            link \"Sign Off\" [href=/signoff]\n      row\n        cell\n          heading \"CONFIRM ACCOUNT HOLD\" [level=1]\n          generic\n            text \"IRREVERSIBLE ACTION\"\n            table\n              rowgroup\n                row\n                  cell \"Member\"\n                  cell \"102777 - <redacted:pii>\"\n                row\n                  cell \"Share\"\n                  cell \"102777-MMKT-17 - Money Market\"\n                row\n                  cell \"Reason\"\n                  cell \"FRAUD\"\n                row\n                  cell \"Notes\"\n                  cell \"sus\"\n          generic\n            button \"Apply Hold\"\n            link \"Cancel\" [href=/members/102777]\n      row\n        cell \"OPR <redacted:credential> | BR MAIN-001 | 09/07/2026 10:55:30 | SID <redacted:session>\"\n      row\n        cell \"F3=Sign Off F5=Main Menu F7=Member Inquiry F12=Cancel\""
+  },
+  "inputs": {
+    "member_ref": "****77",
+    "share": "************17",
+    "reason_code": "FRAUD",
+    "notes": "sus"
+  },
+  "completed_steps": [
+    "s1",
+    "s2",
+    "s3",
+    "s4",
+    "s5",
+    "s6",
+    "s7",
+    "s8",
+    "s9"
+  ]
+}

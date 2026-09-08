@@ -1,0 +1,16 @@
+--- FRAME '' ---
+document
+  table
+    rowgroup
+      row
+        cell "MERIDIAN CORE Member Services Platform v4.2.1 Cornerstone Financial Systems™"
+          text "Member Services Platform v4.2.1"
+      row
+        cell
+          generic
+            text "YOUR SESSION HAS TIMED OUT For security, your session ended due to inactivity."
+            link "Return to Sign On" [href=/signon]
+      row
+        cell "NOT SIGNED ON | 09/07/2026 11:06:14"
+      row
+        cell "F3=Sign Off F5=Main Menu F7=Member Inquiry F12=Cancel"

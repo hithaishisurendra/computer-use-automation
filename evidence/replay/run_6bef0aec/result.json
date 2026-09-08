@@ -1,0 +1,376 @@
+{
+  "classification": "hard_failure",
+  "capability": {
+    "id": "member_funds_transfer",
+    "version": "1.0.0"
+  },
+  "tenant": "demo",
+  "run_id": "run_6bef0aec",
+  "duration_ms": 6211.3,
+  "inputs": {
+    "member_ref": "****87",
+    "from_share": "************20",
+    "to_share": "************17",
+    "amount": "15.00",
+    "memo": "demo"
+  },
+  "message": "The application session expired mid-run. A step declaring retry_after_reauth is re-authenticated and retried once; any other step stops here, because a step whose side effect may already have happened must not be repeated.",
+  "failure": {
+    "step_id": "s10",
+    "expected": "step s10 to complete",
+    "observed": "The application session expired mid-run. A step declaring retry_after_reauth is re-authenticated and retried once; any other step stops here, because a step whose side effect may already have happened must not be repeated."
+  },
+  "recoverable_conditions": [
+    {
+      "step_id": "s10",
+      "attempt": 1,
+      "name": "maintenance_interstitial",
+      "layer": "engine",
+      "classification": "recoverable",
+      "message": "A maintenance interstitial is covering the page.",
+      "recovery": "re-request the step's own URL and retry it"
+    },
+    {
+      "step_id": "s10",
+      "attempt": 2,
+      "name": "maintenance_interstitial",
+      "layer": "engine",
+      "classification": "recoverable",
+      "message": "A maintenance interstitial is covering the page.",
+      "recovery": "re-request the step's own URL and retry it"
+    },
+    {
+      "step_id": "s10",
+      "attempt": 3,
+      "name": "session_expired",
+      "layer": "engine",
+      "classification": "hard_failure",
+      "message": "The application session expired mid-run. A step declaring retry_after_reauth is re-authenticated and retried once; any other step stops here, because a step whose side effect may already have happened must not be repeated.",
+      "escalation_eligible": true,
+      "recovery": "re-authenticated"
+    }
+  ],
+  "escalation_eligible": true,
+  "control": {
+    "owner": "released",
+    "context_identity": 4550251600,
+    "transitions": [
+      {
+        "at": "2026-09-07T11:06:14.779054+00:00",
+        "from": "automation",
+        "to": "released",
+        "reason": "run finished: hard_failure"
+      }
+    ]
+  },
+  "evidence": {
+    "screenshot": "evidence/replay/run_6bef0aec/failure.png",
+    "snapshot": "evidence/replay/run_6bef0aec/failure_snapshot.txt"
+  },
+  "trace": [
+    {
+      "step_id": "s1",
+      "action": "navigate",
+      "status": "ok",
+      "duration_ms": 83.42,
+      "attempts": 1,
+      "checkpoint": {
+        "satisfied": true,
+        "expected": "element 'funds_transfer_link' present",
+        "observed": "resolved via rung 0",
+        "duration_ms": 4.1
+      }
+    },
+    {
+      "step_id": "s2",
+      "action": "click",
+      "status": "ok",
+      "duration_ms": 153.87,
+      "attempts": 1,
+      "resolution": {
+        "element": "funds_transfer_link",
+        "resolved": true,
+        "frame": null,
+        "rung_index": 0,
+        "strategy": "role_name",
+        "confidence": "high",
+        "brittle": false,
+        "duration_ms": 0.03,
+        "attempts": [
+          {
+            "rung": 0,
+            "strategy": "role_name",
+            "confidence": "high",
+            "brittle": false,
+            "match_count": 1,
+            "outcome": "resolved"
+          }
+        ]
+      },
+      "checkpoint": {
+        "satisfied": true,
+        "expected": "element 'value_field' present",
+        "observed": "resolved via rung 0",
+        "duration_ms": 14.14
+      }
+    },
+    {
+      "step_id": "s3",
+      "action": "fill",
+      "status": "ok",
+      "duration_ms": 43.02,
+      "attempts": 1,
+      "resolution": {
+        "element": "value_field",
+        "resolved": true,
+        "frame": null,
+        "rung_index": 0,
+        "strategy": "role_name",
+        "confidence": "high",
+        "brittle": false,
+        "duration_ms": 0.02,
+        "attempts": [
+          {
+            "rung": 0,
+            "strategy": "role_name",
+            "confidence": "high",
+            "brittle": false,
+            "match_count": 1,
+            "outcome": "resolved"
+          }
+        ]
+      }
+    },
+    {
+      "step_id": "s4",
+      "action": "click",
+      "status": "ok",
+      "duration_ms": 255.02,
+      "attempts": 1,
+      "resolution": {
+        "element": "search_button",
+        "resolved": true,
+        "frame": null,
+        "rung_index": 0,
+        "strategy": "role_name",
+        "confidence": "high",
+        "brittle": false,
+        "duration_ms": 0.03,
+        "attempts": [
+          {
+            "rung": 0,
+            "strategy": "role_name",
+            "confidence": "high",
+            "brittle": false,
+            "match_count": 1,
+            "outcome": "resolved"
+          }
+        ]
+      },
+      "checkpoint": {
+        "satisfied": true,
+        "expected": "element 'select_link' present",
+        "observed": "resolved via rung 0",
+        "duration_ms": 13.36
+      }
+    },
+    {
+      "step_id": "s5",
+      "action": "click",
+      "status": "ok",
+      "duration_ms": 179.8,
+      "attempts": 1,
+      "resolution": {
+        "element": "select_link",
+        "resolved": true,
+        "frame": null,
+        "rung_index": 0,
+        "strategy": "role_name",
+        "confidence": "high",
+        "brittle": false,
+        "duration_ms": 0.03,
+        "attempts": [
+          {
+            "rung": 0,
+            "strategy": "role_name",
+            "confidence": "high",
+            "brittle": false,
+            "match_count": 1,
+            "outcome": "resolved"
+          }
+        ]
+      },
+      "checkpoint": {
+        "satisfied": true,
+        "expected": "element 'from_share_select' present",
+        "observed": "resolved via rung 0",
+        "duration_ms": 19.95
+      }
+    },
+    {
+      "step_id": "s6",
+      "action": "select",
+      "status": "ok",
+      "duration_ms": 57.96,
+      "attempts": 1,
+      "resolution": {
+        "element": "from_share_select",
+        "resolved": true,
+        "frame": null,
+        "rung_index": 0,
+        "strategy": "role_name",
+        "confidence": "high",
+        "brittle": false,
+        "duration_ms": 0.04,
+        "attempts": [
+          {
+            "rung": 0,
+            "strategy": "role_name",
+            "confidence": "high",
+            "brittle": false,
+            "match_count": 1,
+            "outcome": "resolved"
+          }
+        ]
+      }
+    },
+    {
+      "step_id": "s7",
+      "action": "select",
+      "status": "ok",
+      "duration_ms": 57.17,
+      "attempts": 1,
+      "resolution": {
+        "element": "to_share_select",
+        "resolved": true,
+        "frame": null,
+        "rung_index": 0,
+        "strategy": "role_name",
+        "confidence": "high",
+        "brittle": false,
+        "duration_ms": 0.05,
+        "attempts": [
+          {
+            "rung": 0,
+            "strategy": "role_name",
+            "confidence": "high",
+            "brittle": false,
+            "match_count": 1,
+            "outcome": "resolved"
+          }
+        ]
+      }
+    },
+    {
+      "step_id": "s8",
+      "action": "fill",
+      "status": "ok",
+      "duration_ms": 57.16,
+      "attempts": 1,
+      "resolution": {
+        "element": "amount_field",
+        "resolved": true,
+        "frame": null,
+        "rung_index": 0,
+        "strategy": "role_name",
+        "confidence": "high",
+        "brittle": false,
+        "duration_ms": 0.04,
+        "attempts": [
+          {
+            "rung": 0,
+            "strategy": "role_name",
+            "confidence": "high",
+            "brittle": false,
+            "match_count": 1,
+            "outcome": "resolved"
+          }
+        ]
+      }
+    },
+    {
+      "step_id": "s9",
+      "action": "fill",
+      "status": "ok",
+      "duration_ms": 56.89,
+      "attempts": 1,
+      "resolution": {
+        "element": "memo_field",
+        "resolved": true,
+        "frame": null,
+        "rung_index": 0,
+        "strategy": "role_name",
+        "confidence": "high",
+        "brittle": false,
+        "duration_ms": 0.05,
+        "attempts": [
+          {
+            "rung": 0,
+            "strategy": "role_name",
+            "confidence": "high",
+            "brittle": false,
+            "match_count": 1,
+            "outcome": "resolved"
+          }
+        ]
+      }
+    },
+    {
+      "step_id": "s10",
+      "action": "click",
+      "status": "failed",
+      "duration_ms": 1892.38,
+      "attempts": 4,
+      "resolution": {
+        "element": "continue_button",
+        "resolved": true,
+        "frame": null,
+        "rung_index": 0,
+        "strategy": "role_name",
+        "confidence": "high",
+        "brittle": false,
+        "duration_ms": 0.05,
+        "attempts": [
+          {
+            "rung": 0,
+            "strategy": "role_name",
+            "confidence": "high",
+            "brittle": false,
+            "match_count": 1,
+            "outcome": "resolved"
+          }
+        ]
+      },
+      "detections": [
+        {
+          "name": "maintenance_interstitial",
+          "layer": "engine",
+          "classification": "recoverable",
+          "message": "A maintenance interstitial is covering the page.",
+          "recovery": "re-request the step's own URL and retry it"
+        },
+        {
+          "name": "maintenance_interstitial",
+          "layer": "engine",
+          "classification": "recoverable",
+          "message": "A maintenance interstitial is covering the page.",
+          "recovery": "re-request the step's own URL and retry it"
+        },
+        {
+          "name": "session_expired",
+          "layer": "engine",
+          "classification": "hard_failure",
+          "message": "The application session expired mid-run. A step declaring retry_after_reauth is re-authenticated and retried once; any other step stops here, because a step whose side effect may already have happened must not be repeated.",
+          "escalation_eligible": true
+        },
+        {
+          "name": "session_expired",
+          "layer": "engine",
+          "classification": "hard_failure",
+          "message": "The application session expired mid-run. A step declaring retry_after_reauth is re-authenticated and retried once; any other step stops here, because a step whose side effect may already have happened must not be repeated.",
+          "escalation_eligible": true
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,43 @@
+--- FRAME (top) ---
+document
+  table
+    rowgroup
+      row
+        cell "MERIDIAN CORE Member Services Platform v4.2.1 Cornerstone Financial Systems™"
+          text "Member Services Platform v4.2.1"
+      row
+        cell
+          generic
+            link "Main Menu" [href=/menu]
+            text "·"
+            link "Member Inquiry" [href=/members]
+            text "·"
+            link "System Settings" [href=/settings]
+            text "·"
+            link "Sign Off" [href=/signoff]
+      row
+        cell
+          heading "CONFIRM ACCOUNT HOLD" [level=1]
+          generic
+            text "IRREVERSIBLE ACTION"
+            table
+              rowgroup
+                row
+                  cell "Member"
+                  cell "102777 - <redacted:pii>"
+                row
+                  cell "Share"
+                  cell "102777-MMKT-17 - Money Market"
+                row
+                  cell "Reason"
+                  cell "FRAUD"
+                row
+                  cell "Notes"
+                  cell "sus"
+          generic
+            button "Apply Hold"
+            link "Cancel" [href=/members/102777]
+      row
+        cell "OPR <redacted:credential> | BR MAIN-001 | 09/07/2026 10:55:30 | SID <redacted:session>"
+      row
+        cell "F3=Sign Off F5=Main Menu F7=Member Inquiry F12=Cancel"

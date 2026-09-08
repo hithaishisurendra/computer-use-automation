@@ -1,0 +1,196 @@
+{
+  "classification": "hard_failure",
+  "capability": {
+    "id": "member_place_hold",
+    "version": "1.0.0"
+  },
+  "tenant": "demo",
+  "run_id": "run_936cafde",
+  "duration_ms": 18433.78,
+  "inputs": {
+    "member_ref": "****87",
+    "share": "************5 ",
+    "reason_code": "LEGAL",
+    "notes": "sus"
+  },
+  "message": "Unexpected driver error on step s6: Locator.select_option: Invalid frame in aria-ref selector \"aria-ref=f5e26\"\nCall log:\n  - waiting for locator(\"aria-ref=f5e26\")\n    - locator resolved to <select class=\"fld\" name=\"share\">\u2026</select>\n  - attempting select option action\n    2 \u00d7 waiting for element to be visible and enabled\n      - did not find some options\n    - retrying select option action\n    - waiting 20ms\n    2 \u00d7 waiting for element to be visible and enabled\n      - did not find some options\n    - retrying select option action\n      - waiting 100ms\n    27 \u00d7 waiting for element to be visible and enabled\n       - did not find some options\n     - retrying select option action\n       - waiting 500ms\n  - element was detached from the DOM, retrying\n",
+  "failure": {
+    "step_id": "s6",
+    "expected": "step s6 to complete",
+    "observed": "Unexpected driver error on step s6: Locator.select_option: Invalid frame in aria-ref selector \"aria-ref=f5e26\"\nCall log:\n  - waiting for locator(\"aria-ref=f5e26\")\n    - locator resolved to <select class=\"fld\" name=\"share\">\u2026</select>\n  - attempting select option action\n    2 \u00d7 waiting for element to be visible and enabled\n      - did not find some options\n    - retrying select option action\n    - waiting 20ms\n    2 \u00d7 waiting for element to be visible and enabled\n      - did not find some options\n    - retrying select option action\n      - waiting 100ms\n    27 \u00d7 waiting for element to be visible and enabled\n       - did not find some options\n     - retrying select option action\n       - waiting 500ms\n  - element was detached from the DOM, retrying\n"
+  },
+  "escalation_eligible": true,
+  "control": {
+    "owner": "released",
+    "context_identity": 4547155424,
+    "transitions": [
+      {
+        "at": "2026-09-07T10:54:08.217070+00:00",
+        "from": "automation",
+        "to": "released",
+        "reason": "run finished: hard_failure"
+      }
+    ]
+  },
+  "evidence": {
+    "screenshot": "evidence/replay/run_936cafde/failure.png",
+    "snapshot": "evidence/replay/run_936cafde/failure_snapshot.txt"
+  },
+  "trace": [
+    {
+      "step_id": "s1",
+      "action": "navigate",
+      "status": "ok",
+      "duration_ms": 85.34,
+      "attempts": 1,
+      "checkpoint": {
+        "satisfied": true,
+        "expected": "element 'place_account_hold_link' present",
+        "observed": "resolved via rung 0",
+        "duration_ms": 4.57
+      }
+    },
+    {
+      "step_id": "s2",
+      "action": "click",
+      "status": "ok",
+      "duration_ms": 170.87,
+      "attempts": 1,
+      "resolution": {
+        "element": "place_account_hold_link",
+        "resolved": true,
+        "frame": null,
+        "rung_index": 0,
+        "strategy": "role_name",
+        "confidence": "high",
+        "brittle": false,
+        "duration_ms": 0.03,
+        "attempts": [
+          {
+            "rung": 0,
+            "strategy": "role_name",
+            "confidence": "high",
+            "brittle": false,
+            "match_count": 1,
+            "outcome": "resolved"
+          }
+        ]
+      },
+      "checkpoint": {
+        "satisfied": true,
+        "expected": "element 'value_field' present",
+        "observed": "resolved via rung 0",
+        "duration_ms": 18.06
+      }
+    },
+    {
+      "step_id": "s3",
+      "action": "fill",
+      "status": "ok",
+      "duration_ms": 39.42,
+      "attempts": 1,
+      "resolution": {
+        "element": "value_field",
+        "resolved": true,
+        "frame": null,
+        "rung_index": 0,
+        "strategy": "role_name",
+        "confidence": "high",
+        "brittle": false,
+        "duration_ms": 0.03,
+        "attempts": [
+          {
+            "rung": 0,
+            "strategy": "role_name",
+            "confidence": "high",
+            "brittle": false,
+            "match_count": 1,
+            "outcome": "resolved"
+          }
+        ]
+      }
+    },
+    {
+      "step_id": "s4",
+      "action": "click",
+      "status": "ok",
+      "duration_ms": 199.79,
+      "attempts": 1,
+      "resolution": {
+        "element": "search_button",
+        "resolved": true,
+        "frame": null,
+        "rung_index": 0,
+        "strategy": "role_name",
+        "confidence": "high",
+        "brittle": false,
+        "duration_ms": 0.03,
+        "attempts": [
+          {
+            "rung": 0,
+            "strategy": "role_name",
+            "confidence": "high",
+            "brittle": false,
+            "match_count": 1,
+            "outcome": "resolved"
+          }
+        ]
+      },
+      "checkpoint": {
+        "satisfied": true,
+        "expected": "element 'select_link' present",
+        "observed": "resolved via rung 0",
+        "duration_ms": 24.6
+      }
+    },
+    {
+      "step_id": "s5",
+      "action": "click",
+      "status": "ok",
+      "duration_ms": 200.53,
+      "attempts": 1,
+      "resolution": {
+        "element": "select_link",
+        "resolved": true,
+        "frame": null,
+        "rung_index": 0,
+        "strategy": "role_name",
+        "confidence": "high",
+        "brittle": false,
+        "duration_ms": 0.03,
+        "attempts": [
+          {
+            "rung": 0,
+            "strategy": "role_name",
+            "confidence": "high",
+            "brittle": false,
+            "match_count": 1,
+            "outcome": "resolved"
+          }
+        ]
+      },
+      "checkpoint": {
+        "satisfied": true,
+        "expected": "element 'share_select' present",
+        "observed": "resolved via rung 0",
+        "duration_ms": 17.61
+      }
+    },
+    {
+      "step_id": "s6",
+      "action": "select",
+      "status": "failed",
+      "duration_ms": 13667.88,
+      "attempts": 1,
+      "detections": [
+        {
+          "name": "driver_error",
+          "layer": "engine",
+          "classification": "hard_failure",
+          "message": "Unexpected driver error on step s6: Locator.select_option: Invalid frame in aria-ref selector \"aria-ref=f5e26\"\nCall log:\n  - waiting for locator(\"aria-ref=f5e26\")\n    - locator resolved to <select class=\"fld\" name=\"share\">\u2026</select>\n  - attempting select option action\n    2 \u00d7 waiting for element to be visible and enabled\n      - did not find some options\n    - retrying select option action\n    - waiting 20ms\n    2 \u00d7 waiting for element to be visible and enabled\n      - did not find some options\n    - retrying select option action\n      - waiting 100ms\n    27 \u00d7 waiting for element to be visible and enabled\n       - did not find some options\n     - retrying select option action\n       - waiting 500ms\n  - element was detached from the DOM, retrying\n",
+          "escalation_eligible": true
+        }
+      ]
+    }
+  ]
+}
