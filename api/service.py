@@ -412,8 +412,15 @@ def create_app(
         for run_id, stored in app.state.runs.items():
             live.setdefault(run_id, {
                 "run_id": run_id, "capability": stored.get("capability"),
-                "status": stored["classification"], "attended": False,
+                # `.get`, not a subscript. A run whose thread raised is stored
+                # with no classification, and a hard subscript there took the
+                # whole Runs tab down with a 500 -- permanently, because the
+                # bad entry is persisted. One unreadable row must not make the
+                # other twenty-one unreadable too.
+                "status": stored.get("classification", "unknown"),
+                "attended": False,
                 "duration_ms": stored.get("duration_ms"),
+                "started_at": stored.get("started_at"),
                 "inputs": stored.get("inputs", {}), "awaiting_operator": False,
             })
         runs = sorted(live.values(), key=lambda r: r.get("started_at") or 0, reverse=True)

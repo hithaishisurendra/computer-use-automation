@@ -82,9 +82,15 @@ The replay drives the live MERIDIAN site and prints a JSON result ending in
 **4. Start everything.**
 
 ```bash
-uvicorn api.service:app --port 8900        # terminal 1
-uvicorn coreserv.main:app --port 8800      # terminal 2, only for the two CoreServ capabilities
+python -m uvicorn api.service:app --port 8900     # terminal 1
+python -m uvicorn coreserv.main:app --port 8800  # terminal 2, only for the two CoreServ capabilities
 ```
+
+`python -m uvicorn`, not bare `uvicorn`. If another Python is ahead of the
+virtualenv on your PATH, and Anaconda usually is, the bare command runs the
+server under an interpreter that has no Playwright installed. Every capability
+then fails to launch a browser and every invocation returns 502, while the CLI
+commands above keep working because they run through `python -m`.
 
 **5. Check the target is not in a forced-error state.** MERIDIAN has a global
 fault switch that persists across sessions, and someone may have left it on.
@@ -283,7 +289,7 @@ proven".
 ## Demo path (MERIDIAN, no local server needed)
 
 ```bash
-uvicorn api.service:app --port 8900        # then open /ui
+python -m uvicorn api.service:app --port 8900   # then open /ui
 ```
 
 **1. A capability that answers.** Chat: *"What is the balance of share
@@ -340,7 +346,7 @@ repeated.
 ### Offline, on CoreServ
 
 ```bash
-uvicorn coreserv.main:app --port 8800      # separate terminal
+python -m uvicorn coreserv.main:app --port 8800   # separate terminal
 
 python -m discovery.run --app coreserv --target http://localhost:8800 \
   --goal "Look up member 10003 and read their current savings balance" \
@@ -419,7 +425,7 @@ mechanism — it signals resume; **it does not drive the browser**.
 ## Cross-tenant — one artifact, two tenants
 
 ```bash
-TENANT=cascade uvicorn coreserv.main:app --port 8800
+TENANT=cascade python -m uvicorn coreserv.main:app --port 8800
 
 python -m replay.run --capability member_savings_balance --version 1.0.0 \
   --tenant cascade --input member_ref=4471820019

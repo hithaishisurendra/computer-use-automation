@@ -87,6 +87,13 @@ def remember(
 ) -> dict[str, Any]:
     """Fold one finished run into the history and return the stored body."""
     body = dict(result or {})
+    if not body.get("classification"):
+        # The run's thread raised before producing a result. Store it as the
+        # failure it was rather than as a shape with no classification: an
+        # entry missing the field is one every reader has to defend against,
+        # and the first one that did not took the Runs tab down with it.
+        body["classification"] = "hard_failure"
+        body.setdefault("message", "the run ended without producing a result")
     body.setdefault("run_id", run_id)
     body.setdefault("capability", capability)
     if started_at is not None:
